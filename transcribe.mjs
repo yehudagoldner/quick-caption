@@ -9,7 +9,7 @@ dotenv.config();
 
 const BURNABLE_FORMATS = new Set(['.srt', '.vtt']);
 const AUDIO_EXTENSIONS = new Set(['.mp3', '.wav', '.m4a', '.aac', '.ogg', '.flac', '.opus']);
-const OPENAI_UPLOAD_LIMIT_BYTES = 25 * 1024 * 1024; // 25 MB
+const OPENAI_UPLOAD_LIMIT_BYTES = 25 * 1024 * 1024; // 25 MB per upload
 
 async function main() {
   const [inputPath, outputPathArg] = process.argv.slice(2);
@@ -23,24 +23,61 @@ async function main() {
   const { format, outputPath } = buildOutputPath(resolvedInput, outputPathArg);
 
   const client = createOpenAIClient();
+  const transcriptionOptions = getTranscriptionOptions();
 
-  console.log(`Preparing transcription (${format.slice(1)} format) using OpenAI Whisper...`);
+  const audioPreparation = await prepareAudioForTranscription(resolvedInput);
 
-  const result = await transcribeWithOpenAI(client, resolvedInput);
-  await writeTranscriptFromSegments(result, format, outputPath);
+  try {
+    console.log(`Preparing transcription (${format.slice(1)} format) using ${transcriptionOptions.timedModel}...`);
 
-  console.log(`Transcript saved to ${outputPath}`);
+    const timedResult = await transcribeWithTimedModel(
+      client,
+      audioPreparation.audioPath,
+      transcriptionOptions
+    );
 
-  if (BURNABLE_FORMATS.has(format)) {
-    try {
-      const burnedPath = await burnSubtitles(resolvedInput, outputPath);
-      console.log(`Video with burned subtitles saved to ${burnedPath}`);
-    } catch (error) {
-      console.error('Failed to burn subtitles:', error);
-      console.warn('The transcript file is still available for manual muxing.');
+    let highAccuracyResult = null;
+    if (shouldRunHighAccuracy(transcriptionOptions.highAccuracyModel)) {
+      try {
+        highAccuracyResult = await transcribeWithHighAccuracyModel(
+          client,
+          audioPreparation.audioPath,
+          transcriptionOptions
+        );
+      } catch (error) {
+        console.warn('Warning: High-accuracy transcription failed:', error.message ?? error);
+      }
     }
-  } else {
-    console.log('Burning skipped: chosen format is not supported for hard subtitles.');
+
+    const refinedResult = await refineTranscriptWithGPT(
+      client,
+      timedResult,
+      highAccuracyResult,
+      transcriptionOptions
+    ).catch(error => {
+      console.warn('Warning: Failed to refine transcript with GPT:', error.message ?? error);
+      return timedResult;
+    });
+
+    await writeTranscriptFromSegments(refinedResult, format, outputPath);
+
+    console.log(`Transcript saved to ${outputPath}`);
+
+    if (BURNABLE_FORMATS.has(format)) {
+      try {
+        const burnedPath = await burnSubtitles(resolvedInput, outputPath);
+        console.log(`Video with burned subtitles saved to ${burnedPath}`);
+      } catch (error) {
+        console.error('Failed to burn subtitles:', error);
+        console.warn('The transcript file is still available for manual muxing.');
+      }
+    } else {
+      console.log('Burning skipped: chosen format is not supported for hard subtitles.');
+    }
+  } finally {
+    if (audioPreparation.cleanup) {
+      await audioPreparation.cleanup().catch(() => {});
+    }
   }
 }
 
@@ -50,6 +87,24 @@ function createOpenAIClient() {
     throw new Error('OPENAI_API_KEY environment variable is required for OpenAI transcription.');
   }
   return new OpenAI({ apiKey });
+}
+
+function getTranscriptionOptions() {
+  const temperature = Number.parseFloat(process.env.OPENAI_TEMPERATURE ?? '0');
+  const translate = /^true$/i.test(process.env.OPENAI_TRANSLATE ?? 'false');
+  const language = process.env.OPENAI_LANGUAGE ?? undefined;
+  const timedModel = process.env.OPENAI_TIMED_MODEL ?? 'whisper-1';
+  const highAccuracyModel = process.env.OPENAI_HIGH_ACCURACY_MODEL ?? 'gpt-4o-transcribe';
+  const correctionModel = process.env.OPENAI_CORRECTION_MODEL ?? 'gpt-5';
+
+  return {
+    temperature: Number.isFinite(temperature) ? temperature : 0,
+    translate,
+    language,
+    timedModel,
+    highAccuracyModel,
+    correctionModel,
+  };
 }
 
 function buildOutputPath(resolvedInput, outputPathArg) {
@@ -75,49 +130,181 @@ function buildOutputPath(resolvedInput, outputPathArg) {
   return { format: ext, outputPath: normalizedPath };
 }
 
-async function transcribeWithOpenAI(client, filePath) {
-  const model = process.env.OPENAI_WHISPER_MODEL ?? 'whisper-1';
-  const temperature = Number.parseFloat(process.env.OPENAI_TEMPERATURE ?? '0');
-  const translate = /^true$/i.test(process.env.OPENAI_TRANSLATE ?? 'false');
-  const language = process.env.OPENAI_LANGUAGE ?? undefined;
+async function transcribeWithTimedModel(client, audioPath, options) {
+  const { timedModel, temperature, translate, language } = options;
+  const responseFormat = timedModel.includes('whisper') ? 'verbose_json' : 'json';
 
-  const { preparedPath, cleanup } = await ensureAudioForOpenAI(filePath);
+  console.log(`Uploading audio to ${timedModel} for timestamped transcription...`);
 
-  console.log('Uploading media to OpenAI Whisper...');
+  const transcription = await client.audio.transcriptions.create({
+    file: fs.createReadStream(audioPath),
+    model: timedModel,
+    temperature,
+    response_format: responseFormat,
+    translate,
+    language,
+    timestamp_granularities: ['segment'],
+  });
 
-  try {
-    const transcription = await client.audio.transcriptions.create({
-      file: fs.createReadStream(preparedPath),
-      model,
-      temperature: Number.isFinite(temperature) ? temperature : 0,
-      response_format: 'verbose_json',
-      translate,
-      language,
-    });
+  const segments = extractSegmentsFromTranscription(transcription);
+  const combinedText = transcription.text?.trim()
+    ?? segments.map(segment => segment.text).join(' ').trim();
 
-    const segments = (transcription.segments ?? []).map(segment => ({
+  if (!segments.length) {
+    throw new Error(`No segments returned by model ${timedModel}; cannot proceed without timestamps.`);
+  }
+
+  return { text: combinedText, segments };
+}
+
+function shouldRunHighAccuracy(modelName) {
+  if (!modelName) {
+    return false;
+  }
+  const normalized = modelName.trim().toLowerCase();
+  return normalized !== 'none' && normalized !== 'skip' && normalized !== 'false';
+}
+
+async function transcribeWithHighAccuracyModel(client, audioPath, options) {
+  const { highAccuracyModel, temperature, translate, language } = options;
+
+  console.log(`Running high-accuracy transcription with ${highAccuracyModel}...`);
+
+  const transcription = await client.audio.transcriptions.create({
+    file: fs.createReadStream(audioPath),
+    model: highAccuracyModel,
+    temperature,
+    response_format: 'json',
+    translate,
+    language,
+    timestamp_granularities: ['segment'],
+  });
+
+  const segments = extractSegmentsFromTranscription(transcription);
+  const combinedText = transcription.text?.trim()
+    ?? segments.map(segment => segment.text).join(' ').trim();
+
+  if (!combinedText) {
+    throw new Error(`High-accuracy model ${highAccuracyModel} returned no text.`);
+  }
+
+  return {
+    text: combinedText,
+    segments: segments.length ? segments : null,
+  };
+}
+
+function extractSegmentsFromTranscription(transcription) {
+  const rawSegments = Array.isArray(transcription.segments) ? transcription.segments : [];
+  return rawSegments.map(segment => ({
+    id: segment.id,
+    start: Number(segment.start ?? segment.begin ?? segment.timing?.start ?? 0),
+    end: Number(segment.end ?? segment.timing?.end ?? 0),
+    text: String(segment.text ?? segment.content ?? '').trim(),
+  })).filter(segment => Number.isFinite(segment.start) && Number.isFinite(segment.end));
+}
+
+async function refineTranscriptWithGPT(client, baseResult, highAccuracyResult, options) {
+  if (!baseResult?.segments?.length) {
+    return baseResult;
+  }
+
+  const model = options.correctionModel;
+
+  console.log(`Refining transcript with ${model} for improved accuracy...`);
+
+  const payload = {
+    base_segments: baseResult.segments.map(segment => ({
       id: segment.id,
       start: segment.start,
       end: segment.end,
-      text: segment.text?.trim() ?? '',
-    }));
+      text: segment.text,
+    })),
+    base_text: baseResult.text,
+    high_accuracy: highAccuracyResult
+      ? {
+          text: highAccuracyResult.text,
+          segments: highAccuracyResult.segments?.map(segment => ({
+            id: segment.id,
+            start: segment.start,
+            end: segment.end,
+            text: segment.text,
+          })) ?? null,
+        }
+      : null,
+  };
 
-    const combinedText = transcription.text?.trim()
-      ?? segments.map(segment => segment.text).join(' ').trim();
+  const response = await client.responses.create({
+    model,
+    input: [
+      {
+        role: 'system',
+        content: [
+          {
+            type: 'input_text',
+            text: 'You are an expert Hebrew transcription editor. Improve accuracy and grammar while preserving meaning, speaker intent, and timestamps.'
+          }
+        ]
+      },
+      {
+        role: 'user',
+        content: [
+          {
+            type: 'input_text',
+            text: `Using the JSON payload provided, return JSON with a "segments" array. Each segment must retain the same id, start, and end fields from base_segments, but you should improve the text field using all provided context (base_text and high_accuracy data). Avoid merging or splitting segments.`
+          }
+        ]
+      },
+      {
+        role: 'user',
+        content: [
+          {
+            type: 'input_text',
+            text: JSON.stringify(payload)
+          }
+        ]
+      }
+    ]
+  });
 
-    if (!combinedText) {
-      throw new Error('No text returned from OpenAI transcription.');
-    }
-
-    return { text: combinedText, segments };
-  } finally {
-    if (cleanup) {
-      await cleanup().catch(() => {});
-    }
+  const outputText = response.output_text?.trim();
+  if (!outputText) {
+    throw new Error('Correction model returned no output.');
   }
+
+  let parsed;
+  try {
+    parsed = JSON.parse(outputText);
+  } catch (error) {
+    throw new Error(`Failed to parse correction model output: ${error.message ?? error}`);
+  }
+
+  if (!parsed?.segments || !Array.isArray(parsed.segments)) {
+    throw new Error('Correction model response missing "segments" array.');
+  }
+
+  const refinedSegments = parsed.segments.map(original => {
+    const reference = baseResult.segments.find(seg => seg.id === original.id);
+    if (!reference) {
+      throw new Error(`Correction output references unknown segment id ${original.id}`);
+    }
+    return {
+      id: reference.id,
+      start: reference.start,
+      end: reference.end,
+      text: String(original.text ?? '').trim() || reference.text,
+    };
+  });
+
+  const refinedText = refinedSegments.map(segment => segment.text).join(' ').trim();
+
+  return {
+    text: refinedText || baseResult.text,
+    segments: refinedSegments,
+  };
 }
 
-async function ensureAudioForOpenAI(inputPath) {
+async function prepareAudioForTranscription(inputPath) {
   const stats = await fsp.stat(inputPath);
   const ext = path.extname(inputPath).toLowerCase();
 
@@ -125,7 +312,7 @@ async function ensureAudioForOpenAI(inputPath) {
   const withinLimit = stats.size <= OPENAI_UPLOAD_LIMIT_BYTES;
 
   if (isAudio && withinLimit) {
-    return { preparedPath: inputPath, cleanup: null };
+    return { audioPath: inputPath, cleanup: null };
   }
 
   await assertFfmpeg();
@@ -159,7 +346,7 @@ async function ensureAudioForOpenAI(inputPath) {
   }
 
   return {
-    preparedPath: tempPath,
+    audioPath: tempPath,
     cleanup: () => fsp.unlink(tempPath),
   };
 }
