@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+﻿import { useEffect, useMemo, useState } from "react";
 import "./App.css";
 
 type Segment = {
@@ -27,7 +27,10 @@ const SUPPORTED_FORMATS = [
   { value: ".txt", label: "Text" },
 ];
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:3000";
+const RAW_API_BASE = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.trim() ?? "";
+const API_BASE_URL = RAW_API_BASE.replace(/\/?$/, "");
+const API_DISPLAY = API_BASE_URL || window.location.origin;
+const TRANSCRIBE_ENDPOINT = `${API_BASE_URL || ""}/api/transcribe`;
 
 function App() {
   const [file, setFile] = useState<File | null>(null);
@@ -71,7 +74,7 @@ function App() {
     setError(null);
 
     if (!file) {
-      setError("??? ???? ????? ?? ????? ???? ??????");
+      setError("בחר/י קובץ וידאו או אודיו לפני השליחה");
       return;
     }
 
@@ -83,7 +86,7 @@ function App() {
     setResponse(null);
 
     try {
-      const res = await fetch(`${API_BASE_URL}/api/transcribe`, {
+      const res = await fetch(TRANSCRIBE_ENDPOINT, {
         method: "POST",
         body: formData,
       });
@@ -91,12 +94,12 @@ function App() {
       const payload = (await res.json()) as ApiResponse & { error?: string };
 
       if (!res.ok) {
-        throw new Error(payload.error ?? "????? ?? ????? ?????");
+        throw new Error(payload.error ?? "שגיאה לא צפויה מהשרת");
       }
 
       setResponse(payload);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "???? ????? ?? ?????");
+      setError(err instanceof Error ? err.message : "קרתה שגיאה לא ידועה");
     } finally {
       setIsSubmitting(false);
     }
@@ -105,16 +108,16 @@ function App() {
   return (
     <div className="app">
       <header className="app__header">
-        <h1>???? ??????? ??????? OpenAI</h1>
-        <p>???? ???? ????? ?? ????? ???? ????? ?? ??????? ???????.</p>
+        <h1>הפקת כתוביות באמצעות OpenAI</h1>
+        <p>העלו קובץ וידאו או אודיו וקבלו תמלול עם תזמונים מדויקים.</p>
       </header>
 
       <main className="app__content">
         <section className="card">
-          <h2>1. ???? ????</h2>
+          <h2>שלב 1 – העלאת קובץ</h2>
           <form className="form" onSubmit={handleSubmit}>
             <label className="form__field">
-              <span>???? ?????/?????</span>
+              <span>קובץ וידאו/אודיו</span>
               <input
                 type="file"
                 accept="video/*,audio/*"
@@ -123,7 +126,7 @@ function App() {
             </label>
 
             <label className="form__field">
-              <span>????? ???????</span>
+              <span>פורמט כתוביות</span>
               <select value={format} onChange={(event) => setFormat(event.target.value)}>
                 {SUPPORTED_FORMATS.map((option) => (
                   <option key={option.value} value={option.value}>
@@ -134,7 +137,7 @@ function App() {
             </label>
 
             <button className="button" type="submit" disabled={isSubmitting}>
-              {isSubmitting ? "????..." : "??? ???????"}
+              {isSubmitting ? "מעבד…" : "הפק כתוביות"}
             </button>
           </form>
 
@@ -143,11 +146,11 @@ function App() {
 
         {response && (
           <section className="card">
-            <h2>2. ?????</h2>
+            <h2>שלב 2 – התוצאה</h2>
 
             {response.warnings?.length ? (
               <div className="alert alert--warning">
-                <p>??????:</p>
+                <p>התקבלו התרעות:</p>
                 <ul>
                   {response.warnings.map((warning, index) => (
                     <li key={index}>{warning}</li>
@@ -158,35 +161,35 @@ function App() {
 
             <div className="result">
               <div className="result__section">
-                <h3>??????? ({subtitleFormatLabel})</h3>
+                <h3>כתוביות ({subtitleFormatLabel})</h3>
                 <textarea readOnly value={response.subtitle?.content ?? ""} />
                 {downloadUrl && (
                   <a className="button button--secondary" download={downloadName} href={downloadUrl}>
-                    ???? ???? ???????
+                    הורדה כקובץ
                   </a>
                 )}
               </div>
 
               <div className="result__section">
-                <h3>????? ???</h3>
+                <h3>תמלול מלא</h3>
                 <textarea readOnly value={response.text ?? ""} />
               </div>
 
               <div className="result__section result__section--segments">
-                <h3>??????</h3>
+                <h3>מקטעים</h3>
                 {response.segments?.length ? (
                   <ul className="segments">
                     {response.segments.map((segment) => (
                       <li key={segment.id}>
                         <span className="segments__time">
-                          {formatTime(segment.start)} ? {formatTime(segment.end)}
+                          {formatTime(segment.start)} → {formatTime(segment.end)}
                         </span>
                         <span className="segments__text">{segment.text}</span>
                       </li>
                     ))}
                   </ul>
                 ) : (
-                  <p>?? ????? ?????? ?????.</p>
+                  <p>לא נמצאו מקטעים להצגה.</p>
                 )}
               </div>
             </div>
@@ -196,8 +199,8 @@ function App() {
 
       <footer className="app__footer">
         <p>
-          API ????? ?? ?????? <code>{API_BASE_URL}</code>. ???? ????? ??? ???????
-          <code> VITE_API_BASE_URL</code> ????? ?????? ?? Vite.
+          ה־API מאזין כעת בכתובת <code>{API_DISPLAY}</code>. ניתן לשנות באמצעות
+          <code> VITE_API_BASE_URL</code> בקובץ הסביבה של Vite.
         </p>
       </footer>
     </div>
