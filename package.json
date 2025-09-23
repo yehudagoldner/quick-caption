@@ -1,0 +1,19 @@
+{
+    "name":  "subtitles-2.0",
+    "version":  "1.0.0",
+    "description":  "",
+    "main":  "index.js",
+    "scripts":  {
+                    "test":  "echo \"Error: no test specified\" \u0026\u0026 exit 1"
+                },
+    "keywords":  [
+
+                 ],
+    "author":  "",
+    "license":  "ISC",
+    "type":  "commonjs",
+    "dependencies":  {
+                         "dotenv":  "^17.2.2",
+                         "openai":  "^5.22.1"
+                     }
+}
