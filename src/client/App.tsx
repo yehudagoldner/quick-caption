@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+﻿import { useEffect, useMemo, useRef, useState } from "react";
 import { io, Socket } from "socket.io-client";
 import type { ManagerOptions, SocketOptions } from "socket.io-client";
 import "./App.css";
@@ -299,14 +299,13 @@ function App() {
             </label>
 
             {uploadProgress !== null && (
+              <>
               <div className="progress" role="status" aria-live="polite">
                 <div className="progress__track">
                   <div className="progress__bar" style={{ width: `${uploadProgress}%` }} />
                 </div>
                 <span className="progress__label">העלאה: {uploadProgress}%</span>
               </div>
-            )}
-
             <ul className="steps">
               {stages.map((stage) => (
                 <li key={stage.id} className={`steps__item steps__item--${stage.status}`}>
@@ -318,6 +317,9 @@ function App() {
                 </li>
               ))}
             </ul>
+            </>
+            )}
+
 
             <button className="button" type="submit" disabled={isSubmitting}>
               {isSubmitting ? "מעבד…" : "הפק כתוביות"}
@@ -394,6 +396,10 @@ function formatTime(seconds: number) {
 }
 
 export default App;
+
+
+
+
 
 
 

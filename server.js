@@ -1,4 +1,4 @@
-﻿import express from "express";
+import express from "express";
 import cors from "cors";
 import multer from "multer";
 import path from "path";
@@ -34,7 +34,7 @@ const io = new SocketIOServer(httpServer, {
   },
 });
 
-aio.on("connection", (socket) => {
+io.on("connection", (socket) => {
   console.log(`Socket connected: ${socket.id}`);
 });
 
@@ -47,7 +47,7 @@ app.post("/api/transcribe", upload.single("media"), async (req, res) => {
   const emitStage = createStageEmitter(socketId);
 
   if (!req.file) {
-    emitStage("complete", "error", "לא התקבל קובץ להעלאה");
+    emitStage("complete", "error", "?? ????? ???? ??????");
     return res.status(400).json({ error: 'Media file is required under field name "media".' });
   }
 
