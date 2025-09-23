@@ -59,7 +59,7 @@ function App() {
     return () => {
       URL.revokeObjectURL(url);
     };
-  }, [response, file]);
+  }, [response, file, downloadUrl]);
 
   const subtitleFormatLabel = useMemo(() => {
     const activeFormat = response?.subtitle?.format ?? format;

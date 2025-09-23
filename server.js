@@ -6,7 +6,7 @@ import os from 'os';
 import { promises as fsp } from 'fs';
 import dotenv from 'dotenv';
 
-import { transcribeMedia, normalizeSubtitleFormat } from './src/transcription.mjs';
+import { transcribeMedia, normalizeSubtitleFormat } from './src/transcription.js';
 
 dotenv.config();
 

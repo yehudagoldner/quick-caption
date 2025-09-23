@@ -1,6 +1,6 @@
 import path from 'path';
 import { promises as fsp } from 'fs';
-import { transcribeMedia, normalizeSubtitleFormat, burnSubtitles } from './src/transcription.mjs';
+import { transcribeMedia, normalizeSubtitleFormat, burnSubtitles } from './src/transcription.js';
 
 const BURNABLE_FORMATS = new Set(['.srt', '.vtt']);
 
@@ -8,7 +8,7 @@ async function main() {
   const [inputPath, outputPathArg] = process.argv.slice(2);
 
   if (!inputPath) {
-    console.error('Usage: node transcribe.mjs <video-or-audio-file> [output-file]');
+    console.error('Usage: node transcribe.js <video-or-audio-file> [output-file]');
     process.exit(1);
   }
 
