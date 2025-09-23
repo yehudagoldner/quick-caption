@@ -1,43 +1,25 @@
 ﻿import { useEffect, useMemo, useRef, useState } from "react";
-import { io, Socket } from "socket.io-client";
-import type { ManagerOptions, SocketOptions } from "socket.io-client";
+import type { FormEvent } from "react";
+import { io } from "socket.io-client";
+import type { ManagerOptions, Socket, SocketOptions } from "socket.io-client";
+import {
+  Alert,
+  Card,
+  CardContent,
+  Container,
+  CssBaseline,
+  Divider,
+  Fade,
+  Stack,
+  ThemeProvider,
+  Typography,
+  createTheme,
+} from "@mui/material";
+import { CloudUploadRounded } from "@mui/icons-material";
+import { UploadForm } from "./components/UploadForm";
+import { TranscriptionResult } from "./components/TranscriptionResult";
+import type { ApiResponse, StageEvent, StageState, StageStatus } from "./types";
 import "./App.css";
-
-type Segment = {
-  id: number | string;
-  start: number;
-  end: number;
-  text: string;
-};
-
-type SubtitlePayload = {
-  format: string;
-  content: string;
-};
-
-type ApiResponse = {
-  text: string;
-  segments: Segment[];
-  subtitle: SubtitlePayload;
-  warnings?: string[];
-  error?: string;
-};
-
-type StageId = "upload" | "timed-transcription" | "high-accuracy" | "correction" | "complete";
-type StageStatus = "idle" | "active" | "done" | "skipped" | "error";
-
-type StageState = {
-  id: StageId;
-  label: string;
-  status: StageStatus;
-  message: string | null;
-};
-
-type StageEvent = {
-  stage: StageId;
-  status: "start" | "done" | "skipped" | "error";
-  message?: string;
-};
 
 const DEFAULT_FORMAT = ".srt";
 const SUPPORTED_FORMATS = [
@@ -48,15 +30,24 @@ const SUPPORTED_FORMATS = [
 
 const STAGE_DEFINITIONS: StageState[] = [
   { id: "upload", label: "העלאה", status: "idle", message: null },
-  { id: "timed-transcription", label: "תמלול ראשוני", status: "idle", message: null },
-  { id: "high-accuracy", label: "שיפור תמלול", status: "idle", message: null },
-  { id: "correction", label: "תיקון טקסט", status: "idle", message: null },
-  { id: "complete", label: "סיום", status: "idle", message: null },
+  { id: "timed-transcription", label: "תמלול מתוזמן", status: "idle", message: null },
+  { id: "high-accuracy", label: "שיפור דיוק", status: "idle", message: null },
+  { id: "correction", label: "תיקון שפה", status: "idle", message: null },
+  { id: "complete", label: "הושלם", status: "idle", message: null },
 ];
 
 const RAW_API_BASE = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.trim() ?? "";
 const API_BASE_URL = RAW_API_BASE.replace(/\/?$/, "");
 const TRANSCRIBE_ENDPOINT = `${API_BASE_URL || ""}/api/transcribe`;
+
+const theme = createTheme({
+  typography: {
+    fontFamily: '"Rubik", "Assistant", "Segoe UI", sans-serif',
+  },
+  shape: {
+    borderRadius: 16,
+  },
+});
 
 function mapStageStatus(status: StageStatus | "start" | "done" | "skipped" | "error"): StageStatus {
   switch (status) {
@@ -174,12 +165,12 @@ function App() {
     return SUPPORTED_FORMATS.find((option) => option.value === activeFormat)?.label ?? activeFormat;
   }, [response, format]);
 
-  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setError(null);
 
     if (!file) {
-      setError("בחר/י קובץ וידאו או אודיו לפני השליחה");
+      setError("לא נבחר קובץ או שהפורמט אינו נתמך");
       return;
     }
 
@@ -224,10 +215,10 @@ function App() {
     };
 
     xhr.onerror = () => {
-      setError("שגיאת רשת. נסה/י שוב.");
+      setError("פעולת ההעלאה נכשלה. נסו שוב.");
       setStages((prev) =>
         prev.map((stage) =>
-          stage.id === "complete" ? { ...stage, status: "error", message: "שגיאת רשת" } : stage,
+          stage.id === "complete" ? { ...stage, status: "error", message: "פעולת ההעלאה נכשלה" } : stage,
         ),
       );
       finalize();
@@ -251,11 +242,11 @@ function App() {
         setResponse(payload);
         setError(null);
       } else {
-        setError(payload?.error ?? `שגיאת שרת (${xhr.status})`);
+        setError(payload?.error ?? `אירעה שגיאה (${xhr.status})`);
         setStages((prev) =>
           prev.map((stage) =>
             stage.id === "complete"
-              ? { ...stage, status: "error", message: payload?.error ?? "שגיאת שרת" }
+              ? { ...stage, status: "error", message: payload?.error ?? "אירעה שגיאה" }
               : stage,
           ),
         );
@@ -268,142 +259,60 @@ function App() {
   };
 
   return (
-    <div className="app">
-      <header className="app__header">
-        <h1>הפקת כתוביות באמצעות OpenAI</h1>
-        <p>העלו קובץ וידאו או אודיו וקבלו תמלול עם תזמונים מדויקים.</p>
-      </header>
+    <ThemeProvider theme={theme}>
+      <CssBaseline />
+      <Container maxWidth="lg" sx={{ py: { xs: 4, md: 6 }, direction: "rtl" }}>
+        <Stack spacing={4}>
+          <Stack spacing={1} textAlign="center">
+            <Typography variant="h3" component="h1">
+              מערכת כתוביות חכמה
+            </Typography>
+            <Typography variant="subtitle1" color="text.secondary">
+              העלו קבצי מדיה, עקבו אחר ההתקדמות וקבלו כתוביות מתוזמנות ותמלול מלא.
+            </Typography>
+          </Stack>
 
-      <main className="app__content">
-        <section className="card">
-          <h2>שלב 1 – העלאת קובץ</h2>
-          <form className="form" onSubmit={handleSubmit}>
-            <label className="form__field">
-              <span>קובץ וידאו/אודיו</span>
-              <input
-                type="file"
-                accept="video/*,audio/*"
-                onChange={(event) => setFile(event.target.files?.[0] ?? null)}
+          <Card elevation={3}>
+            <CardContent>
+              <Stack spacing={3}>
+                <Stack direction="row" alignItems="center" spacing={1}>
+                  <CloudUploadRounded color="primary" />
+                  <Typography variant="h5">שלב 1 – העלאת מקור</Typography>
+                </Stack>
+
+                <Divider />
+
+                <UploadForm
+                  file={file}
+                  format={format}
+                  isSubmitting={isSubmitting}
+                  uploadProgress={uploadProgress}
+                  stages={stages}
+                  formatOptions={SUPPORTED_FORMATS}
+                  onFileChange={setFile}
+                  onFormatChange={setFormat}
+                  onSubmit={handleSubmit}
+                />
+
+                {error && <Alert severity="error">{error}</Alert>}
+              </Stack>
+            </CardContent>
+          </Card>
+
+          <Fade in={Boolean(response)}>
+            <Stack>{response && (
+              <TranscriptionResult
+                response={response}
+                subtitleFormatLabel={subtitleFormatLabel}
+                downloadUrl={downloadUrl}
+                downloadName={downloadName}
               />
-            </label>
-
-            <label className="form__field">
-              <span>פורמט כתוביות</span>
-              <select value={format} onChange={(event) => setFormat(event.target.value)}>
-                {SUPPORTED_FORMATS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            {uploadProgress !== null && (
-              <>
-              <div className="progress" role="status" aria-live="polite">
-                <div className="progress__track">
-                  <div className="progress__bar" style={{ width: `${uploadProgress}%` }} />
-                </div>
-                <span className="progress__label">העלאה: {uploadProgress}%</span>
-              </div>
-            <ul className="steps">
-              {stages.map((stage) => (
-                <li key={stage.id} className={`steps__item steps__item--${stage.status}`}>
-                  <span className="steps__indicator" />
-                  <div className="steps__content">
-                    <span className="steps__label">{stage.label}</span>
-                    {stage.message && <small className="steps__message">{stage.message}</small>}
-                  </div>
-                </li>
-              ))}
-            </ul>
-            </>
-            )}
-
-
-            <button className="button" type="submit" disabled={isSubmitting}>
-              {isSubmitting ? "מעבד…" : "הפק כתוביות"}
-            </button>
-          </form>
-
-          {error && <div className="alert alert--error">{error}</div>}
-        </section>
-
-        {response && (
-          <section className="card">
-            <h2>שלב 2 – התוצאה</h2>
-
-            {response.warnings?.length ? (
-              <div className="alert alert--warning">
-                <p>התקבלו התרעות:</p>
-                <ul>
-                  {response.warnings.map((warning, index) => (
-                    <li key={index}>{warning}</li>
-                  ))}
-                </ul>
-              </div>
-            ) : null}
-
-            <div className="result">
-              <div className="result__section">
-                <h3>כתוביות ({subtitleFormatLabel})</h3>
-                <textarea readOnly value={response.subtitle?.content ?? ""} />
-                {downloadUrl && (
-                  <a className="button button--secondary" download={downloadName} href={downloadUrl}>
-                    הורדה כקובץ
-                  </a>
-                )}
-              </div>
-
-              <div className="result__section">
-                <h3>תמלול מלא</h3>
-                <textarea readOnly value={response.text ?? ""} />
-              </div>
-
-              <div className="result__section result__section--segments">
-                <h3>מקטעים</h3>
-                {response.segments?.length ? (
-                  <ul className="segments">
-                    {response.segments.map((segment) => (
-                      <li key={segment.id}>
-                        <span className="segments__time">
-                          {formatTime(segment.start)} → {formatTime(segment.end)}
-                        </span>
-                        <span className="segments__text">{segment.text}</span>
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p>לא נמצאו מקטעים להצגה.</p>
-                )}
-              </div>
-            </div>
-          </section>
-        )}
-      </main>
-    </div>
+            )}</Stack>
+          </Fade>
+        </Stack>
+      </Container>
+    </ThemeProvider>
   );
 }
 
-function formatTime(seconds: number) {
-  if (typeof seconds !== "number" || Number.isNaN(seconds)) {
-    return "00:00";
-  }
-  const totalSeconds = Math.max(0, Math.floor(seconds));
-  const minutes = Math.floor(totalSeconds / 60);
-  const secs = totalSeconds % 60;
-  return `${String(minutes).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
-}
-
 export default App;
-
-
-
-
-
-
-
-
-
-
-
