@@ -11,6 +11,9 @@ import {
   Divider,
   Fade,
   Stack,
+  Step,
+  StepLabel,
+  Stepper,
   ThemeProvider,
   Typography,
   createTheme,
@@ -41,6 +44,7 @@ const API_BASE_URL = RAW_API_BASE.replace(/\/?$/, "");
 const TRANSCRIBE_ENDPOINT = `${API_BASE_URL || ""}/api/transcribe`;
 
 const theme = createTheme({
+  direction: "rtl",
   typography: {
     fontFamily: '"Rubik", "Assistant", "Segoe UI", sans-serif',
   },
@@ -48,6 +52,8 @@ const theme = createTheme({
     borderRadius: 16,
   },
 });
+
+const STEPS = ["העלאת קובץ", "תצוגה מקדימה"];
 
 function mapStageStatus(status: StageStatus | "start" | "done" | "skipped" | "error"): StageStatus {
   switch (status) {
@@ -82,9 +88,24 @@ function App() {
   const [stages, setStages] = useState<StageState[]>(() =>
     STAGE_DEFINITIONS.map((stage) => ({ ...stage }))
   );
+  const [activePage, setActivePage] = useState<"upload" | "preview">("upload");
+  const [mediaPreviewUrl, setMediaPreviewUrl] = useState<string | null>(null);
 
   const requestRef = useRef<XMLHttpRequest | null>(null);
   const socketRef = useRef<Socket | null>(null);
+
+  useEffect(() => {
+    if (!file) {
+      setMediaPreviewUrl(null);
+      return;
+    }
+
+    const url = URL.createObjectURL(file);
+    setMediaPreviewUrl(url);
+    return () => {
+      URL.revokeObjectURL(url);
+    };
+  }, [file]);
 
   useEffect(() => {
     const socket = API_BASE_URL
@@ -184,6 +205,7 @@ function App() {
     setIsSubmitting(true);
     setResponse(null);
     setUploadProgress(0);
+    setActivePage("upload");
     setStages(
       STAGE_DEFINITIONS.map((stage) => ({
         ...stage,
@@ -241,6 +263,7 @@ function App() {
       if (xhr.status >= 200 && xhr.status < 300) {
         setResponse(payload);
         setError(null);
+        setActivePage("preview");
       } else {
         setError(payload?.error ?? `אירעה שגיאה (${xhr.status})`);
         setStages((prev) =>
@@ -258,56 +281,74 @@ function App() {
     xhr.send(formData);
   };
 
+  const handleBackToUpload = () => {
+    setActivePage("upload");
+  };
+
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
-      <Container maxWidth="lg" sx={{ py: { xs: 4, md: 6 }, direction: "rtl" }}>
+      <Container maxWidth="lg" sx={{ py: { xs: 4, md: 6 } }}>
         <Stack spacing={4}>
           <Stack spacing={1} textAlign="center">
             <Typography variant="h3" component="h1">
               מערכת כתוביות חכמה
             </Typography>
             <Typography variant="subtitle1" color="text.secondary">
-              העלו קבצי מדיה, עקבו אחר ההתקדמות וקבלו כתוביות מתוזמנות ותמלול מלא.
+              העלו קובצי וידאו או אודיו, עקבו אחר ההתקדמות וקבלו כתוביות מתוזמנות מוכנות לשימוש.
             </Typography>
           </Stack>
 
-          <Card elevation={3}>
-            <CardContent>
-              <Stack spacing={3}>
-                <Stack direction="row" alignItems="center" spacing={1}>
-                  <CloudUploadRounded color="primary" />
-                  <Typography variant="h5">שלב 1 – העלאת מקור</Typography>
+          <Stepper activeStep={activePage === "upload" ? 0 : 1} alternativeLabel>
+            {STEPS.map((label) => (
+              <Step key={label}>
+                <StepLabel>{label}</StepLabel>
+              </Step>
+            ))}
+          </Stepper>
+
+          <Fade in={activePage === "upload"} mountOnEnter unmountOnExit>
+            <Card elevation={3}>
+              <CardContent>
+                <Stack spacing={3}>
+                  <Stack direction="row" alignItems="center" spacing={1}>
+                    <CloudUploadRounded color="primary" />
+                    <Typography variant="h5">שלב 1 – העלאת מקור</Typography>
+                  </Stack>
+
+                  <Divider />
+
+                  <UploadForm
+                    file={file}
+                    format={format}
+                    isSubmitting={isSubmitting}
+                    uploadProgress={uploadProgress}
+                    stages={stages}
+                    formatOptions={SUPPORTED_FORMATS}
+                    onFileChange={setFile}
+                    onFormatChange={setFormat}
+                    onSubmit={handleSubmit}
+                  />
+
+                  {error && <Alert severity="error">{error}</Alert>}
                 </Stack>
+              </CardContent>
+            </Card>
+          </Fade>
 
-                <Divider />
-
-                <UploadForm
-                  file={file}
-                  format={format}
-                  isSubmitting={isSubmitting}
-                  uploadProgress={uploadProgress}
-                  stages={stages}
-                  formatOptions={SUPPORTED_FORMATS}
-                  onFileChange={setFile}
-                  onFormatChange={setFormat}
-                  onSubmit={handleSubmit}
+          <Fade in={activePage === "preview"} mountOnEnter unmountOnExit>
+            <Stack>
+              {response && (
+                <TranscriptionResult
+                  response={response}
+                  subtitleFormatLabel={subtitleFormatLabel}
+                  downloadUrl={downloadUrl}
+                  downloadName={downloadName}
+                  mediaUrl={mediaPreviewUrl}
+                  onBack={handleBackToUpload}
                 />
-
-                {error && <Alert severity="error">{error}</Alert>}
-              </Stack>
-            </CardContent>
-          </Card>
-
-          <Fade in={Boolean(response)}>
-            <Stack>{response && (
-              <TranscriptionResult
-                response={response}
-                subtitleFormatLabel={subtitleFormatLabel}
-                downloadUrl={downloadUrl}
-                downloadName={downloadName}
-              />
-            )}</Stack>
+              )}
+            </Stack>
           </Fade>
         </Stack>
       </Container>
