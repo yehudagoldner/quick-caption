@@ -1,4 +1,6 @@
-﻿import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { io, Socket } from "socket.io-client";
+import type { ManagerOptions, SocketOptions } from "socket.io-client";
 import "./App.css";
 
 type Segment = {
@@ -18,6 +20,23 @@ type ApiResponse = {
   segments: Segment[];
   subtitle: SubtitlePayload;
   warnings?: string[];
+  error?: string;
+};
+
+type StageId = "upload" | "timed-transcription" | "high-accuracy" | "correction" | "complete";
+type StageStatus = "idle" | "active" | "done" | "skipped" | "error";
+
+type StageState = {
+  id: StageId;
+  label: string;
+  status: StageStatus;
+  message: string | null;
+};
+
+type StageEvent = {
+  stage: StageId;
+  status: "start" | "done" | "skipped" | "error";
+  message?: string;
 };
 
 const DEFAULT_FORMAT = ".srt";
@@ -27,10 +46,37 @@ const SUPPORTED_FORMATS = [
   { value: ".txt", label: "Text" },
 ];
 
+const STAGE_DEFINITIONS: StageState[] = [
+  { id: "upload", label: "העלאה", status: "idle", message: null },
+  { id: "timed-transcription", label: "תמלול ראשוני", status: "idle", message: null },
+  { id: "high-accuracy", label: "שיפור תמלול", status: "idle", message: null },
+  { id: "correction", label: "תיקון טקסט", status: "idle", message: null },
+  { id: "complete", label: "סיום", status: "idle", message: null },
+];
+
 const RAW_API_BASE = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.trim() ?? "";
 const API_BASE_URL = RAW_API_BASE.replace(/\/?$/, "");
-const API_DISPLAY = API_BASE_URL || window.location.origin;
 const TRANSCRIBE_ENDPOINT = `${API_BASE_URL || ""}/api/transcribe`;
+
+function mapStageStatus(status: StageStatus | "start" | "done" | "skipped" | "error"): StageStatus {
+  switch (status) {
+    case "start":
+      return "active";
+    case "done":
+      return "done";
+    case "skipped":
+      return "skipped";
+    case "error":
+      return "error";
+    default:
+      return status as StageStatus;
+  }
+}
+
+const SOCKET_OPTIONS: Partial<ManagerOptions & SocketOptions> = {
+  transports: ["websocket"],
+  autoConnect: true,
+};
 
 function App() {
   const [file, setFile] = useState<File | null>(null);
@@ -40,6 +86,65 @@ function App() {
   const [response, setResponse] = useState<ApiResponse | null>(null);
   const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
   const [downloadName, setDownloadName] = useState<string>("subtitle.srt");
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
+  const [socketId, setSocketId] = useState<string | null>(null);
+  const [stages, setStages] = useState<StageState[]>(() =>
+    STAGE_DEFINITIONS.map((stage) => ({ ...stage }))
+  );
+
+  const requestRef = useRef<XMLHttpRequest | null>(null);
+  const socketRef = useRef<Socket | null>(null);
+
+  useEffect(() => {
+    const socket = API_BASE_URL
+      ? io(API_BASE_URL, SOCKET_OPTIONS)
+      : io(undefined, SOCKET_OPTIONS);
+    socketRef.current = socket;
+
+    const handleStageEvent = (event: StageEvent) => {
+      setStages((prev) => {
+        const stageOrder = STAGE_DEFINITIONS.map((stage) => stage.id);
+        const targetIndex = stageOrder.indexOf(event.stage);
+        return prev.map((stage, index) => {
+          if (stage.id === event.stage) {
+            return {
+              ...stage,
+              status: mapStageStatus(event.status),
+              message: event.message ?? stage.message,
+            };
+          }
+          if (event.status === "start" && index < targetIndex && stage.status === "active") {
+            return { ...stage, status: "done" };
+          }
+          return stage;
+        });
+      });
+    };
+
+    socket.on("connect", () => {
+      setSocketId(socket.id ?? null);
+    });
+
+    socket.on("disconnect", () => {
+      setSocketId(null);
+    });
+
+    socket.on("transcribe-status", handleStageEvent);
+
+    return () => {
+      socket.off("transcribe-status", handleStageEvent);
+      socket.disconnect();
+    };
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      requestRef.current?.abort();
+      if (downloadUrl) {
+        URL.revokeObjectURL(downloadUrl);
+      }
+    };
+  }, [downloadUrl]);
 
   useEffect(() => {
     if (!response?.subtitle?.content) {
@@ -62,7 +167,7 @@ function App() {
     return () => {
       URL.revokeObjectURL(url);
     };
-  }, [response, file, downloadUrl]);
+  }, [response, file]);
 
   const subtitleFormatLabel = useMemo(() => {
     const activeFormat = response?.subtitle?.format ?? format;
@@ -81,28 +186,85 @@ function App() {
     const formData = new FormData();
     formData.append("media", file);
     formData.append("format", format);
+    if (socketId) {
+      formData.append("socketId", socketId);
+    }
 
     setIsSubmitting(true);
     setResponse(null);
+    setUploadProgress(0);
+    setStages(
+      STAGE_DEFINITIONS.map((stage) => ({
+        ...stage,
+        status: stage.id === "upload" ? "active" : "idle",
+        message: null,
+      })),
+    );
 
-    try {
-      const res = await fetch(TRANSCRIBE_ENDPOINT, {
-        method: "POST",
-        body: formData,
-      });
+    requestRef.current?.abort();
 
-      const payload = (await res.json()) as ApiResponse & { error?: string };
+    const xhr = new XMLHttpRequest();
+    requestRef.current = xhr;
 
-      if (!res.ok) {
-        throw new Error(payload.error ?? "שגיאה לא צפויה מהשרת");
+    xhr.open("POST", TRANSCRIBE_ENDPOINT);
+    xhr.responseType = "json";
+    xhr.setRequestHeader("Accept", "application/json");
+
+    xhr.upload.onprogress = (ev) => {
+      if (ev.lengthComputable) {
+        const percent = Math.round((ev.loaded / ev.total) * 100);
+        setUploadProgress(percent);
+      }
+    };
+
+    const finalize = () => {
+      requestRef.current = null;
+      setIsSubmitting(false);
+      setUploadProgress(null);
+    };
+
+    xhr.onerror = () => {
+      setError("שגיאת רשת. נסה/י שוב.");
+      setStages((prev) =>
+        prev.map((stage) =>
+          stage.id === "complete" ? { ...stage, status: "error", message: "שגיאת רשת" } : stage,
+        ),
+      );
+      finalize();
+    };
+
+    xhr.onabort = () => {
+      setError("הבקשה בוטלה.");
+      setStages((prev) =>
+        prev.map((stage) =>
+          stage.id === "complete" ? { ...stage, status: "error", message: "הבקשה בוטלה" } : stage,
+        ),
+      );
+      finalize();
+    };
+
+    xhr.onload = () => {
+      const payload: ApiResponse = xhr.response ??
+        (xhr.responseText ? JSON.parse(xhr.responseText) : {});
+
+      if (xhr.status >= 200 && xhr.status < 300) {
+        setResponse(payload);
+        setError(null);
+      } else {
+        setError(payload?.error ?? `שגיאת שרת (${xhr.status})`);
+        setStages((prev) =>
+          prev.map((stage) =>
+            stage.id === "complete"
+              ? { ...stage, status: "error", message: payload?.error ?? "שגיאת שרת" }
+              : stage,
+          ),
+        );
       }
 
-      setResponse(payload);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "קרתה שגיאה לא ידועה");
-    } finally {
-      setIsSubmitting(false);
-    }
+      finalize();
+    };
+
+    xhr.send(formData);
   };
 
   return (
@@ -135,6 +297,27 @@ function App() {
                 ))}
               </select>
             </label>
+
+            {uploadProgress !== null && (
+              <div className="progress" role="status" aria-live="polite">
+                <div className="progress__track">
+                  <div className="progress__bar" style={{ width: `${uploadProgress}%` }} />
+                </div>
+                <span className="progress__label">העלאה: {uploadProgress}%</span>
+              </div>
+            )}
+
+            <ul className="steps">
+              {stages.map((stage) => (
+                <li key={stage.id} className={`steps__item steps__item--${stage.status}`}>
+                  <span className="steps__indicator" />
+                  <div className="steps__content">
+                    <span className="steps__label">{stage.label}</span>
+                    {stage.message && <small className="steps__message">{stage.message}</small>}
+                  </div>
+                </li>
+              ))}
+            </ul>
 
             <button className="button" type="submit" disabled={isSubmitting}>
               {isSubmitting ? "מעבד…" : "הפק כתוביות"}
@@ -196,13 +379,6 @@ function App() {
           </section>
         )}
       </main>
-
-      <footer className="app__footer">
-        <p>
-          ה־API מאזין כעת בכתובת <code>{API_DISPLAY}</code>. ניתן לשנות באמצעות
-          <code> VITE_API_BASE_URL</code> בקובץ הסביבה של Vite.
-        </p>
-      </footer>
     </div>
   );
 }
@@ -218,3 +394,10 @@ function formatTime(seconds: number) {
 }
 
 export default App;
+
+
+
+
+
+
+

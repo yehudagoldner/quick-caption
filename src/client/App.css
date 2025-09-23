@@ -66,6 +66,105 @@ body {
   font: inherit;
 }
 
+.progress {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.progress__track {
+  flex: 1;
+  height: 10px;
+  border-radius: 999px;
+  background: #e2e8f0;
+  overflow: hidden;
+}
+
+.progress__bar {
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #2563eb, #38bdf8);
+  transition: width 0.2s ease;
+}
+
+.progress__label {
+  min-width: 90px;
+  text-align: left;
+  font-weight: 600;
+}
+
+.steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.steps__item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.steps__indicator {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #cbd5e0;
+  transition: background 0.2s ease, transform 0.2s ease;
+  flex-shrink: 0;
+}
+
+.steps__content {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.steps__label {
+  font-weight: 600;
+}
+
+.steps__message {
+  font-size: 0.85rem;
+  color: #475569;
+}
+
+.steps__item--active .steps__indicator {
+  background: #2563eb;
+  transform: scale(1.1);
+}
+
+.steps__item--active .steps__label {
+  color: #2563eb;
+}
+
+.steps__item--done .steps__indicator {
+  background: #10b981;
+}
+
+.steps__item--done .steps__label {
+  color: #15803d;
+}
+
+.steps__item--skipped .steps__indicator {
+  background: #94a3b8;
+}
+
+.steps__item--skipped .steps__label {
+  color: #64748b;
+}
+
+.steps__item--error .steps__indicator {
+  background: #ef4444;
+}
+
+.steps__item--error .steps__label {
+  color: #b91c1c;
+}
+
 .button {
   background: #2563eb;
   color: #fff;
