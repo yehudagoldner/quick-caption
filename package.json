@@ -4,7 +4,8 @@
     "description":  "",
     "main":  "index.js",
     "scripts":  {
-                    "test":  "echo \"Error: no test specified\" \u0026\u0026 exit 1"
+                    "server":  "node server.mjs",
+                    "transcribe":  "node transcribe.mjs"
                 },
     "keywords":  [
 
@@ -13,7 +14,10 @@
     "license":  "ISC",
     "type":  "commonjs",
     "dependencies":  {
+                         "cors":  "^2.8.5",
                          "dotenv":  "^17.2.2",
+                         "express":  "^5.1.0",
+                         "multer":  "^2.0.2",
                          "openai":  "^5.22.1"
                      }
 }
