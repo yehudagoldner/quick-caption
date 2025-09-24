@@ -1,0 +1,11 @@
+﻿<svg width="96" height="96" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="qc-fav-gradient" x1="4" y1="4" x2="44" y2="44" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#2563EB" />
+      <stop offset="100%" stop-color="#9333EA" />
+    </linearGradient>
+  </defs>
+  <path d="M11 6h22c4.418 0 8 3.582 8 8v12c0 4.418-3.582 8-8 8h-6l-7 6.5c-1.6 1.486-4-.34-4-2.37V34h-5c-4.418 0-8-3.582-8-8V14c0-4.418 3.582-8 8-8Z" fill="url(#qc-fav-gradient)" />
+  <polygon points="20,25 20,17 29,21" fill="#ffffff" opacity="0.95" />
+  <circle cx="32" cy="18" r="4.5" fill="#ffffff" opacity="0.2" />
+</svg>

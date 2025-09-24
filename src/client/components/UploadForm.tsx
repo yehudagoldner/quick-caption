@@ -77,7 +77,7 @@ export function UploadForm({
         <Stack spacing={1} alignItems="center">
           <Typography variant="h6">בחרו קובץ וידאו או אודיו</Typography>
           <Typography variant="body2" color="text.secondary">
-            ניתן לגרור קובץ לחלון או לבחור מהמחשב שלכם
+            ניתן לגרור קובץ לחלון או לבחור אותו מהמחשב שלכם
           </Typography>
         </Stack>
         <Button

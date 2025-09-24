@@ -16,6 +16,7 @@ export type ApiResponse = {
   subtitle: SubtitlePayload;
   warnings?: string[];
   error?: string;
+  videoId?: number | null;
 };
 
 export type StageId =

@@ -1,4 +1,4 @@
-import express from "express";
+﻿import express from "express";
 import cors from "cors";
 import multer from "multer";
 import path from "path";
@@ -9,6 +9,9 @@ import { Server as SocketIOServer } from "socket.io";
 import dotenv from "dotenv";
 
 import { transcribeMedia, normalizeSubtitleFormat } from "./src/transcription.js";
+import { createBurnSubtitlesRouter } from "./routes/burnSubtitles.js";
+import { ensureSchema, upsertUser, saveVideo, updateVideoSubtitles } from "./db.js";
+
 
 dotenv.config();
 
@@ -24,8 +27,10 @@ app.use(express.json());
 
 const uploadDir = path.join(os.tmpdir(), "subtitles-api-uploads");
 await fsp.mkdir(uploadDir, { recursive: true });
+await ensureSchema();
 
 const upload = multer({ dest: uploadDir });
+app.use("/api/burn-subtitles", createBurnSubtitlesRouter(upload));
 
 const httpServer = createServer(app);
 const io = new SocketIOServer(httpServer, {
@@ -42,12 +47,71 @@ app.get("/health", (req, res) => {
   res.json({ status: "ok" });
 });
 
+app.post("/api/users/sync", async (req, res) => {
+  const {
+    uid,
+    email,
+    displayName,
+    photoURL,
+    phoneNumber,
+    emailVerified,
+    providerId,
+    lastLoginAt,
+  } = req.body ?? {};
+  if (!uid || !email) {
+    return res.status(400).json({ error: "uid and email are required" });
+  }
+
+  try {
+    const parsedLastLogin = lastLoginAt ? new Date(lastLoginAt) : null;
+    await upsertUser({
+      uid,
+      email,
+      displayName,
+      photoURL,
+      phoneNumber,
+      emailVerified: Boolean(emailVerified),
+      providerId,
+      lastLoginAt:
+        parsedLastLogin && !Number.isNaN(parsedLastLogin.getTime())
+          ? parsedLastLogin.toISOString().slice(0, 19).replace("T", " ")
+          : null,
+    });
+    res.json({ status: "ok" });
+  } catch (error) {
+    console.error("Failed to sync user:", error);
+    res.status(500).json({ error: "Failed to sync user" });
+  }
+});
+
+
+app.put("/api/videos/:id/subtitles", async (req, res) => {
+  const videoId = Number.parseInt(req.params.id, 10);
+  const { userUid, subtitleJson } = req.body ?? {};
+
+  if (!Number.isFinite(videoId) || !userUid || typeof subtitleJson !== 'string') {
+    return res.status(400).json({ error: 'videoId, userUid and subtitleJson are required' });
+  }
+
+  try {
+    const result = await updateVideoSubtitles({ videoId, userUid, subtitleJson });
+    if (!result || result.affectedRows === 0) {
+      return res.status(404).json({ error: 'Video not found' });
+    }
+    res.json({ status: 'ok' });
+  } catch (error) {
+    console.error('Failed to update subtitles:', error);
+    res.status(500).json({ error: 'Failed to update subtitles' });
+  }
+});
+
 app.post("/api/transcribe", upload.single("media"), async (req, res) => {
   const socketId = req.body?.socketId;
+  const userUid = req.body?.userUid;
   const emitStage = createStageEmitter(socketId);
 
   if (!req.file) {
-    emitStage("complete", "error", "?? ????? ???? ??????");
+    emitStage("complete", "error", "נדרש קובץ מדיה");
     return res.status(400).json({ error: 'Media file is required under field name "media".' });
   }
 
@@ -72,6 +136,26 @@ app.post("/api/transcribe", upload.single("media"), async (req, res) => {
       onStage: emitStage,
     });
 
+    let savedVideoId = null;
+    if (userUid) {
+      try {
+        savedVideoId = await saveVideo({
+          userUid,
+          originalFilename: req.file?.originalname ?? req.file?.filename ?? 'upload',
+          storedPath: null,
+          status: 'completed',
+          mediaType: req.file?.mimetype?.startsWith('audio/') ? 'audio' : 'video',
+          format,
+          durationSeconds: null,
+          sizeBytes: req.file?.size ?? null,
+          transcriptionId: null,
+          subtitleJson: result.segments ? JSON.stringify(result.segments) : null,
+        });
+      } catch (videoError) {
+        console.error('Failed to store video metadata:', videoError);
+      }
+    }
+
     emitStage("complete", "done");
     res.json({
       text: result.text,
@@ -79,8 +163,27 @@ app.post("/api/transcribe", upload.single("media"), async (req, res) => {
       subtitle: result.subtitle,
       warnings: result.warnings,
       models: result.models,
+      videoId: savedVideoId,
     });
   } catch (error) {
+    if (userUid) {
+      try {
+        await saveVideo({
+          userUid,
+          originalFilename: req.file?.originalname ?? req.file?.filename ?? 'upload',
+          storedPath: null,
+          status: 'failed',
+          mediaType: req.file?.mimetype?.startsWith('audio/') ? 'audio' : 'video',
+          format,
+          durationSeconds: null,
+          sizeBytes: req.file?.size ?? null,
+          transcriptionId: null,
+          subtitleJson: null,
+        });
+      } catch (videoError) {
+        console.error('Failed to store failed video metadata:', videoError);
+      }
+    }
     console.error("Unhandled error:", error);
     emitStage("complete", "error", error.message ?? "Internal Server Error");
     res.status(500).json({ error: error.message ?? "Internal Server Error" });
@@ -121,3 +224,13 @@ async function safeUnlink(filePath) {
     }
   }
 }
+
+
+
+
+
+
+
+
+
+
