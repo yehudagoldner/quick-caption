@@ -1,5 +1,5 @@
 import type { ChangeEvent } from "react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
   Box,
@@ -29,6 +29,7 @@ import {
 } from "@mui/icons-material";
 import type { ApiResponse, Segment } from "../types";
 import { formatTime } from "../utils/formatTime";
+import { SubtitleTimeline } from "./SubtitleTimeline";
 
 export type BurnOptions = {
   fontSize: number;
@@ -88,6 +89,8 @@ export function TranscriptionResult({
   const [marginPercent, setMarginPercent] = useState(5);
   const [videoDimensions, setVideoDimensions] = useState<{ width: number; height: number } | null>(null);
   const [renderDimensions, setRenderDimensions] = useState<{ width: number; height: number } | null>(null);
+  const [videoDuration, setVideoDuration] = useState<number | null>(null);
+  const [currentTime, setCurrentTime] = useState(0);
   const [burnError, setBurnError] = useState<string | null>(null);
   const [isBurning, setIsBurning] = useState(false);
   const [burnedVideo, setBurnedVideo] = useState<BurnedVideo | null>(null);
@@ -104,9 +107,10 @@ export function TranscriptionResult({
     }
 
     const handleTimeUpdate = () => {
-      const currentTime = video.currentTime;
-      const segment = findSegment(editableSegments, currentTime);
+      const nextTime = video.currentTime;
+      const segment = findSegment(editableSegments, nextTime);
       setActiveSegmentId(segment?.id ?? null);
+      setCurrentTime((prev) => (Math.abs(prev - nextTime) > 0.02 ? nextTime : prev));
     };
 
     video.addEventListener("timeupdate", handleTimeUpdate);
@@ -117,6 +121,7 @@ export function TranscriptionResult({
 
   useEffect(() => {
     setActiveSegmentId(null);
+    setCurrentTime(0);
   }, [mediaUrl]);
 
   useEffect(() => {
@@ -124,12 +129,16 @@ export function TranscriptionResult({
     if (!video) {
       setVideoDimensions(null);
       setRenderDimensions(null);
+      setVideoDuration(null);
       return;
     }
 
     const updateIntrinsic = () => {
       if (video.videoWidth && video.videoHeight) {
         setVideoDimensions({ width: video.videoWidth, height: video.videoHeight });
+      }
+      if (!Number.isNaN(video.duration) && video.duration > 0) {
+        setVideoDuration(video.duration);
       }
     };
 
@@ -232,7 +241,7 @@ export function TranscriptionResult({
   }, [fontColor, fontSize, offsetYPercent, outlineColor, marginPercent, videoDimensions, renderDimensions]);
 
   useEffect(() => {
-    if (process.env.NODE_ENV !== "production" && videoDimensions && renderDimensions) {
+    if (import.meta.env.DEV && videoDimensions && renderDimensions) {
       const scaleX = renderDimensions.width / videoDimensions.width;
       const scaleY = renderDimensions.height / videoDimensions.height;
       console.debug("Subtitle preview metrics", {
@@ -248,6 +257,29 @@ export function TranscriptionResult({
     }
   }, [videoDimensions, renderDimensions, fontSize, offsetYPercent, marginPercent]);
 
+  const persistSegments = useCallback(
+    async (nextSegments: Segment[]) => {
+      setEditableSegments(nextSegments);
+
+      if (!isEditable || !videoId) {
+        return;
+      }
+
+      setSaveState("saving");
+      setSaveError(null);
+      try {
+        const subtitleContent = segmentsToSrt(nextSegments);
+        await onSaveSegments(nextSegments, subtitleContent);
+        setSaveState("success");
+        setTimeout(() => setSaveState("idle"), 2000);
+      } catch (error) {
+        console.error(error);
+        setSaveState("error");
+        setSaveError("שמירת השינויים נכשלה. נסו שוב.");
+      }
+    },
+    [isEditable, videoId, onSaveSegments],
+  );
   const handleSegmentTextChange = (segmentId: Segment["id"], value: string) => {
     setEditableSegments((prev) =>
       prev.map((segment) => (segment.id === segmentId ? { ...segment, text: value } : segment)),
@@ -266,18 +298,7 @@ export function TranscriptionResult({
       return;
     }
 
-    setSaveState("saving");
-    setSaveError(null);
-    try {
-      const subtitleContent = segmentsToSrt(editableSegments);
-      await onSaveSegments(editableSegments, subtitleContent);
-      setSaveState("success");
-      setTimeout(() => setSaveState("idle"), 2000);
-    } catch (error) {
-      console.error(error);
-      setSaveState("error");
-      setSaveError("שמירת השינויים נכשלה. נסו שוב.");
-    }
+    await persistSegments(editableSegments.map((segment) => ({ ...segment })));
   };
 
   const handleFontSizeChange = (event: ChangeEvent<HTMLInputElement>) => {
@@ -303,6 +324,27 @@ export function TranscriptionResult({
   const handleMarginChange = (_event: Event, value: number | number[]) => {
     setMarginPercent(Array.isArray(value) ? value[0] : value);
   };
+
+  const handleTimelineSegmentsChange = useCallback(
+    (nextSegments: Segment[]) => {
+      void persistSegments(nextSegments);
+    },
+    [persistSegments],
+  );
+
+  const handleTimelineTimeChange = useCallback((time: number) => {
+    const video = videoRef.current;
+    if (!video) {
+      setCurrentTime(time);
+      return;
+    }
+    const duration = Number.isFinite(video.duration) && video.duration > 0 ? video.duration : undefined;
+    const clamped = Math.max(0, duration ? Math.min(time, duration) : time);
+    if (Math.abs(video.currentTime - clamped) > 0.01) {
+      video.currentTime = clamped;
+    }
+    setCurrentTime(clamped);
+  }, []);
 
   const handleBurnVideo = async () => {
     if (!response.subtitle?.content) {
@@ -420,6 +462,17 @@ export function TranscriptionResult({
                   </Stack>
                 )}
               </Box>
+              {editableSegments.length > 0 && (
+                <SubtitleTimeline
+                  segments={editableSegments}
+                  disabled={!isEditable}
+                  duration={videoDuration}
+                  viewportWidth={renderDimensions?.width ?? null}
+                  currentTime={currentTime}
+                  onRequestTimeChange={handleTimelineTimeChange}
+                  onSegmentsChange={handleTimelineSegmentsChange}
+                />
+              )}
               <Stack
                 spacing={1.5}
                 sx={{
@@ -598,6 +651,20 @@ function formatSrtTimestamp(seconds: number) {
   const millis = totalMillis % 1000;
   return `${String(hrs).padStart(2, "0")}:${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")},${String(millis).padStart(3, "0")}`;
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

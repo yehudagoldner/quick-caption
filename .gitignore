@@ -4,6 +4,7 @@ node_modules/
 *.mp4
 *.srt
 *.txt
-
+package-lock.json
 *.vtt
 dist/
+package-lock.json

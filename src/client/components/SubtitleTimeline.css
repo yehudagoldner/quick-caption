@@ -1,0 +1,29 @@
+﻿.subtitle-timeline .action,
+.subtitle-timeline [class*="action"] {
+  cursor: grab;
+}
+
+.subtitle-timeline .action:active,
+.subtitle-timeline [class*="action"].dragging {
+  cursor: grabbing;
+}
+
+.subtitle-timeline [class*="action-left-stretch"],
+.subtitle-timeline [class*="action-right-stretch"] {
+  cursor: ew-resize;
+}
+
+.subtitle-timeline .action {
+  background: transparent !important;
+  box-shadow: none !important;
+  border: none !important;
+}
+
+.subtitle-timeline-action .MuiSvgIcon-root {
+  font-size: 1.1rem;
+}
+
+.subtitle-timeline-action .MuiTypography-root {
+  letter-spacing: 0.2px;
+  font-weight: 600;
+}
