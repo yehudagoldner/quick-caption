@@ -28,8 +28,10 @@ export function createBurnSubtitlesRouter(upload) {
     const fontSize = sanitizeFontSize(req.body?.fontSize);
     const fontColor = sanitizeColor(req.body?.fontColor);
     const outlineColor = sanitizeColor(req.body?.outlineColor);
-    const offsetYPercent = sanitizePercent(req.body?.offsetYPercent, 88);
+    const offsetYPercent = sanitizePercent(req.body?.offsetYPercent, 12);
     const marginPercent = sanitizePercent(req.body?.marginPercent, 5);
+    const videoWidth = sanitizeDimension(req.body?.videoWidth);
+    const videoHeight = sanitizeDimension(req.body?.videoHeight);
 
     const subtitlePath = path.join(TEMP_SUBTITLE_DIR, `${randomUUID()}.srt`);
     const outputPath = path.join(TEMP_OUTPUT_DIR, `${randomUUID()}.mp4`);
@@ -42,6 +44,8 @@ export function createBurnSubtitlesRouter(upload) {
         outlineColor,
         offsetYPercent,
         marginPercent,
+        videoWidth,
+        videoHeight,
       });
 
       await runFfmpeg([
@@ -76,7 +80,7 @@ export function createBurnSubtitlesRouter(upload) {
   return router;
 }
 
-function buildSubtitlesFilter(subtitlePath, { fontSize, fontColor, outlineColor, offsetYPercent, marginPercent }) {
+function buildSubtitlesFilter(subtitlePath, { fontSize, fontColor, outlineColor, offsetYPercent, marginPercent, videoWidth, videoHeight }) {
   const normalizedPath = subtitlePath.replace(/\\/g, "/");
   const styleParts = [
     `Fontsize=${fontSize}`,
@@ -84,20 +88,23 @@ function buildSubtitlesFilter(subtitlePath, { fontSize, fontColor, outlineColor,
     `OutlineColour=${outlineColor}`,
   ];
 
-  const playRes = 1000;
-  const marginV = Math.round(Math.min(Math.max(offsetYPercent, 0), 100) * (playRes / 100));
-  const marginValue = Math.round(Math.min(Math.max(marginPercent, 0), 45) * (playRes / 100));
+  const playResX = typeof videoWidth === "number" ? videoWidth : 1000;
+  const playResY = typeof videoHeight === "number" ? videoHeight : 1000;
+  const clampedOffset = Math.min(Math.max(offsetYPercent, 0), 100);
+  const marginV = Math.round(clampedOffset * (playResY / 100));
+  const marginValue = Math.round(Math.min(Math.max(marginPercent, 0), 45) * (playResX / 100));
 
   styleParts.push(
-    `PlayResX=${playRes}`,
-    `PlayResY=${playRes}`,
-    `Alignment=8`,
+    `PlayResX=${playResX}`,
+    `PlayResY=${playResY}`,
+    `Alignment=2`,
     `BorderStyle=1`,
     `Outline=3`,
     `Shadow=0`,
     `MarginV=${marginV}`,
     `MarginL=${marginValue}`,
-    `MarginR=${marginValue}`
+    `MarginR=${marginValue}`,
+    `WrapStyle=2`
   );
 
   const style = styleParts.join(",");
@@ -115,6 +122,15 @@ function sanitizeFontSize(raw) {
     return 36;
   }
   return Math.min(96, Math.max(12, Math.round(numeric)));
+}
+
+function sanitizeDimension(raw) {
+  const numeric = Number(raw);
+  if (!Number.isFinite(numeric)) {
+    return null;
+  }
+  const rounded = Math.max(1, Math.round(numeric));
+  return Number.isFinite(rounded) ? rounded : null;
 }
 
 function sanitizeColor(raw) {
@@ -183,3 +199,10 @@ function truncate(value, maxLength) {
   }
   return `${value.slice(0, maxLength)}...`;
 }
+
+
+
+
+
+
+

@@ -1,4 +1,4 @@
-﻿import type { ChangeEvent } from "react";
+import type { ChangeEvent } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
@@ -36,6 +36,8 @@ export type BurnOptions = {
   outlineColor: string;
   offsetYPercent: number;
   marginPercent: number;
+  videoWidth?: number | null;
+  videoHeight?: number | null;
 };
 
 type BurnResult = {
@@ -82,14 +84,15 @@ export function TranscriptionResult({
   const [fontSize, setFontSize] = useState(36);
   const [fontColor, setFontColor] = useState("#ffffff");
   const [outlineColor, setOutlineColor] = useState("#000000");
-  const [offsetYPercent, setOffsetYPercent] = useState(88);
+  const [offsetYPercent, setOffsetYPercent] = useState(12);
   const [marginPercent, setMarginPercent] = useState(5);
+  const [videoDimensions, setVideoDimensions] = useState<{ width: number; height: number } | null>(null);
+  const [renderDimensions, setRenderDimensions] = useState<{ width: number; height: number } | null>(null);
   const [burnError, setBurnError] = useState<string | null>(null);
   const [isBurning, setIsBurning] = useState(false);
   const [burnedVideo, setBurnedVideo] = useState<BurnedVideo | null>(null);
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const [saveError, setSaveError] = useState<string | null>(null);
-
   useEffect(() => {
     setEditableSegments(responseSegments.map((segment) => ({ ...segment })));
   }, [responseSegments]);
@@ -117,6 +120,50 @@ export function TranscriptionResult({
   }, [mediaUrl]);
 
   useEffect(() => {
+    const video = videoRef.current;
+    if (!video) {
+      setVideoDimensions(null);
+      setRenderDimensions(null);
+      return;
+    }
+
+    const updateIntrinsic = () => {
+      if (video.videoWidth && video.videoHeight) {
+        setVideoDimensions({ width: video.videoWidth, height: video.videoHeight });
+      }
+    };
+
+    const updateRendered = () => {
+      const rect = video.getBoundingClientRect();
+      if (rect.width && rect.height) {
+        setRenderDimensions({ width: rect.width, height: rect.height });
+      }
+    };
+
+    updateIntrinsic();
+    updateRendered();
+
+    video.addEventListener("loadedmetadata", updateIntrinsic);
+    if (typeof ResizeObserver !== "undefined") {
+      const observer = new ResizeObserver(updateRendered);
+      observer.observe(video);
+      updateRendered();
+
+      return () => {
+        video.removeEventListener("loadedmetadata", updateIntrinsic);
+        observer.disconnect();
+      };
+    }
+
+    window.addEventListener("resize", updateRendered);
+
+    return () => {
+      video.removeEventListener("loadedmetadata", updateIntrinsic);
+      window.removeEventListener("resize", updateRendered);
+    };
+  }, [mediaUrl]);
+
+  useEffect(() => {
     return () => {
       if (burnedVideo) {
         URL.revokeObjectURL(burnedVideo.url);
@@ -130,27 +177,76 @@ export function TranscriptionResult({
   );
 
   const previewStyle = useMemo(() => {
-    const clampedY = Math.min(100, Math.max(0, offsetYPercent));
-    const clampedMargin = Math.min(40, Math.max(0, marginPercent));
-    const widthPercent = Math.max(10, 100 - clampedMargin * 2);
+    const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max);
+    const clampedBottomPercent = clamp(offsetYPercent, 0, 100);
+    const clampedMarginPercent = clamp(marginPercent, 0, 40);
+
+    if (!videoDimensions || !renderDimensions) {
+      const widthPercent = Math.max(10, 100 - clampedMarginPercent * 2);
+
+      return {
+        position: "absolute" as const,
+        left: "50%",
+        bottom: `${clampedBottomPercent}%`,
+        transform: "translate(-50%, 0)",
+        color: fontColor,
+        fontSize: `${fontSize}px`,
+        fontWeight: 600,
+        lineHeight: 1.35,
+        textAlign: "center" as const,
+        whiteSpace: "pre-wrap" as const,
+        pointerEvents: "none" as const,
+        textShadow: createOutlineShadow(outlineColor),
+        width: `${widthPercent}%`,
+        maxWidth: `${widthPercent}%`,
+      };
+    }
+
+    const scaleX = renderDimensions.width / videoDimensions.width;
+    const scaleY = renderDimensions.height / videoDimensions.height;
+
+    const marginValueVideo = Math.round(clampedMarginPercent * (videoDimensions.width / 100));
+    const bottomVideo = (clampedBottomPercent / 100) * videoDimensions.height;
+    const widthVideo = Math.max(1, videoDimensions.width - marginValueVideo * 2);
+
+    const fontSizePx = fontSize * scaleY;
+    const widthPx = widthVideo * scaleX;
+    const bottomPx = bottomVideo * scaleY;
 
     return {
       position: "absolute" as const,
       left: "50%",
-      top: `${clampedY}%`,
-      transform: "translate(-50%, -50%)",
+      bottom: `${bottomPx}px`,
+      transform: "translate(-50%, 0)",
       color: fontColor,
-      fontSize: `${fontSize}px`,
+      fontSize: `${fontSizePx}px`,
       fontWeight: 600,
       lineHeight: 1.35,
       textAlign: "center" as const,
       whiteSpace: "pre-wrap" as const,
       pointerEvents: "none" as const,
       textShadow: createOutlineShadow(outlineColor),
-      width: `${widthPercent}%`,
-      maxWidth: `${widthPercent}%`,
+      width: `${widthPx}px`,
+      maxWidth: `${widthPx}px`,
     };
-  }, [fontColor, fontSize, offsetYPercent, outlineColor, marginPercent]);
+  }, [fontColor, fontSize, offsetYPercent, outlineColor, marginPercent, videoDimensions, renderDimensions]);
+
+  useEffect(() => {
+    if (process.env.NODE_ENV !== "production" && videoDimensions && renderDimensions) {
+      const scaleX = renderDimensions.width / videoDimensions.width;
+      const scaleY = renderDimensions.height / videoDimensions.height;
+      console.debug("Subtitle preview metrics", {
+        videoDimensions,
+        renderDimensions,
+        scaleX,
+        scaleY,
+        fontSize,
+        scaledFontSize: fontSize * scaleY,
+        offsetYPercent,
+        marginPercent,
+      });
+    }
+  }, [videoDimensions, renderDimensions, fontSize, offsetYPercent, marginPercent]);
 
   const handleSegmentTextChange = (segmentId: Segment["id"], value: string) => {
     setEditableSegments((prev) =>
@@ -223,6 +319,8 @@ export function TranscriptionResult({
         outlineColor,
         offsetYPercent,
         marginPercent,
+        videoWidth: videoDimensions?.width ?? null,
+        videoHeight: videoDimensions?.height ?? null,
       });
       if (burnedVideo) {
         URL.revokeObjectURL(burnedVideo.url);
@@ -287,7 +385,7 @@ export function TranscriptionResult({
           <Divider />
 
           <Stack direction={{ xs: "column", md: "row" }} spacing={3} alignItems="stretch">
-            <Stack flex={1} spacing={2}>
+            <Stack flex={{ xs: 1, md: 1.1 }} spacing={2}>
               <Stack direction="row" spacing={1} alignItems="center">
                 <VideoLibraryRounded color="primary" />
                 <Typography variant="h6">נגן תצוגה</Typography>
@@ -322,6 +420,99 @@ export function TranscriptionResult({
                   </Stack>
                 )}
               </Box>
+              <Stack
+                spacing={1.5}
+                sx={{
+                  border: 1,
+                  borderColor: "divider",
+                  borderRadius: 2,
+                  p: { xs: 2, sm: 3 },
+                  bgcolor: "background.paper",
+                }}
+              >
+                <Stack direction="row" spacing={1} alignItems="center">
+                  <MovieFilterRounded color="primary" />
+                  <Typography variant="h6">ייצוא וידאו עם כתוביות צרובות</Typography>
+                </Stack>
+                <Typography variant="body2" color="text.secondary">
+                  התאימו את הכתוביות – כל שינוי נראה מיד ויחול גם על הווידאו הסופי.
+                </Typography>
+                <Stack direction={{ xs: "column", md: "row" }} spacing={1.5}>
+                  <TextField
+                    label="גודל פונט"
+                    type="number"
+                    value={fontSize}
+                    onChange={handleFontSizeChange}
+                    inputProps={{ min: 12, max: 96 }}
+                    size="small"
+                    sx={{ width: { xs: "100%", md: 140 } }}
+                  />
+                  <TextField
+                    label="צבע טקסט"
+                    type="color"
+                    value={fontColor}
+                    onChange={handleFontColorChange}
+                    size="small"
+                    sx={{ width: { xs: "100%", md: 140 } }}
+                    InputLabelProps={{ shrink: true }}
+                  />
+                  <TextField
+                    label="צבע מסגרת"
+                    type="color"
+                    value={outlineColor}
+                    onChange={handleOutlineColorChange}
+                    size="small"
+                    sx={{ width: { xs: "100%", md: 140 } }}
+                    InputLabelProps={{ shrink: true }}
+                  />
+                </Stack>
+                <Stack spacing={1}>
+                  <Stack spacing={0.5}>
+                    <FormLabel sx={{ fontSize: 12 }}>גובה הכתוביות (% מהחלק התחתון)</FormLabel>
+                    <Slider
+                      value={offsetYPercent}
+                      onChange={handleOffsetYChange}
+                      min={0}
+                      max={100}
+                      valueLabelDisplay="auto"
+                      size="small"
+                    />
+                  </Stack>
+                  <Stack spacing={0.5}>
+                    <FormLabel sx={{ fontSize: 12 }}>שוליים אופקיים (% מכל צד)</FormLabel>
+                    <Slider
+                      value={marginPercent}
+                      onChange={handleMarginChange}
+                      min={0}
+                      max={40}
+                      valueLabelDisplay="auto"
+                      size="small"
+                    />
+                  </Stack>
+                </Stack>
+                <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5} alignItems={{ xs: "stretch", sm: "center" }}>
+                  <Button
+                    variant="contained"
+                    startIcon={isBurning ? <CircularProgress size={20} color="inherit" /> : <MovieFilterRounded />}
+                    onClick={handleBurnVideo}
+                    disabled={isBurning || !mediaUrl}
+                  >
+                    {isBurning ? "יוצר וידאו..." : "יצירת וידאו עם כתוביות"}
+                  </Button>
+                  {burnedVideo && (
+                    <Button
+                      component="a"
+                      href={burnedVideo.url}
+                      download={burnedVideo.name}
+                      variant="outlined"
+                      startIcon={<DownloadRounded />}
+                    >
+                      הורידו את הווידאו הצרוב
+                    </Button>
+                  )}
+                </Stack>
+                {burnError && <Alert severity="error">{burnError}</Alert>}
+              </Stack>
             </Stack>
 
             <Divider orientation="vertical" flexItem sx={{ display: { xs: "none", md: "block" } }} />
@@ -364,74 +555,6 @@ export function TranscriptionResult({
             </Stack>
           </Stack>
 
-          <Divider />
-
-          <Stack spacing={2}>
-            <Stack direction="row" spacing={1} alignItems="center">
-              <MovieFilterRounded color="primary" />
-              <Typography variant="h6">ייצוא וידאו עם כתוביות צרובות</Typography>
-            </Stack>
-            <Typography variant="body2" color="text.secondary">
-              התאימו את הכתוביות – כל שינוי נראה מיד ויחול גם על הווידאו הסופי.
-            </Typography>
-
-            <Stack direction={{ xs: "column", md: "row" }} spacing={2} alignItems={{ xs: "stretch", md: "center" }}>
-              <TextField
-                label="גודל פונט"
-                type="number"
-                value={fontSize}
-                onChange={handleFontSizeChange}
-                inputProps={{ min: 12, max: 96 }}
-                sx={{ width: { xs: "100%", md: 160 } }}
-              />
-              <TextField
-                label="צבע טקסט"
-                type="color"
-                value={fontColor}
-                onChange={handleFontColorChange}
-                sx={{ width: { xs: "100%", md: 160 } }}
-                InputLabelProps={{ shrink: true }}
-              />
-              <TextField
-                label="צבע מסגרת"
-                type="color"
-                value={outlineColor}
-                onChange={handleOutlineColorChange}
-                sx={{ width: { xs: "100%", md: 160 } }}
-                InputLabelProps={{ shrink: true }}
-              />
-            </Stack>
-
-            <Stack spacing={2}>
-              <FormLabel>גובה הכתוביות (% מהחלק העליון)</FormLabel>
-              <Slider value={offsetYPercent} onChange={handleOffsetYChange} min={0} max={100} valueLabelDisplay="auto" />
-              <FormLabel>שוליים אופקיים (% מכל צד)</FormLabel>
-              <Slider value={marginPercent} onChange={handleMarginChange} min={0} max={40} valueLabelDisplay="auto" />
-            </Stack>
-
-            <Stack direction={{ xs: "column", sm: "row" }} spacing={2} alignItems={{ xs: "stretch", sm: "center" }}>
-              <Button
-                variant="contained"
-                startIcon={isBurning ? <CircularProgress size={20} color="inherit" /> : <MovieFilterRounded />}
-                onClick={handleBurnVideo}
-                disabled={isBurning || !mediaUrl}
-              >
-                {isBurning ? "יוצר וידאו..." : "יצירת וידאו עם כתוביות"}
-              </Button>
-              {burnedVideo && (
-                <Button
-                  component="a"
-                  href={burnedVideo.url}
-                  download={burnedVideo.name}
-                  variant="outlined"
-                  startIcon={<DownloadRounded />}
-                >
-                  הורידו את הווידאו הצרוב
-                </Button>
-              )}
-            </Stack>
-            {burnError && <Alert severity="error">{burnError}</Alert>}
-          </Stack>
         </Stack>
       </CardContent>
     </Card>
@@ -475,4 +598,20 @@ function formatSrtTimestamp(seconds: number) {
   const millis = totalMillis % 1000;
   return `${String(hrs).padStart(2, "0")}:${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")},${String(millis).padStart(3, "0")}`;
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
