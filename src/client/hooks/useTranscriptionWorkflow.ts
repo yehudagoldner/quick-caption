@@ -73,6 +73,7 @@ export type TranscriptionWorkflow = {
   onProfileClose: () => void;
   onSignIn: () => Promise<void>;
   onSignOut: () => Promise<void>;
+  onLoadVideo: (data: { videoId: number; segments: Segment[]; format: string; filename: string; mediaUrl?: string | null }) => void;
 };
 
 export function useTranscriptionWorkflow(): TranscriptionWorkflow {
@@ -88,9 +89,11 @@ export function useTranscriptionWorkflow(): TranscriptionWorkflow {
   const [stages, setStages] = useState<StageState[]>(() => cloneStages(STAGE_DEFINITIONS));
   const [activePage, setActivePage] = useState<ActivePage>("upload");
   const [socketId, setSocketId] = useState<string | null>(null);
+  const [loadedMediaUrl, setLoadedMediaUrl] = useState<string | null>(null);
   const requestRef = useRef<XMLHttpRequest | null>(null);
 
   const mediaPreviewUrl = useMediaPreview(file);
+  const effectiveMediaUrl = loadedMediaUrl || mediaPreviewUrl;
   const { downloadUrl, downloadName } = useSubtitleDownload(response, file);
 
   useEffect(() => {
@@ -361,6 +364,29 @@ export function useTranscriptionWorkflow(): TranscriptionWorkflow {
     setFormat(nextFormat);
   }, []);
 
+  const handleLoadVideo = useCallback(
+    (data: { videoId: number; segments: Segment[]; format: string; filename: string; mediaUrl?: string | null }) => {
+      setVideoId(data.videoId);
+      setFormat(data.format);
+      setLoadedMediaUrl(data.mediaUrl || null);
+
+      const subtitleContent = segmentsToSrt(data.segments);
+      setResponse({
+        text: data.segments.map((s) => s.text).join("\n"),
+        segments: data.segments,
+        subtitle: {
+          format: data.format,
+          content: subtitleContent,
+        },
+        videoId: data.videoId,
+      });
+
+      setActivePage("preview");
+      setError(null);
+    },
+    [],
+  );
+
   return {
     user,
     authLoading,
@@ -377,7 +403,7 @@ export function useTranscriptionWorkflow(): TranscriptionWorkflow {
     subtitleFormatLabel,
     downloadUrl,
     downloadName,
-    mediaPreviewUrl,
+    mediaPreviewUrl: effectiveMediaUrl,
     videoId,
     steps: STEPS,
     onFileChange: handleFileChange,
@@ -390,7 +416,29 @@ export function useTranscriptionWorkflow(): TranscriptionWorkflow {
     onProfileClose: handleProfileClose,
     onSignIn: handleSignIn,
     onSignOut: handleSignOut,
+    onLoadVideo: handleLoadVideo,
   };
+}
+
+function segmentsToSrt(segments: Segment[]) {
+  return segments
+    .map(
+      (segment, index) =>
+        `${index + 1}\n${formatSrtTimestamp(segment.start)} --> ${formatSrtTimestamp(segment.end)}\n${segment.text}\n`,
+    )
+    .join("\n");
+}
+
+function formatSrtTimestamp(seconds: number) {
+  if (!Number.isFinite(seconds)) {
+    return "00:00:00,000";
+  }
+  const totalMillis = Math.max(0, Math.round(seconds * 1000));
+  const hrs = Math.floor(totalMillis / 3_600_000);
+  const mins = Math.floor((totalMillis % 3_600_000) / 60_000);
+  const secs = Math.floor((totalMillis % 60_000) / 1000);
+  const millis = totalMillis % 1000;
+  return `${String(hrs).padStart(2, "0")}:${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")},${String(millis).padStart(3, "0")}`;
 }
 
 function useMediaPreview(file: File | null) {

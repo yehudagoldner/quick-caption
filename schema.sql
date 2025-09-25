@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS videos (
   stored_path VARCHAR(512),
   status ENUM('uploaded','processing','completed','failed') DEFAULT 'uploaded',
   media_type ENUM('video','audio') DEFAULT 'video',
+  mime_type VARCHAR(100),
   format VARCHAR(16),
   duration_seconds INT,
   size_bytes BIGINT,

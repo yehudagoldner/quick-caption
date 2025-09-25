@@ -270,3 +270,8 @@ body {
     grid-column: span 3;
   }
 }
+
+
+.preview-wrapper{
+  align-items:center !important
+}

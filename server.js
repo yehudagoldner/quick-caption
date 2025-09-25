@@ -10,7 +10,7 @@ import dotenv from "dotenv";
 
 import { transcribeMedia, normalizeSubtitleFormat } from "./src/transcription.js";
 import { createBurnSubtitlesRouter } from "./routes/burnSubtitles.js";
-import { ensureSchema, upsertUser, saveVideo, updateVideoSubtitles } from "./db.js";
+import { ensureSchema, upsertUser, saveVideo, updateVideoSubtitles, getUserVideos, getVideoById } from "./db.js";
 
 
 dotenv.config();
@@ -26,7 +26,9 @@ app.use(cors({ origin: allowedOrigins ?? true }));
 app.use(express.json());
 
 const uploadDir = path.join(os.tmpdir(), "subtitles-api-uploads");
+const videosStorageDir = path.join(process.cwd(), "stored-videos");
 await fsp.mkdir(uploadDir, { recursive: true });
+await fsp.mkdir(videosStorageDir, { recursive: true });
 await ensureSchema();
 
 const upload = multer({ dest: uploadDir });
@@ -85,6 +87,75 @@ app.post("/api/users/sync", async (req, res) => {
 });
 
 
+app.get("/api/videos", async (req, res) => {
+  const userUid = req.query.userUid;
+  const limit = Number.parseInt(req.query.limit, 10) || 50;
+  const offset = Number.parseInt(req.query.offset, 10) || 0;
+
+  if (!userUid) {
+    return res.status(400).json({ error: 'userUid is required' });
+  }
+
+  try {
+    const videos = await getUserVideos({ userUid, limit, offset });
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    res.json({ videos });
+  } catch (error) {
+    console.error('Failed to fetch videos:', error);
+    res.status(500).json({ error: 'Failed to fetch videos' });
+  }
+});
+
+app.get("/api/videos/:id", async (req, res) => {
+  const videoId = Number.parseInt(req.params.id, 10);
+  const userUid = req.query.userUid;
+
+  if (!Number.isFinite(videoId) || !userUid) {
+    return res.status(400).json({ error: 'videoId and userUid are required' });
+  }
+
+  try {
+    const video = await getVideoById({ videoId, userUid });
+    if (!video) {
+      return res.status(404).json({ error: 'Video not found' });
+    }
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    res.json({ video });
+  } catch (error) {
+    console.error('Failed to fetch video:', error);
+    res.status(500).json({ error: 'Failed to fetch video' });
+  }
+});
+
+app.get("/api/videos/:id/media", async (req, res) => {
+  const videoId = Number.parseInt(req.params.id, 10);
+  const userUid = req.query.userUid;
+
+  if (!Number.isFinite(videoId) || !userUid) {
+    return res.status(400).json({ error: 'videoId and userUid are required' });
+  }
+
+  try {
+    const video = await getVideoById({ videoId, userUid });
+    if (!video || !video.stored_path) {
+      return res.status(404).json({ error: 'Video file not found' });
+    }
+
+    const fullPath = path.join(videosStorageDir, video.stored_path);
+
+    try {
+      await fsp.access(fullPath);
+    } catch {
+      return res.status(404).json({ error: 'Video file not found on disk' });
+    }
+
+    res.sendFile(fullPath);
+  } catch (error) {
+    console.error('Failed to serve video:', error);
+    res.status(500).json({ error: 'Failed to serve video' });
+  }
+});
+
 app.put("/api/videos/:id/subtitles", async (req, res) => {
   const videoId = Number.parseInt(req.params.id, 10);
   const { userUid, subtitleJson } = req.body ?? {};
@@ -115,6 +186,16 @@ app.post("/api/transcribe", upload.single("media"), async (req, res) => {
     return res.status(400).json({ error: 'Media file is required under field name "media".' });
   }
 
+  // Fix filename encoding if needed (multer sometimes decodes UTF-8 as Latin-1)
+  if (req.file.originalname && req.file.originalname.includes('Ã')) {
+    try {
+      const buffer = Buffer.from(req.file.originalname, 'latin1');
+      req.file.originalname = buffer.toString('utf8');
+    } catch (err) {
+      console.warn('Could not fix filename encoding:', err);
+    }
+  }
+
   emitStage("upload", "done");
 
   let format = ".srt";
@@ -137,14 +218,23 @@ app.post("/api/transcribe", upload.single("media"), async (req, res) => {
     });
 
     let savedVideoId = null;
-    if (userUid) {
+    let storedPath = null;
+    if (userUid && req.file) {
       try {
+        const timestamp = Date.now();
+        const sanitizedFilename = req.file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_');
+        const storedFilename = `${userUid}_${timestamp}_${sanitizedFilename}`;
+        storedPath = path.join(videosStorageDir, storedFilename);
+
+        await fsp.copyFile(req.file.path, storedPath);
+
         savedVideoId = await saveVideo({
           userUid,
           originalFilename: req.file?.originalname ?? req.file?.filename ?? 'upload',
-          storedPath: null,
+          storedPath: storedFilename,
           status: 'completed',
           mediaType: req.file?.mimetype?.startsWith('audio/') ? 'audio' : 'video',
+          mimeType: req.file?.mimetype ?? null,
           format,
           durationSeconds: null,
           sizeBytes: req.file?.size ?? null,
@@ -153,6 +243,9 @@ app.post("/api/transcribe", upload.single("media"), async (req, res) => {
         });
       } catch (videoError) {
         console.error('Failed to store video metadata:', videoError);
+        if (storedPath) {
+          await safeUnlink(storedPath);
+        }
       }
     }
 
@@ -174,6 +267,7 @@ app.post("/api/transcribe", upload.single("media"), async (req, res) => {
           storedPath: null,
           status: 'failed',
           mediaType: req.file?.mimetype?.startsWith('audio/') ? 'audio' : 'video',
+          mimeType: req.file?.mimetype ?? null,
           format,
           durationSeconds: null,
           sizeBytes: req.file?.size ?? null,

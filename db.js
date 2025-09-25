@@ -5,6 +5,7 @@ const pool = mysql.createPool({
   user: process.env.DB_USER,
   password: process.env.DB_PASSWORD,
   database: process.env.DB_NAME,
+  charset: 'utf8mb4',
   waitForConnections: true,
   connectionLimit: 10,
   queueLimit: 0,
@@ -47,9 +48,14 @@ export async function ensureSchema() {
     ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
   `);
 
-  const [columns] = await pool.query("SHOW COLUMNS FROM videos LIKE 'subtitle_json'");
-  if (Array.isArray(columns) && columns.length === 0) {
+  const [subtitleJsonColumns] = await pool.query("SHOW COLUMNS FROM videos LIKE 'subtitle_json'");
+  if (Array.isArray(subtitleJsonColumns) && subtitleJsonColumns.length === 0) {
     await pool.execute("ALTER TABLE videos ADD COLUMN subtitle_json JSON NULL");
+  }
+
+  const [mimeTypeColumns] = await pool.query("SHOW COLUMNS FROM videos LIKE 'mime_type'");
+  if (Array.isArray(mimeTypeColumns) && mimeTypeColumns.length === 0) {
+    await pool.execute("ALTER TABLE videos ADD COLUMN mime_type VARCHAR(100) NULL AFTER media_type");
   }
 }
 
@@ -93,6 +99,7 @@ export async function saveVideo({
   storedPath = null,
   status = "completed",
   mediaType = "video",
+  mimeType = null,
   format = null,
   durationSeconds = null,
   sizeBytes = null,
@@ -100,14 +107,15 @@ export async function saveVideo({
   subtitleJson = null,
 }) {
   const [result] = await pool.execute(
-    `INSERT INTO videos (user_uid, original_filename, stored_path, status, media_type, format, duration_seconds, size_bytes, transcription_id, subtitle_json)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO videos (user_uid, original_filename, stored_path, status, media_type, mime_type, format, duration_seconds, size_bytes, transcription_id, subtitle_json)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       userUid,
       originalFilename,
       storedPath,
       status,
       mediaType,
+      mimeType,
       format,
       durationSeconds,
       sizeBytes,
@@ -126,6 +134,39 @@ export async function updateVideoSubtitles({ videoId, userUid, subtitleJson }) {
   );
 
   return result;
+}
+
+export async function getUserVideos({ userUid, limit = 50, offset = 0 }) {
+  const safeLimit = Math.max(1, Math.min(100, Number(limit) || 50));
+  const safeOffset = Math.max(0, Number(offset) || 0);
+
+  const [rows] = await pool.execute(
+    `SELECT id, original_filename, status, media_type, format, duration_seconds, size_bytes, created_at, updated_at
+     FROM videos
+     WHERE user_uid = ?
+     ORDER BY created_at DESC
+     LIMIT ${safeLimit} OFFSET ${safeOffset}`,
+    [userUid],
+  );
+
+  return rows;
+}
+
+
+export async function getVideoById({ videoId, userUid }) {
+  const [rows] = await pool.execute(
+    `SELECT id, user_uid, original_filename, stored_path, status, media_type, mime_type, format, duration_seconds, size_bytes, transcription_id, subtitle_json, created_at, updated_at
+     FROM videos
+     WHERE id = ? AND user_uid = ?
+     LIMIT 1`,
+    [videoId, userUid],
+  );
+
+  if (!Array.isArray(rows) || rows.length === 0) {
+    return null;
+  }
+
+  return rows[0];
 }
 
 export default pool;
