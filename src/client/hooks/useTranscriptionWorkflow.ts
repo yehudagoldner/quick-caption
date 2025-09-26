@@ -162,6 +162,15 @@ export function useTranscriptionWorkflow(): TranscriptionWorkflow {
         return;
       }
 
+      // Log file details for debugging
+      console.log('Uploading file:', {
+        name: file.name,
+        size: file.size,
+        type: file.type,
+        nameBytes: Array.from(file.name).map(c => c.charCodeAt(0)),
+        nameUTF8: encodeURIComponent(file.name)
+      });
+
       const formData = new FormData();
       formData.append("media", file);
       formData.append("format", format);

@@ -1,10 +1,9 @@
-import { useState } from "react";
-import { Alert, Box, Container, CssBaseline, Stack, ThemeProvider, createTheme } from "@mui/material";
+import { useState, useEffect } from "react";
+import { Box, Container, CssBaseline, ThemeProvider, createTheme } from "@mui/material";
 import { AppHeader } from "./components/AppHeader";
-import { PreviewStepSection } from "./components/PreviewStepSection";
-import { UploadStepSection } from "./components/UploadStepSection";
-import { WorkflowIntro } from "./components/WorkflowIntro";
-import { WorkflowStepper } from "./components/WorkflowStepper";
+import { PromotionalHome } from "./components/PromotionalHome";
+import { TranscriptionPage } from "./components/TranscriptionPage";
+import { VideoEditPage } from "./components/VideoEditPage";
 import { VideosPage } from "./components/VideosPage";
 import { useTranscriptionWorkflow } from "./hooks/useTranscriptionWorkflow";
 import "./App.css";
@@ -22,44 +21,101 @@ const theme = createTheme({
 const RAW_API_BASE = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.trim() ?? "";
 const API_BASE_URL = RAW_API_BASE.replace(/\/?$/, "");
 
+type AppScreen = "home" | "transcription" | "videos" | "edit";
+
+function getScreenFromUrl(): { screen: AppScreen; videoToken?: string } {
+  const params = new URLSearchParams(window.location.search);
+  const screen = params.get("screen") as AppScreen;
+  const videoToken = params.get("video");
+
+  if (screen === "edit" && videoToken) {
+    return { screen: "edit", videoToken };
+  }
+
+  if (["transcription", "videos"].includes(screen)) {
+    return { screen };
+  }
+
+  return { screen: "home" };
+}
+
+function updateUrl(screen: AppScreen, videoToken?: string) {
+  const params = new URLSearchParams();
+  if (screen !== "home") {
+    params.set("screen", screen);
+  }
+  if (videoToken) {
+    params.set("video", videoToken);
+  }
+
+  const newUrl = params.toString() ? `${window.location.pathname}?${params.toString()}` : window.location.pathname;
+  window.history.pushState(null, "", newUrl);
+}
+
 function App() {
   const workflow = useTranscriptionWorkflow();
-  const [currentPage, setCurrentPage] = useState<"home" | "videos">("home");
-  const activeStep = workflow.activePage === "upload" ? 0 : 1;
-  const previewError = workflow.activePage === "preview" ? workflow.error : null;
+  const [currentScreen, setCurrentScreen] = useState<AppScreen>("home");
+  const [videoToken, setVideoToken] = useState<string | undefined>();
+
+  useEffect(() => {
+    const { screen, videoToken: token } = getScreenFromUrl();
+    setCurrentScreen(screen);
+    setVideoToken(token);
+  }, []);
+
+  useEffect(() => {
+    const handlePopState = () => {
+      const { screen, videoToken: token } = getScreenFromUrl();
+      setCurrentScreen(screen);
+      setVideoToken(token);
+    };
+
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
+
+  const navigateToScreen = (screen: AppScreen, token?: string) => {
+    setCurrentScreen(screen);
+    setVideoToken(token);
+    updateUrl(screen, token);
+  };
 
   const handleEditVideo = async (videoId: number) => {
     if (!workflow.user?.uid) return;
 
     try {
-      const url = `${API_BASE_URL || ""}/api/videos/${videoId}?userUid=${encodeURIComponent(workflow.user.uid)}`;
-      const response = await fetch(url);
-      if (!response.ok) {
-        throw new Error("Failed to load video");
+      // Generate secure token for video editing
+      const tokenResponse = await fetch(`${API_BASE_URL || ""}/api/videos/${videoId}/token?userUid=${encodeURIComponent(workflow.user.uid)}`);
+      if (!tokenResponse.ok) {
+        throw new Error("Failed to generate video token");
       }
-      const data = await response.json();
-      const video = data.video;
+      const { token } = await tokenResponse.json();
 
-      if (video.subtitle_json) {
-        const segments = typeof video.subtitle_json === "string"
-          ? JSON.parse(video.subtitle_json)
-          : video.subtitle_json;
-
-        const mediaUrl = video.stored_path
-          ? `${API_BASE_URL || ""}/api/videos/${videoId}/media?userUid=${encodeURIComponent(workflow.user.uid)}`
-          : null;
-
-        workflow.onLoadVideo({
-          videoId: video.id,
-          segments,
-          format: video.format || ".srt",
-          filename: video.original_filename,
-          mediaUrl,
-        });
-        setCurrentPage("home");
-      }
+      navigateToScreen("edit", token);
     } catch (error) {
-      console.error("Failed to load video:", error);
+      console.error("Failed to create video edit session:", error);
+    }
+  };
+
+  const handleSaveSegments = async (segments: any[], subtitleContent: string) => {
+    if (!videoToken || !workflow.user?.uid) {
+      throw new Error("Invalid session");
+    }
+
+    const result = await fetch(`${API_BASE_URL || ""}/api/videos/update-subtitles`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        token: videoToken,
+        userUid: workflow.user.uid,
+        subtitleJson: JSON.stringify(segments),
+      }),
+    });
+
+    if (!result.ok) {
+      throw new Error("Failed to save segments");
     }
   };
 
@@ -71,53 +127,42 @@ function App() {
           user={workflow.user}
           authLoading={workflow.authLoading}
           profileAnchorEl={workflow.profileAnchorEl}
-          currentPage={currentPage}
+          currentPage={currentScreen === "videos" ? "videos" : "home"}
           onProfileClick={workflow.onProfileClick}
           onProfileClose={workflow.onProfileClose}
           onSignIn={workflow.onSignIn}
           onSignOut={workflow.onSignOut}
-          onNavigate={setCurrentPage}
+          onNavigate={(page) => navigateToScreen(page === "videos" ? "videos" : "home")}
         />
 
         <Container maxWidth="100%" sx={{ py: { xs: 4, md: 6 }, mt: { xs: 12, md: 10 } }}>
-          {currentPage === "home" ? (
-            <Stack spacing={4}>
-              <WorkflowIntro />
+          {currentScreen === "home" && (
+            <PromotionalHome
+              user={workflow.user}
+              authLoading={workflow.authLoading}
+              onTryNow={() => navigateToScreen("transcription")}
+              onSignIn={workflow.onSignIn}
+            />
+          )}
 
-              <WorkflowStepper steps={workflow.steps} activeStep={activeStep} />
+          {currentScreen === "transcription" && (
+            <TranscriptionPage
+              workflow={workflow}
+              onBack={() => navigateToScreen("home")}
+            />
+          )}
 
-              <UploadStepSection
-                active={workflow.activePage === "upload"}
-                file={workflow.file}
-                format={workflow.format}
-                isSubmitting={workflow.isSubmitting}
-                uploadProgress={workflow.uploadProgress}
-                stages={workflow.stages}
-                formatOptions={workflow.supportedFormats}
-                error={workflow.activePage === "upload" ? workflow.error : null}
-                onFileChange={workflow.onFileChange}
-                onFormatChange={workflow.onFormatChange}
-                onSubmit={workflow.onSubmit}
-              />
-
-              <PreviewStepSection
-                active={workflow.activePage === "preview"}
-                response={workflow.response}
-                subtitleFormatLabel={workflow.subtitleFormatLabel}
-                downloadUrl={workflow.downloadUrl}
-                downloadName={workflow.downloadName}
-                mediaUrl={workflow.mediaPreviewUrl}
-                onBack={workflow.onBackToUpload}
-                onBurn={workflow.onBurnVideoRequest}
-                onSaveSegments={workflow.onSaveSegments}
-                videoId={workflow.videoId}
-                isEditable={Boolean(workflow.videoId && workflow.user)}
-              />
-
-              {previewError && <Alert severity="error">{previewError}</Alert>}
-            </Stack>
-          ) : (
+          {currentScreen === "videos" && (
             <VideosPage onEditVideo={handleEditVideo} />
+          )}
+
+          {currentScreen === "edit" && videoToken && (
+            <VideoEditPage
+              user={workflow.user}
+              videoToken={videoToken}
+              onBack={() => navigateToScreen("videos")}
+              onSaveSegments={handleSaveSegments}
+            />
           )}
         </Container>
       </Box>

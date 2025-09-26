@@ -26,10 +26,10 @@ export function useTranscriptionState({
 }: UseTranscriptionStateProps) {
   const [editableSegments, setEditableSegments] = useState<Segment[]>(responseSegments);
   const [activeSegmentId, setActiveSegmentId] = useState<Segment["id"] | null>(null);
-  const [fontSize, setFontSize] = useState(36);
+  const [fontSize, setFontSize] = useState(60);
   const [fontColor, setFontColor] = useState("#ffffff");
   const [outlineColor, setOutlineColor] = useState("#000000");
-  const [offsetYPercent, setOffsetYPercent] = useState(12);
+  const [offsetYPercent, setOffsetYPercent] = useState(20);
   const [marginPercent, setMarginPercent] = useState(5);
   const [videoDimensions, setVideoDimensions] = useState<{ width: number; height: number } | null>(null);
   const [renderDimensions, setRenderDimensions] = useState<{ width: number; height: number } | null>(null);

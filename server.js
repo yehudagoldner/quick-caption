@@ -3,6 +3,7 @@ import cors from "cors";
 import multer from "multer";
 import path from "path";
 import os from "os";
+import crypto from "crypto";
 import { promises as fsp } from "fs";
 import { createServer } from "http";
 import { Server as SocketIOServer } from "socket.io";
@@ -23,7 +24,8 @@ const allowedOrigins = process.env.CORS_ORIGIN
   : undefined;
 
 app.use(cors({ origin: allowedOrigins ?? true }));
-app.use(express.json());
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
 const uploadDir = path.join(os.tmpdir(), "subtitles-api-uploads");
 const videosStorageDir = path.join(process.cwd(), "stored-videos");
@@ -31,7 +33,20 @@ await fsp.mkdir(uploadDir, { recursive: true });
 await fsp.mkdir(videosStorageDir, { recursive: true });
 await ensureSchema();
 
-const upload = multer({ dest: uploadDir });
+const upload = multer({
+  dest: uploadDir,
+  // Ensure proper filename handling
+  fileFilter: (req, file, cb) => {
+    // Log original filename for debugging
+    console.log('Multer received filename:', {
+      originalname: file.originalname,
+      encoding: file.encoding,
+      mimetype: file.mimetype,
+      bytes: file.originalname ? Array.from(file.originalname).map(c => c.charCodeAt(0)) : []
+    });
+    cb(null, true);
+  }
+});
 app.use("/api/burn-subtitles", createBurnSubtitlesRouter(upload));
 
 const httpServer = createServer(app);
@@ -106,6 +121,50 @@ app.get("/api/videos", async (req, res) => {
   }
 });
 
+// Secure video loading endpoint using token (must be before /api/videos/:id)
+app.get("/api/videos/load", async (req, res) => {
+  const token = req.query.token;
+  const userUid = req.query.userUid;
+
+  console.log('Load video request:', { token, userUid, query: req.query });
+
+  if (!token || !userUid) {
+    return res.status(400).json({ error: 'token and userUid are required' });
+  }
+
+  try {
+    // Decode and validate token
+    let tokenData;
+    try {
+      tokenData = JSON.parse(Buffer.from(token, 'base64url').toString());
+    } catch {
+      return res.status(400).json({ error: 'Invalid token format' });
+    }
+
+    // Check token expiration
+    if (!tokenData.exp || tokenData.exp < Date.now()) {
+      return res.status(401).json({ error: 'Token expired' });
+    }
+
+    // Verify user matches token
+    if (tokenData.userUid !== userUid) {
+      return res.status(403).json({ error: 'Token user mismatch' });
+    }
+
+    // Load video with ownership verification
+    const video = await getVideoById({ videoId: tokenData.videoId, userUid });
+    if (!video) {
+      return res.status(404).json({ error: 'Video not found' });
+    }
+
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    res.json({ video });
+  } catch (error) {
+    console.error('Failed to load video with token:', error);
+    res.status(500).json({ error: 'Failed to load video' });
+  }
+});
+
 app.get("/api/videos/:id", async (req, res) => {
   const videoId = Number.parseInt(req.params.id, 10);
   const userUid = req.query.userUid;
@@ -176,6 +235,113 @@ app.put("/api/videos/:id/subtitles", async (req, res) => {
   }
 });
 
+// Secure token generation for video editing
+app.get("/api/videos/:id/token", async (req, res) => {
+  const videoId = Number.parseInt(req.params.id, 10);
+  const userUid = req.query.userUid;
+
+  if (!Number.isFinite(videoId) || !userUid) {
+    return res.status(400).json({ error: 'videoId and userUid are required' });
+  }
+
+  try {
+    // Verify user owns the video
+    const video = await getVideoById({ videoId, userUid });
+    if (!video) {
+      return res.status(404).json({ error: 'Video not found' });
+    }
+
+    // Generate secure token with expiration (24 hours)
+    const tokenData = {
+      videoId,
+      userUid,
+      exp: Date.now() + (24 * 60 * 60 * 1000), // 24 hours
+      random: crypto.randomBytes(16).toString('hex')
+    };
+
+    const token = Buffer.from(JSON.stringify(tokenData)).toString('base64url');
+    res.json({ token });
+  } catch (error) {
+    console.error('Failed to generate video token:', error);
+    res.status(500).json({ error: 'Failed to generate video token' });
+  }
+});
+
+// Secure subtitle update endpoint using token
+app.put("/api/videos/update-subtitles", async (req, res) => {
+  const { token, userUid, subtitleJson } = req.body ?? {};
+
+  if (!token || !userUid || typeof subtitleJson !== 'string') {
+    return res.status(400).json({ error: 'token, userUid and subtitleJson are required' });
+  }
+
+  try {
+    // Decode and validate token
+    let tokenData;
+    try {
+      tokenData = JSON.parse(Buffer.from(token, 'base64url').toString());
+    } catch {
+      return res.status(400).json({ error: 'Invalid token format' });
+    }
+
+    // Check token expiration
+    if (!tokenData.exp || tokenData.exp < Date.now()) {
+      return res.status(401).json({ error: 'Token expired' });
+    }
+
+    // Verify user matches token
+    if (tokenData.userUid !== userUid) {
+      return res.status(403).json({ error: 'Token user mismatch' });
+    }
+
+    // Update subtitles with ownership verification
+    const result = await updateVideoSubtitles({
+      videoId: tokenData.videoId,
+      userUid,
+      subtitleJson
+    });
+
+    if (!result || result.affectedRows === 0) {
+      return res.status(404).json({ error: 'Video not found' });
+    }
+
+    res.json({ status: 'ok' });
+  } catch (error) {
+    console.error('Failed to update subtitles with token:', error);
+    res.status(500).json({ error: 'Failed to update subtitles' });
+  }
+});
+
+// Secure video file access endpoint using token
+app.get("/api/videos/:id/file", async (req, res) => {
+  const videoId = Number.parseInt(req.params.id, 10);
+  const userUid = req.query.userUid;
+
+  if (!Number.isFinite(videoId) || !userUid) {
+    return res.status(400).json({ error: 'videoId and userUid are required' });
+  }
+
+  try {
+    const video = await getVideoById({ videoId, userUid });
+    if (!video || !video.stored_path) {
+      return res.status(404).json({ error: 'Video file not found' });
+    }
+
+    const fullPath = path.join(videosStorageDir, video.stored_path);
+
+    try {
+      await fsp.access(fullPath);
+    } catch {
+      return res.status(404).json({ error: 'Video file not found on disk' });
+    }
+
+    res.sendFile(fullPath);
+  } catch (error) {
+    console.error('Failed to serve video file:', error);
+    res.status(500).json({ error: 'Failed to serve video file' });
+  }
+});
+
 app.post("/api/transcribe", upload.single("media"), async (req, res) => {
   const socketId = req.body?.socketId;
   const userUid = req.body?.userUid;
@@ -186,11 +352,39 @@ app.post("/api/transcribe", upload.single("media"), async (req, res) => {
     return res.status(400).json({ error: 'Media file is required under field name "media".' });
   }
 
-  // Fix filename encoding if needed (multer sometimes decodes UTF-8 as Latin-1)
-  if (req.file.originalname && req.file.originalname.includes('Ã')) {
+  // Fix filename encoding - multer often corrupts UTF-8 filenames
+  let originalFilename = req.file.originalname;
+  if (originalFilename) {
     try {
-      const buffer = Buffer.from(req.file.originalname, 'latin1');
-      req.file.originalname = buffer.toString('utf8');
+      // Try to detect and fix common encoding issues
+      if (originalFilename.includes('Ã') || originalFilename.includes('×')) {
+        // Common corruption: UTF-8 decoded as Latin-1 then re-encoded
+        const buffer = Buffer.from(originalFilename, 'latin1');
+        const fixed = buffer.toString('utf8');
+        if (fixed && !fixed.includes('�')) { // Check for replacement characters
+          originalFilename = fixed;
+          console.log('Fixed filename encoding:', { original: req.file.originalname, fixed });
+        }
+      }
+
+      // Additional fix attempt for Hebrew characters
+      if (originalFilename.includes('×')) {
+        // Try decoding as different encodings
+        const attempts = ['utf8', 'latin1', 'ascii'];
+        for (const encoding of attempts) {
+          try {
+            const testBuffer = Buffer.from(originalFilename, encoding);
+            const testDecoded = testBuffer.toString('utf8');
+            if (testDecoded && !testDecoded.includes('�') && testDecoded.includes('ס')) {
+              originalFilename = testDecoded;
+              console.log('Fixed Hebrew filename:', { original: req.file.originalname, fixed: originalFilename, encoding });
+              break;
+            }
+          } catch (e) {
+            continue;
+          }
+        }
+      }
     } catch (err) {
       console.warn('Could not fix filename encoding:', err);
     }
@@ -221,16 +415,52 @@ app.post("/api/transcribe", upload.single("media"), async (req, res) => {
     let storedPath = null;
     if (userUid && req.file) {
       try {
+        // Create unique filename with timestamp and random suffix
         const timestamp = Date.now();
-        const sanitizedFilename = req.file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_');
-        const storedFilename = `${userUid}_${timestamp}_${sanitizedFilename}`;
+        const randomSuffix = crypto.randomBytes(4).toString('hex');
+
+        // Get file extension safely
+        const ext = path.extname(originalFilename || req.file.filename || '.mp4');
+        const baseName = path.basename(originalFilename || req.file.filename || 'upload', ext);
+
+        // Create sanitized but readable filename (preserve Hebrew if possible)
+        let sanitizedBaseName;
+        try {
+          // Try to keep Hebrew characters readable
+          sanitizedBaseName = baseName
+            .replace(/[<>:"/\\|?*]/g, '_') // Remove forbidden characters but keep Hebrew
+            .replace(/\s+/g, '_') // Replace spaces with underscores
+            .substring(0, 50); // Limit length
+        } catch (e) {
+          // Fallback to ASCII-safe version
+          sanitizedBaseName = baseName.replace(/[^a-zA-Z0-9._-]/g, '_').substring(0, 50);
+        }
+
+        const storedFilename = `${userUid}_${timestamp}_${randomSuffix}_${sanitizedBaseName}${ext}`;
         storedPath = path.join(videosStorageDir, storedFilename);
+
+        // Ensure the path doesn't already exist (double-check uniqueness)
+        let uniqueStoredPath = storedPath;
+        let counter = 1;
+        while (true) {
+          try {
+            await fsp.access(uniqueStoredPath);
+            // File exists, try next number
+            const uniqueFilename = `${userUid}_${timestamp}_${randomSuffix}_${counter}_${sanitizedBaseName}${ext}`;
+            uniqueStoredPath = path.join(videosStorageDir, uniqueFilename);
+            counter++;
+          } catch {
+            // File doesn't exist, we can use this path
+            break;
+          }
+        }
+        storedPath = uniqueStoredPath;
 
         await fsp.copyFile(req.file.path, storedPath);
 
         savedVideoId = await saveVideo({
           userUid,
-          originalFilename: req.file?.originalname ?? req.file?.filename ?? 'upload',
+          originalFilename,
           storedPath: storedFilename,
           status: 'completed',
           mediaType: req.file?.mimetype?.startsWith('audio/') ? 'audio' : 'video',
@@ -263,7 +493,7 @@ app.post("/api/transcribe", upload.single("media"), async (req, res) => {
       try {
         await saveVideo({
           userUid,
-          originalFilename: req.file?.originalname ?? req.file?.filename ?? 'upload',
+          originalFilename,
           storedPath: null,
           status: 'failed',
           mediaType: req.file?.mimetype?.startsWith('audio/') ? 'audio' : 'video',
