@@ -37,13 +37,6 @@ export function UploadStepSection({
       <Card elevation={3}>
         <CardContent>
           <Stack spacing={3}>
-            <Stack direction="row" alignItems="center" spacing={1}>
-              <CloudUploadRounded color="primary" />
-              <Typography variant="h5">שלב 1 – העלאת מקור</Typography>
-            </Stack>
-
-            <Divider />
-
             <UploadForm
               file={file}
               format={format}

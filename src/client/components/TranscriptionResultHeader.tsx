@@ -34,15 +34,8 @@ export function TranscriptionResultHeader({
   return (
     <Stack spacing={3}>
       <Stack direction={{ xs: "column", sm: "row" }} justifyContent="space-between" alignItems="center" gap={1}>
-        <Stack direction="row" alignItems="center" spacing={1}>
-          <SubtitlesRounded color="primary" />
-          <Typography variant="h5">שלב 2 – תצוגה מקדימה</Typography>
-        </Stack>
         <Stack direction="row" spacing={1} alignItems="center">
           <Chip label={subtitleFormatLabel} color="primary" variant="outlined" />
-          <Button variant="outlined" startIcon={<ReplayRounded />} onClick={onBack}>
-            חזרה למסך ההעלאה
-          </Button>
           {downloadUrl && (
             <Button
               component="a"

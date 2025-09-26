@@ -1,8 +1,6 @@
 import { useEffect, useState } from "react";
-import { Container, Alert, CircularProgress, Box, Typography, Button } from "@mui/material";
-import { ArrowBack } from "@mui/icons-material";
+import { Container, Alert, CircularProgress, Box, Typography } from "@mui/material";
 import { PreviewStepSection } from "./PreviewStepSection";
-import { WorkflowStepper } from "./WorkflowStepper";
 import type { AuthUser } from "../hooks/useTranscriptionWorkflow";
 import type { ApiResponse, Segment } from "../types";
 import type { BurnOptions } from "./TranscriptionResult";
@@ -10,22 +8,19 @@ import type { BurnOptions } from "./TranscriptionResult";
 interface VideoEditPageProps {
   user: AuthUser;
   videoToken: string; // Secure token instead of plain ID
-  onBack: () => void;
   onSaveSegments: (segments: Segment[], subtitleContent: string) => Promise<void>;
 }
 
 const RAW_API_BASE = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.trim() ?? "";
 const API_BASE_URL = RAW_API_BASE.replace(/\/?$/, "");
 
-export function VideoEditPage({ user, videoToken, onBack, onSaveSegments }: VideoEditPageProps) {
+export function VideoEditPage({ user, videoToken, onSaveSegments }: VideoEditPageProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [response, setResponse] = useState<ApiResponse | null>(null);
   const [format, setFormat] = useState<string>(".srt");
   const [mediaUrl, setMediaUrl] = useState<string | null>(null);
   const [videoId, setVideoId] = useState<number | null>(null);
-
-  const steps = ["עריכת כתוביות"];
 
   useEffect(() => {
     loadVideo();
@@ -170,9 +165,6 @@ export function VideoEditPage({ user, videoToken, onBack, onSaveSegments }: Vide
     return (
       <Container maxWidth="lg">
         <Box sx={{ py: 4 }}>
-          <Button startIcon={<ArrowBack />} onClick={onBack} sx={{ mb: 3 }}>
-            חזרה
-          </Button>
           <Alert severity="error">{error}</Alert>
         </Box>
       </Container>
@@ -183,9 +175,6 @@ export function VideoEditPage({ user, videoToken, onBack, onSaveSegments }: Vide
     return (
       <Container maxWidth="lg">
         <Box sx={{ py: 4 }}>
-          <Button startIcon={<ArrowBack />} onClick={onBack} sx={{ mb: 3 }}>
-            חזרה
-          </Button>
           <Alert severity="warning">לא נמצאו כתוביות לעריכה</Alert>
         </Box>
       </Container>
@@ -210,15 +199,9 @@ export function VideoEditPage({ user, videoToken, onBack, onSaveSegments }: Vide
   return (
     <Container maxWidth="lg">
       <Box sx={{ py: 4 }}>
-        <Button startIcon={<ArrowBack />} onClick={onBack} sx={{ mb: 3 }}>
-          חזרה לסרטונים
-        </Button>
-
         <Typography variant="h4" gutterBottom sx={{ fontWeight: 600 }}>
           עריכת כתוביות
         </Typography>
-
-        <WorkflowStepper steps={steps} activeStep={0} />
 
         <PreviewStepSection
           active={true}
@@ -227,7 +210,7 @@ export function VideoEditPage({ user, videoToken, onBack, onSaveSegments }: Vide
           downloadUrl={downloadUrl}
           downloadName={downloadName}
           mediaUrl={mediaUrl}
-          onBack={onBack}
+          onBack={() => {}}
           onBurn={handleBurnVideoRequest}
           onSaveSegments={handleSaveSegments}
           videoId={videoId}

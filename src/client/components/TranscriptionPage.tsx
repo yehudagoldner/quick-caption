@@ -1,29 +1,19 @@
-import { Stack, Alert, Button } from "@mui/material";
-import { ArrowBack } from "@mui/icons-material";
+import { Stack, Alert } from "@mui/material";
 import { WorkflowIntro } from "./WorkflowIntro";
-import { WorkflowStepper } from "./WorkflowStepper";
 import { UploadStepSection } from "./UploadStepSection";
 import { PreviewStepSection } from "./PreviewStepSection";
 import type { TranscriptionWorkflow } from "../hooks/useTranscriptionWorkflow";
 
 interface TranscriptionPageProps {
   workflow: TranscriptionWorkflow;
-  onBack: () => void;
 }
 
-export function TranscriptionPage({ workflow, onBack }: TranscriptionPageProps) {
-  const activeStep = workflow.activePage === "upload" ? 0 : 1;
+export function TranscriptionPage({ workflow }: TranscriptionPageProps) {
   const previewError = workflow.activePage === "preview" ? workflow.error : null;
 
   return (
     <Stack spacing={4}>
-      <Button startIcon={<ArrowBack />} onClick={onBack} sx={{ alignSelf: "flex-start" }}>
-        חזרה לדף הבית
-      </Button>
-
       <WorkflowIntro />
-
-      <WorkflowStepper steps={workflow.steps} activeStep={activeStep} />
 
       <UploadStepSection
         active={workflow.activePage === "upload"}

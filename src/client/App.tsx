@@ -148,7 +148,6 @@ function App() {
           {currentScreen === "transcription" && (
             <TranscriptionPage
               workflow={workflow}
-              onBack={() => navigateToScreen("home")}
             />
           )}
 
@@ -160,7 +159,6 @@ function App() {
             <VideoEditPage
               user={workflow.user}
               videoToken={videoToken}
-              onBack={() => navigateToScreen("videos")}
               onSaveSegments={handleSaveSegments}
             />
           )}
