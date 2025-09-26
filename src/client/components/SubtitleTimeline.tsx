@@ -102,31 +102,72 @@ export function SubtitleTimeline({
   const isCursorDraggingRef = useRef(false);
   const lastAppliedTimeRef = useRef<number | null>(null);
   const scrollLeftRef = useRef(0);
+  const timelineContainerRef = useRef<HTMLDivElement | null>(null);
+  const [autoViewportWidth, setAutoViewportWidth] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (typeof viewportWidth === "number") {
+      setAutoViewportWidth(null);
+      return;
+    }
+
+    const element = timelineContainerRef.current;
+    if (!element) {
+      setAutoViewportWidth(null);
+      return;
+    }
+
+    const updateWidth = () => {
+      const width = element.getBoundingClientRect().width;
+      if (!Number.isFinite(width) || width <= 0) {
+        return;
+      }
+      const rounded = Math.round(width);
+      setAutoViewportWidth((prev) => (prev === rounded ? prev : rounded));
+    };
+
+    updateWidth();
+
+    if (typeof ResizeObserver !== "undefined") {
+      const observer = new ResizeObserver(() => updateWidth());
+      observer.observe(element);
+      return () => observer.disconnect();
+    }
+
+    if (typeof window !== "undefined") {
+      window.addEventListener("resize", updateWidth);
+      return () => window.removeEventListener("resize", updateWidth);
+    }
+
+    return undefined;
+  }, [viewportWidth]);
 
   const baseScaleCount = useMemo(() => Math.max(20, Math.ceil(totalDuration) + 2), [totalDuration]);
   const baseScale = 1;
 
+  const effectiveViewportWidth = viewportWidth ?? autoViewportWidth ?? null;
+
   const baseScaleWidth = useMemo(() => {
-    if (!viewportWidth) {
+    if (!effectiveViewportWidth) {
       // Use a default that works well for most screen sizes
       return 120;
     }
-    const usableWidth = viewportWidth;
+    const usableWidth = effectiveViewportWidth;
     // Calculate minimum width to show entire timeline
     const minWidthForFullView = Math.max(40, usableWidth / baseScaleCount);
     return minWidthForFullView;
-  }, [viewportWidth, baseScaleCount]);
+  }, [effectiveViewportWidth, baseScaleCount]);
 
   // Calculate minimum zoom level to show entire timeline
   const minZoom = useMemo(() => {
-    if (!viewportWidth) return -50;
-    const containerWidth = viewportWidth * 0.9; // Account for 90% width
+    if (!effectiveViewportWidth) return -50;
+    const containerWidth = effectiveViewportWidth * 0.9; // Account for 90% width
     const requiredWidth = totalDuration * (baseScaleWidth ?? 120);
     if (requiredWidth <= containerWidth) return -50;
 
     const zoomFactor = containerWidth / requiredWidth;
     return Math.max(-50, Math.log2(zoomFactor) * 50);
-  }, [viewportWidth, totalDuration, baseScaleWidth]);
+  }, [effectiveViewportWidth, totalDuration, baseScaleWidth]);
 
   // Update zoom to minimum when minZoom changes to ensure full view
   useEffect(() => {
@@ -141,12 +182,12 @@ export function SubtitleTimeline({
 
   const ensureCursorVisible = useCallback(
     (time: number) => {
-      if (!timelineRef.current || !viewportWidth) {
+      if (!timelineRef.current || !effectiveViewportWidth) {
         return;
       }
 
       const startLeft = 20;
-      const viewWidth = viewportWidth * 0.9; // Account for 90% timeline width
+      const viewWidth = effectiveViewportWidth * 0.9; // Account for 90% timeline width
       const pixelsPerUnit = scaleWidth / baseScale;
       const positionPx = startLeft + time * pixelsPerUnit;
 
@@ -201,7 +242,7 @@ export function SubtitleTimeline({
         console.debug('⏸️ Timeline scroll not needed - cursor in center area');
       }
     },
-    [baseScale, scaleWidth, viewportWidth],
+    [baseScale, scaleWidth, effectiveViewportWidth],
   );
 
   const emitTimeChange = useCallback(
@@ -483,7 +524,7 @@ export function SubtitleTimeline({
       {/* Timeline with Vertical Zoom Control */}
       <Stack direction="row" spacing={1} sx={{ position: "relative" }}>
         {/* Main Timeline */}
-        <Box sx={{ flex: 1 }}>
+        <Box sx={{ flex: 1 }} ref={timelineContainerRef}>
           <Timeline
             ref={timelineRef}
             editorData={editorData}
