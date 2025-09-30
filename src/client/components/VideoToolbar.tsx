@@ -12,12 +12,15 @@ import {
   MenuItem,
   Paper,
   Popover,
+  Select,
   Slider,
   Stack,
   TextField,
   Tooltip,
   CircularProgress,
   Alert,
+  FormControl,
+  InputLabel,
 } from "@mui/material";
 import {
   DownloadRounded,
@@ -355,15 +358,24 @@ export function VideoToolbar({
       >
         <Paper sx={{ p: 3, width: 250 }}>
           <Stack spacing={2}>
-            <TextField
-              label="גודל פונט"
-              type="number"
-              value={fontSize}
-              onChange={onFontSizeChange}
-              inputProps={{ min: 12, max: 96 }}
-              fullWidth
-              size="small"
-            />
+            <FormControl fullWidth size="small">
+              <InputLabel>גודל פונט</InputLabel>
+              <Select
+                value={fontSize}
+                label="גודל פונט"
+                onChange={(e) => onFontSizeChange({ target: { value: String(e.target.value) } } as ChangeEvent<HTMLInputElement>)}
+              >
+                <MenuItem value={24}>24 - קטן מאוד</MenuItem>
+                <MenuItem value={32}>32 - קטן</MenuItem>
+                <MenuItem value={40}>40 - בינוני קטן</MenuItem>
+                <MenuItem value={48}>48 - בינוני</MenuItem>
+                <MenuItem value={56}>56 - בינוני גדול</MenuItem>
+                <MenuItem value={64}>64 - גדול</MenuItem>
+                <MenuItem value={72}>72 - גדול מאוד</MenuItem>
+                <MenuItem value={80}>80 - ענק</MenuItem>
+                <MenuItem value={96}>96 - ענק מאוד</MenuItem>
+              </Select>
+            </FormControl>
           </Stack>
         </Paper>
       </Popover>
