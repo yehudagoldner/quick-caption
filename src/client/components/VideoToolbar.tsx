@@ -11,6 +11,7 @@ import {
   Menu,
   MenuItem,
   Paper,
+  Popover,
   Slider,
   Stack,
   TextField,
@@ -96,11 +97,11 @@ export function VideoToolbar({
   const [downloadAnchorEl, setDownloadAnchorEl] = useState<null | HTMLElement>(null);
   const downloadMenuOpen = Boolean(downloadAnchorEl);
 
-  // Dialog states
-  const [positionDialogOpen, setPositionDialogOpen] = useState(false);
-  const [marginDialogOpen, setMarginDialogOpen] = useState(false);
-  const [fontDialogOpen, setFontDialogOpen] = useState(false);
-  const [colorDialogOpen, setColorDialogOpen] = useState(false);
+  // Popover states
+  const [positionAnchorEl, setPositionAnchorEl] = useState<null | HTMLElement>(null);
+  const [marginAnchorEl, setMarginAnchorEl] = useState<null | HTMLElement>(null);
+  const [fontAnchorEl, setFontAnchorEl] = useState<null | HTMLElement>(null);
+  const [colorAnchorEl, setColorAnchorEl] = useState<null | HTMLElement>(null);
   const [addSubtitleDialogOpen, setAddSubtitleDialogOpen] = useState(false);
 
   // Add subtitle form state
@@ -178,7 +179,7 @@ export function VideoToolbar({
         <Button
           variant="text"
           startIcon={<HeightRounded />}
-          onClick={() => setPositionDialogOpen(true)}
+          onClick={(e) => setPositionAnchorEl(e.currentTarget)}
           size="small"
           sx={{ justifyContent: "flex-start" }}
         >
@@ -189,7 +190,7 @@ export function VideoToolbar({
         <Button
           variant="text"
           startIcon={<SpaceBarRounded />}
-          onClick={() => setMarginDialogOpen(true)}
+          onClick={(e) => setMarginAnchorEl(e.currentTarget)}
           size="small"
           sx={{ justifyContent: "flex-start" }}
         >
@@ -200,7 +201,7 @@ export function VideoToolbar({
         <Button
           variant="text"
           startIcon={<FormatSizeRounded />}
-          onClick={() => setFontDialogOpen(true)}
+          onClick={(e) => setFontAnchorEl(e.currentTarget)}
           size="small"
           sx={{ justifyContent: "flex-start" }}
         >
@@ -211,7 +212,7 @@ export function VideoToolbar({
         <Button
           variant="text"
           startIcon={<PaletteRounded />}
-          onClick={() => setColorDialogOpen(true)}
+          onClick={(e) => setColorAnchorEl(e.currentTarget)}
           size="small"
           sx={{ justifyContent: "flex-start" }}
         >
@@ -290,17 +291,17 @@ export function VideoToolbar({
         )}
       </Menu>
 
-      {/* Position Dialog */}
-      <Dialog
-        open={positionDialogOpen}
-        onClose={() => setPositionDialogOpen(false)}
-        maxWidth="sm"
-        fullWidth
+      {/* Position Popover */}
+      <Popover
+        open={Boolean(positionAnchorEl)}
+        anchorEl={positionAnchorEl}
+        onClose={() => setPositionAnchorEl(null)}
+        anchorOrigin={{ vertical: 'center', horizontal: 'left' }}
+        transformOrigin={{ vertical: 'center', horizontal: 'right' }}
       >
-        <DialogTitle>מיקום כתוביות</DialogTitle>
-        <DialogContent>
-          <Stack spacing={2} sx={{ pt: 2 }}>
-            <FormLabel>גובה הכתוביות (% מהחלק התחתון)</FormLabel>
+        <Paper sx={{ p: 3, width: 300 }}>
+          <Stack spacing={2}>
+            <FormLabel sx={{ fontWeight: 600 }}>גובה הכתוביות (% מהחלק התחתון)</FormLabel>
             <Slider
               value={offsetYPercent}
               onChange={onOffsetYChange}
@@ -314,23 +315,20 @@ export function VideoToolbar({
               ]}
             />
           </Stack>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setPositionDialogOpen(false)}>סגור</Button>
-        </DialogActions>
-      </Dialog>
+        </Paper>
+      </Popover>
 
-      {/* Margin Dialog */}
-      <Dialog
-        open={marginDialogOpen}
-        onClose={() => setMarginDialogOpen(false)}
-        maxWidth="sm"
-        fullWidth
+      {/* Margin Popover */}
+      <Popover
+        open={Boolean(marginAnchorEl)}
+        anchorEl={marginAnchorEl}
+        onClose={() => setMarginAnchorEl(null)}
+        anchorOrigin={{ vertical: 'center', horizontal: 'left' }}
+        transformOrigin={{ vertical: 'center', horizontal: 'right' }}
       >
-        <DialogTitle>שוליים</DialogTitle>
-        <DialogContent>
-          <Stack spacing={2} sx={{ pt: 2 }}>
-            <FormLabel>שוליים אופקיים (% מכל צד)</FormLabel>
+        <Paper sx={{ p: 3, width: 300 }}>
+          <Stack spacing={2}>
+            <FormLabel sx={{ fontWeight: 600 }}>שוליים אופקיים (% מכל צד)</FormLabel>
             <Slider
               value={marginPercent}
               onChange={onMarginChange}
@@ -344,22 +342,19 @@ export function VideoToolbar({
               ]}
             />
           </Stack>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setMarginDialogOpen(false)}>סגור</Button>
-        </DialogActions>
-      </Dialog>
+        </Paper>
+      </Popover>
 
-      {/* Font Dialog */}
-      <Dialog
-        open={fontDialogOpen}
-        onClose={() => setFontDialogOpen(false)}
-        maxWidth="sm"
-        fullWidth
+      {/* Font Popover */}
+      <Popover
+        open={Boolean(fontAnchorEl)}
+        anchorEl={fontAnchorEl}
+        onClose={() => setFontAnchorEl(null)}
+        anchorOrigin={{ vertical: 'center', horizontal: 'left' }}
+        transformOrigin={{ vertical: 'center', horizontal: 'right' }}
       >
-        <DialogTitle>גודל פונט</DialogTitle>
-        <DialogContent>
-          <Stack spacing={2} sx={{ pt: 2 }}>
+        <Paper sx={{ p: 3, width: 250 }}>
+          <Stack spacing={2}>
             <TextField
               label="גודל פונט"
               type="number"
@@ -367,30 +362,29 @@ export function VideoToolbar({
               onChange={onFontSizeChange}
               inputProps={{ min: 12, max: 96 }}
               fullWidth
+              size="small"
             />
           </Stack>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setFontDialogOpen(false)}>סגור</Button>
-        </DialogActions>
-      </Dialog>
+        </Paper>
+      </Popover>
 
-      {/* Color Dialog */}
-      <Dialog
-        open={colorDialogOpen}
-        onClose={() => setColorDialogOpen(false)}
-        maxWidth="sm"
-        fullWidth
+      {/* Color Popover */}
+      <Popover
+        open={Boolean(colorAnchorEl)}
+        anchorEl={colorAnchorEl}
+        onClose={() => setColorAnchorEl(null)}
+        anchorOrigin={{ vertical: 'center', horizontal: 'left' }}
+        transformOrigin={{ vertical: 'center', horizontal: 'right' }}
       >
-        <DialogTitle>צבעים</DialogTitle>
-        <DialogContent>
-          <Stack spacing={3} sx={{ pt: 2 }}>
+        <Paper sx={{ p: 3, width: 250 }}>
+          <Stack spacing={2}>
             <TextField
               label="צבע טקסט"
               type="color"
               value={fontColor}
               onChange={onFontColorChange}
               fullWidth
+              size="small"
               InputLabelProps={{ shrink: true }}
             />
             <TextField
@@ -399,14 +393,12 @@ export function VideoToolbar({
               value={outlineColor}
               onChange={onOutlineColorChange}
               fullWidth
+              size="small"
               InputLabelProps={{ shrink: true }}
             />
           </Stack>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setColorDialogOpen(false)}>סגור</Button>
-        </DialogActions>
-      </Dialog>
+        </Paper>
+      </Popover>
 
       {/* Add Subtitle Dialog */}
       <Dialog

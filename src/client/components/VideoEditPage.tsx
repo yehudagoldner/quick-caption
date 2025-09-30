@@ -199,7 +199,7 @@ export function VideoEditPage({ user, videoToken, onSaveSegments }: VideoEditPag
   return (
     <Container maxWidth="lg">
       <Box sx={{ py: 4 }}>
-        <Typography variant="h4" gutterBottom sx={{ fontWeight: 600 }}>
+        <Typography variant="h4" gutterBottom sx={{ fontWeight: 600, textAlign: "center" }}>
           עריכת כתוביות
         </Typography>
 
