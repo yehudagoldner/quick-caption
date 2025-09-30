@@ -33,23 +33,6 @@ export function TranscriptionResultHeader({
 }: TranscriptionResultHeaderProps) {
   return (
     <Stack spacing={3}>
-      <Stack direction={{ xs: "column", sm: "row" }} justifyContent="space-between" alignItems="center" gap={1}>
-        <Stack direction="row" spacing={1} alignItems="center">
-          <Chip label={subtitleFormatLabel} color="primary" variant="outlined" />
-          {downloadUrl && (
-            <Button
-              component="a"
-              href={downloadUrl}
-              download={downloadName}
-              variant="contained"
-              startIcon={<DownloadRounded />}
-            >
-              הורידו את קובץ הכתוביות
-            </Button>
-          )}
-        </Stack>
-      </Stack>
-
       {warnings?.length ? (
         <Alert severity="warning" icon={<FormatListBulletedRounded />}>
           <Stack spacing={1}>

@@ -117,6 +117,22 @@ export function useTranscriptionState({
     await persistSegments(editableSegments.map((segment) => ({ ...segment })));
   };
 
+  const handleAddSubtitle = useCallback(
+    async (text: string, startTime: number, endTime: number) => {
+      const newSegment: Segment = {
+        id: Date.now(), // Simple ID generation
+        start: startTime,
+        end: endTime,
+        text,
+      };
+
+      const newSegments = [...editableSegments, newSegment].sort((a, b) => a.start - b.start);
+      setEditableSegments(newSegments);
+      await persistSegments(newSegments);
+    },
+    [editableSegments, persistSegments],
+  );
+
   return {
     // State
     editableSegments,
@@ -154,6 +170,7 @@ export function useTranscriptionState({
     handleSegmentTextChange,
     handleSegmentTextChangeAndSave,
     handleSegmentBlur,
+    handleAddSubtitle,
     persistSegments,
   };
 }

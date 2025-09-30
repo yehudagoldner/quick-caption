@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { Card, CardContent, Stack } from "@mui/material";
 import type { ApiResponse, Segment } from "../types";
 import { useVideoPlayer } from "./VideoPlayer";
-import type { BurnOptions } from "./VideoBurner";
+import type { BurnOptions } from "./VideoToolbar";
 import { TranscriptionResultHeader } from "./TranscriptionResultHeader";
 import { TranscriptionMainContent } from "./TranscriptionMainContent";
 import { useTranscriptionState } from "../hooks/useTranscriptionState";
@@ -10,6 +10,7 @@ import { usePreviewStyle } from "../hooks/usePreviewStyle";
 import { useTranscriptionHandlers } from "../hooks/useTranscriptionHandlers";
 import { useVideoControls } from "../hooks/useVideoControls";
 
+export type { BurnOptions };
 type BurnResult = { blob: Blob; filename?: string; };
 type BurnedVideo = { url: string; name: string; };
 type SaveState = "idle" | "saving" | "success" | "error";
@@ -77,6 +78,7 @@ export function TranscriptionResult({
     handleSegmentTextChange,
     handleSegmentTextChangeAndSave,
     handleSegmentBlur,
+    handleAddSubtitle,
     persistSegments,
   } = useTranscriptionState({
     responseSegments,
@@ -188,6 +190,8 @@ export function TranscriptionResult({
             videoDimensions={videoDimensions}
             saveState={saveState}
             saveError={saveError}
+            downloadUrl={downloadUrl}
+            downloadName={downloadName}
             onVideoTimeUpdate={handleVideoTimeUpdate}
             onVideoLoadedMetadata={handleVideoLoadedMetadata}
             onVideoResize={handleVideoResize}
@@ -203,6 +207,7 @@ export function TranscriptionResult({
             onOffsetYChange={handleOffsetYChange}
             onMarginChange={handleMarginChange}
             onBurnVideo={handleBurnVideo}
+            onAddSubtitle={handleAddSubtitle}
             isPlaying={isPlaying}
             onPlayPause={handlePlayPause}
           />

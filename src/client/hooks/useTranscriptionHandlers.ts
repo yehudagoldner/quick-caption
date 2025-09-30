@@ -1,7 +1,7 @@
 import type { ChangeEvent } from "react";
 import { useCallback } from "react";
 import type { ApiResponse, Segment } from "../types";
-import type { BurnOptions } from "../components/VideoBurner";
+import type { BurnOptions } from "../components/VideoToolbar";
 import { findSegment } from "../utils/transcriptionUtils";
 
 type BurnResult = {
@@ -74,7 +74,7 @@ export function useTranscriptionHandlers({
   const handleVideoTimeUpdate = useCallback((nextTime: number) => {
     const segment = findSegment(editableSegments, nextTime);
     setActiveSegmentId(segment?.id ?? null);
-    setCurrentTime((prev) => (Math.abs(prev - nextTime) > 0.02 ? nextTime : prev));
+    setCurrentTime(nextTime);
   }, [editableSegments, setActiveSegmentId, setCurrentTime]);
 
   const handleVideoLoadedMetadata = useCallback((dimensions: { width: number; height: number }, duration: number) => {
@@ -170,7 +170,14 @@ export function useTranscriptionHandlers({
       }
       const url = URL.createObjectURL(result.blob);
       const baseName = downloadName.replace(/\.[^.]+$/, "") || "video";
-      setBurnedVideo({ url, name: result.filename ?? `${baseName}-burned.mp4` });
+      const filename = result.filename ?? `${baseName}-burned.mp4`;
+      setBurnedVideo({ url, name: filename });
+
+      // Auto-download the burned video
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = filename;
+      link.click();
     } catch (error) {
       setBurnError(error instanceof Error ? error.message : "אירעה שגיאה בזמן יצירת הווידאו.");
     } finally {

@@ -492,25 +492,26 @@ export function SubtitleTimeline({
         </Typography>
 
         {/* Time Scrubber */}
-        <Box sx={{ flexGrow: 1 }}>
+        <Box sx={{ flexGrow: 1 }} dir="ltr">
           <Slider
             min={0}
             max={totalDuration}
             step={0.1}
-            value={currentTime || 0}
+            value={totalDuration - (currentTime || 0)}
             onChange={(_event, value) => {
-              const time = Array.isArray(value) ? value[0] : value;
-              console.debug('🎚️ Scrubber onChange:', { time, hasHandler: !!onRequestTimeChange });
+              const invertedValue = Array.isArray(value) ? value[0] : value;
+              const time = totalDuration - invertedValue;
+              console.debug('🎚️ Scrubber onChange:', { time, invertedValue, hasHandler: !!onRequestTimeChange });
               onRequestTimeChange?.(time);
             }}
             size="small"
             sx={{
               "& .MuiSlider-thumb": {
-                bgcolor: "primary.main",
+                bgcolor: "primary.main"
               },
               "& .MuiSlider-track": {
-                bgcolor: "primary.main",
-              },
+                bgcolor: "primary.main"
+              }
             }}
           />
         </Box>
@@ -524,7 +525,22 @@ export function SubtitleTimeline({
       {/* Timeline with Vertical Zoom Control */}
       <Stack direction="row" spacing={1} sx={{ position: "relative" }}>
         {/* Main Timeline */}
-        <Box sx={{ flex: 1 }} ref={timelineContainerRef}>
+        <Box
+          sx={{
+            flex: 1,
+            direction: "ltr",
+            "& *": {
+              direction: "ltr !important"
+            },
+            "& .timeline-editor": {
+              direction: "ltr !important"
+            },
+            "& .timeline-editor-time-area": {
+              direction: "ltr !important"
+            }
+          }}
+          ref={timelineContainerRef}
+        >
           <Timeline
             ref={timelineRef}
             editorData={editorData}

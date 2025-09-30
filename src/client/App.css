@@ -275,3 +275,19 @@ body {
 .preview-wrapper{
   align-items:center !important
 }
+
+/* Force timeline to be LTR */
+.timeline-editor,
+.timeline-editor *,
+.timeline-editor-time-area,
+.timeline-editor-time-area *,
+.timeline-editor-edit-area,
+.timeline-editor-edit-area * {
+  direction: ltr !important;
+}
+
+/* Force horizontal scrollbar to work left-to-right */
+.timeline-editor-time-area-scale-horizontal {
+  direction: ltr !important;
+  transform: scaleX(1) !important;
+}
