@@ -96,6 +96,7 @@ export async function transcribeMedia({
     return {
       text: refinedResult.text,
       segments: refinedResult.segments,
+      words: timedResult.words ?? [],
       subtitle: {
         format: normalizedFormat,
         content: subtitleContent,
@@ -225,10 +226,11 @@ async function transcribeWithTimedModel(client, audioPath, options, logger) {
     response_format: responseFormat,
     translate,
     language,
-    timestamp_granularities: ["segment"],
+    timestamp_granularities: ["word", "segment"],
   });
 
   const segments = extractSegmentsFromTranscription(transcription);
+  const words = Array.isArray(transcription.words) ? transcription.words : [];
   const combinedText =
     transcription.text?.trim() ?? segments.map((segment) => segment.text).join(" ").trim();
 
@@ -236,7 +238,7 @@ async function transcribeWithTimedModel(client, audioPath, options, logger) {
     throw new Error(`No segments returned by model ${timedModel}; cannot proceed without timestamps.`);
   }
 
-  return { text: combinedText, segments };
+  return { text: combinedText, segments, words };
 }
 
 function shouldRunHighAccuracy(modelName) {
@@ -512,4 +514,123 @@ async function runCommand(command, args, { stdio = "inherit", cwd, logger } = {}
       }
     });
   });
+}
+
+/**
+ * Transcribe media with word-level timestamps using OpenAI Whisper API
+ * @param {Object} params - Parameters
+ * @param {string} params.inputPath - Path to media file
+ * @param {string} params.outputPath - Path for output TXT file (optional)
+ * @param {Object} params.logger - Logger object
+ * @returns {Promise<Object>} Object with text, segments, and words array
+ */
+export async function transcribeWithWordTimestamps({
+  inputPath,
+  outputPath = null,
+  logger = console,
+} = {}) {
+  if (!inputPath) {
+    throw new Error("inputPath is required");
+  }
+
+  const resolvedInput = path.resolve(inputPath);
+  await assertPathExists(resolvedInput);
+
+  const client = createOpenAIClient();
+  const options = getTranscriptionOptions();
+
+  logger?.log?.("Preparing audio for word-level transcription...");
+  const audioPreparation = await prepareAudioForTranscription(resolvedInput, logger);
+
+  try {
+    logger?.log?.(`Uploading audio to ${options.timedModel} for word-level transcription...`);
+
+    // Request word-level timestamps from Whisper API
+    const transcription = await client.audio.transcriptions.create({
+      file: fs.createReadStream(audioPreparation.audioPath),
+      model: options.timedModel,
+      temperature: options.temperature,
+      response_format: "verbose_json",
+      language: options.language,
+      timestamp_granularities: ["word", "segment"],
+    });
+
+    logger?.log?.("Processing word-level timestamps...");
+
+    // Extract word-level data
+    const words = Array.isArray(transcription.words) ? transcription.words : [];
+    const segments = extractSegmentsFromTranscription(transcription);
+
+    if (!words.length) {
+      throw new Error("No word-level timestamps returned by the API");
+    }
+
+    // Format output text
+    const outputText = formatWordTimestampsAsText(words, segments);
+
+    // Save to file if output path specified
+    if (outputPath) {
+      const resolvedOutput = path.resolve(outputPath);
+      await fsp.writeFile(resolvedOutput, outputText, "utf-8");
+      logger?.log?.(`Word-level timestamps saved to: ${resolvedOutput}`);
+    }
+
+    return {
+      text: transcription.text,
+      segments,
+      words,
+      formattedOutput: outputText,
+    };
+  } finally {
+    if (audioPreparation.cleanup) {
+      await audioPreparation.cleanup().catch(() => {});
+    }
+  }
+}
+
+/**
+ * Format word timestamps as readable text
+ * @param {Array} words - Array of word objects with start, end, and word properties
+ * @param {Array} segments - Array of segment objects
+ * @returns {string} Formatted text output
+ */
+function formatWordTimestampsAsText(words, segments) {
+  let output = "WORD-LEVEL TIMESTAMPS\n";
+  output += "=" .repeat(80) + "\n\n";
+
+  // Group words by segments
+  for (const segment of segments) {
+    output += `SEGMENT ${segment.id} [${formatTimestamp(segment.start, ",")} --> ${formatTimestamp(segment.end, ",")}]\n`;
+    output += "-".repeat(80) + "\n";
+    output += `Full text: ${segment.text}\n\n`;
+
+    // Find words that belong to this segment
+    const segmentWords = words.filter(
+      (word) => word.start >= segment.start && word.end <= segment.end
+    );
+
+    if (segmentWords.length > 0) {
+      output += "Words:\n";
+      for (const word of segmentWords) {
+        const startTime = formatTimestamp(word.start, ",");
+        const endTime = formatTimestamp(word.end, ",");
+        const duration = (word.end - word.start).toFixed(3);
+        output += `  [${startTime} --> ${endTime}] (${duration}s) "${word.word}"\n`;
+      }
+    } else {
+      output += "No word-level timestamps available for this segment\n";
+    }
+
+    output += "\n";
+  }
+
+  // Add summary
+  output += "=" .repeat(80) + "\n";
+  output += `SUMMARY\n`;
+  output += "-".repeat(80) + "\n";
+  output += `Total segments: ${segments.length}\n`;
+  output += `Total words: ${words.length}\n`;
+  output += `Video duration: ${formatTimestamp(segments[segments.length - 1]?.end || 0, ",")}\n`;
+
+  return output;
 }

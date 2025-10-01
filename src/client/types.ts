@@ -5,6 +5,12 @@ export type Segment = {
   text: string;
 };
 
+export type Word = {
+  word: string;
+  start: number;
+  end: number;
+};
+
 export type SubtitlePayload = {
   format: string;
   content: string;
@@ -13,6 +19,7 @@ export type SubtitlePayload = {
 export type ApiResponse = {
   text: string;
   segments: Segment[];
+  words?: Word[];
   subtitle: SubtitlePayload;
   warnings?: string[];
   error?: string;

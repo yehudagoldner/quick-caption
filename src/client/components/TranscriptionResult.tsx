@@ -75,10 +75,12 @@ export function TranscriptionResult({
     saveError,
     selectedSegmentId,
     setSelectedSegmentId,
+    activeWordEnabled,
     handleSegmentTextChange,
     handleSegmentTextChangeAndSave,
     handleSegmentBlur,
     handleAddSubtitle,
+    handleToggleActiveWord,
     persistSegments,
   } = useTranscriptionState({
     responseSegments,
@@ -173,6 +175,7 @@ export function TranscriptionResult({
             activeSegmentText={activeSegment?.text ?? null}
             previewStyle={previewStyle}
             editableSegments={editableSegments}
+            words={response.words}
             isEditable={isEditable}
             videoDuration={videoDuration}
             renderDimensions={renderDimensions}
@@ -192,6 +195,7 @@ export function TranscriptionResult({
             saveError={saveError}
             downloadUrl={downloadUrl}
             downloadName={downloadName}
+            activeWordEnabled={activeWordEnabled}
             onVideoTimeUpdate={handleVideoTimeUpdate}
             onVideoLoadedMetadata={handleVideoLoadedMetadata}
             onVideoResize={handleVideoResize}
@@ -208,6 +212,7 @@ export function TranscriptionResult({
             onMarginChange={handleMarginChange}
             onBurnVideo={handleBurnVideo}
             onAddSubtitle={handleAddSubtitle}
+            onToggleActiveWord={handleToggleActiveWord}
             isPlaying={isPlaying}
             onPlayPause={handlePlayPause}
           />

@@ -1,11 +1,16 @@
 import { useEffect, useRef, useState } from "react";
 import { Box, Stack, Typography } from "@mui/material";
 import { VideoLibraryRounded } from "@mui/icons-material";
+import type { Word } from "../types";
+import { useActiveWord } from "../hooks/useActiveWord";
 
 type VideoPlayerProps = {
   mediaUrl: string | null;
   activeSegmentText: string | null;
   previewStyle: React.CSSProperties;
+  words?: Word[];
+  currentTime: number;
+  activeWordEnabled: boolean;
   onTimeUpdate?: (currentTime: number) => void;
   onLoadedMetadata?: (dimensions: { width: number; height: number }, duration: number) => void;
   onResize?: (dimensions: { width: number; height: number }) => void;
@@ -15,11 +20,20 @@ export function VideoPlayer({
   mediaUrl,
   activeSegmentText,
   previewStyle,
+  words,
+  currentTime,
+  activeWordEnabled,
   onTimeUpdate,
   onLoadedMetadata,
   onResize,
 }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
+
+  const activeWord = useActiveWord({
+    words,
+    currentTime,
+    enabled: activeWordEnabled,
+  });
 
   // Debug logging for active segment text changes
   useEffect(() => {
@@ -115,7 +129,15 @@ export function VideoPlayer({
               sx={{ width: "100%", display: "block", backgroundColor: "common.black" }}
             />
             {activeSegmentText && (
-              <Box sx={previewStyle}>{activeSegmentText}</Box>
+              <Box sx={previewStyle}>
+                {activeWordEnabled && activeWord ? (
+                  // Render text with active word highlighted
+                  renderTextWithActiveWord(activeSegmentText, activeWord.word)
+                ) : (
+                  // Render plain text
+                  activeSegmentText
+                )}
+              </Box>
             )}
           </>
         ) : (
@@ -151,4 +173,32 @@ export function useVideoPlayer() {
   }, []);
 
   return videoElement;
+}
+
+/**
+ * Render text with active word highlighted
+ * Splits text into words and highlights the matching word
+ */
+function renderTextWithActiveWord(text: string, activeWordText: string) {
+  const words = text.split(/(\s+)/); // Split but keep whitespace
+
+  return (
+    <>
+      {words.map((word, index) => {
+        const isActive = word.trim() === activeWordText.trim();
+        return (
+          <span
+            key={index}
+            style={{
+              color: isActive ? '#FFD700' : 'inherit', // Gold color for active word
+              fontWeight: isActive ? 'bold' : 'inherit',
+              textShadow: isActive ? '0 0 8px rgba(255, 215, 0, 0.8)' : 'inherit',
+            }}
+          >
+            {word}
+          </span>
+        );
+      })}
+    </>
+  );
 }

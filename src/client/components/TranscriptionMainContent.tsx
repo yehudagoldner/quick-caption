@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Box, Divider, Stack } from "@mui/material";
-import type { Segment } from "../types";
+import type { Segment, Word } from "../types";
 import { SubtitleTimeline } from "./SubtitleTimeline";
 import { VideoPlayer } from "./VideoPlayer";
 import { SubtitleEditor } from "./SubtitleEditor";
@@ -18,6 +18,7 @@ type TranscriptionMainContentProps = {
   activeSegmentText: string | null;
   previewStyle: React.CSSProperties;
   editableSegments: Segment[];
+  words?: Word[];
   isEditable: boolean;
   videoDuration: number | null;
   renderDimensions: { width: number; height: number } | null;
@@ -37,6 +38,7 @@ type TranscriptionMainContentProps = {
   saveError: string | null;
   downloadUrl: string | null;
   downloadName: string;
+  activeWordEnabled: boolean;
   onVideoTimeUpdate: (nextTime: number) => void;
   onVideoLoadedMetadata: (dimensions: { width: number; height: number }, duration: number) => void;
   onVideoResize: (dimensions: { width: number; height: number }) => void;
@@ -53,6 +55,7 @@ type TranscriptionMainContentProps = {
   onMarginChange: (event: Event, value: number | number[]) => void;
   onBurnVideo: () => void;
   onAddSubtitle: (text: string, startTime: number, endTime: number) => void;
+  onToggleActiveWord: () => void;
   // Video control props
   isPlaying?: boolean;
   onPlayPause?: () => void;
@@ -63,6 +66,7 @@ export function TranscriptionMainContent({
   activeSegmentText,
   previewStyle,
   editableSegments,
+  words,
   isEditable,
   videoDuration,
   renderDimensions,
@@ -82,6 +86,7 @@ export function TranscriptionMainContent({
   saveError,
   downloadUrl,
   downloadName,
+  activeWordEnabled,
   // Video control props
   isPlaying,
   onPlayPause,
@@ -101,6 +106,7 @@ export function TranscriptionMainContent({
   onMarginChange,
   onBurnVideo,
   onAddSubtitle,
+  onToggleActiveWord,
 }: TranscriptionMainContentProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
@@ -123,6 +129,7 @@ export function TranscriptionMainContent({
               downloadName={downloadName}
               sidebarOpen={sidebarOpen}
               currentTime={currentTime}
+              activeWordEnabled={activeWordEnabled}
               onFontSizeChange={onFontSizeChange}
               onFontColorChange={onFontColorChange}
               onOutlineColorChange={onOutlineColorChange}
@@ -131,6 +138,7 @@ export function TranscriptionMainContent({
               onBurnVideo={onBurnVideo}
               onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
               onAddSubtitle={onAddSubtitle}
+              onToggleActiveWord={onToggleActiveWord}
             />
 
             <Box sx={{ maxWidth: 800, flex: 1 }}>
@@ -138,6 +146,9 @@ export function TranscriptionMainContent({
                 mediaUrl={mediaUrl}
                 activeSegmentText={activeSegmentText}
                 previewStyle={previewStyle}
+                words={words}
+                currentTime={currentTime}
+                activeWordEnabled={activeWordEnabled}
                 onTimeUpdate={onVideoTimeUpdate}
                 onLoadedMetadata={onVideoLoadedMetadata}
                 onResize={onVideoResize}

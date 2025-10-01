@@ -21,6 +21,8 @@ import {
   Alert,
   FormControl,
   InputLabel,
+  Switch,
+  FormControlLabel,
 } from "@mui/material";
 import {
   DownloadRounded,
@@ -32,6 +34,7 @@ import {
   MovieFilterRounded,
   SubtitlesRounded,
   AddRounded,
+  RecordVoiceOverRounded,
 } from "@mui/icons-material";
 
 export type BurnOptions = {
@@ -63,6 +66,7 @@ type VideoToolbarProps = {
   downloadName: string;
   sidebarOpen: boolean;
   currentTime: number;
+  activeWordEnabled: boolean;
   onFontSizeChange: (event: ChangeEvent<HTMLInputElement>) => void;
   onFontColorChange: (event: ChangeEvent<HTMLInputElement>) => void;
   onOutlineColorChange: (event: ChangeEvent<HTMLInputElement>) => void;
@@ -71,6 +75,7 @@ type VideoToolbarProps = {
   onBurnVideo: () => void;
   onToggleSidebar: () => void;
   onAddSubtitle: (text: string, startTime: number, endTime: number) => void;
+  onToggleActiveWord: () => void;
 };
 
 export function VideoToolbar({
@@ -87,6 +92,7 @@ export function VideoToolbar({
   downloadName,
   sidebarOpen,
   currentTime,
+  activeWordEnabled,
   onFontSizeChange,
   onFontColorChange,
   onOutlineColorChange,
@@ -95,6 +101,7 @@ export function VideoToolbar({
   onBurnVideo,
   onToggleSidebar,
   onAddSubtitle,
+  onToggleActiveWord,
 }: VideoToolbarProps) {
   // Download menu state
   const [downloadAnchorEl, setDownloadAnchorEl] = useState<null | HTMLElement>(null);
@@ -233,6 +240,18 @@ export function VideoToolbar({
           sx={{ justifyContent: "flex-start" }}
         >
           הוסף כתובית
+        </Button>
+
+        {/* Active Word Toggle */}
+        <Button
+          variant="text"
+          startIcon={<RecordVoiceOverRounded />}
+          onClick={onToggleActiveWord}
+          size="small"
+          color={activeWordEnabled ? "primary" : "inherit"}
+          sx={{ justifyContent: "flex-start" }}
+        >
+          מילה אקטיבית
         </Button>
 
         {/* Sidebar Toggle */}

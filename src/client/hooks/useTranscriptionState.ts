@@ -41,6 +41,7 @@ export function useTranscriptionState({
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const [saveError, setSaveError] = useState<string | null>(null);
   const [selectedSegmentId, setSelectedSegmentId] = useState<Segment["id"] | null>(null);
+  const [activeWordEnabled, setActiveWordEnabled] = useState(false);
 
   useEffect(() => {
     setEditableSegments(responseSegments.map((segment) => ({ ...segment })));
@@ -133,6 +134,10 @@ export function useTranscriptionState({
     [editableSegments, persistSegments],
   );
 
+  const handleToggleActiveWord = useCallback(() => {
+    setActiveWordEnabled((prev) => !prev);
+  }, []);
+
   return {
     // State
     editableSegments,
@@ -166,11 +171,13 @@ export function useTranscriptionState({
     saveError,
     selectedSegmentId,
     setSelectedSegmentId,
+    activeWordEnabled,
     // Handlers
     handleSegmentTextChange,
     handleSegmentTextChangeAndSave,
     handleSegmentBlur,
     handleAddSubtitle,
+    handleToggleActiveWord,
     persistSegments,
   };
 }

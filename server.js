@@ -9,7 +9,7 @@ import { createServer } from "http";
 import { Server as SocketIOServer } from "socket.io";
 import dotenv from "dotenv";
 
-import { transcribeMedia, normalizeSubtitleFormat } from "./src/transcription.js";
+import { transcribeMedia, normalizeSubtitleFormat, transcribeWithWordTimestamps } from "./src/transcription.js";
 import { createBurnSubtitlesRouter } from "./routes/burnSubtitles.js";
 import { ensureSchema, upsertUser, saveVideo, updateVideoSubtitles, getUserVideos, getVideoById } from "./db.js";
 
@@ -483,6 +483,7 @@ app.post("/api/transcribe", upload.single("media"), async (req, res) => {
     res.json({
       text: result.text,
       segments: result.segments,
+      words: result.words ?? [],
       subtitle: result.subtitle,
       warnings: result.warnings,
       models: result.models,
@@ -510,6 +511,32 @@ app.post("/api/transcribe", upload.single("media"), async (req, res) => {
     }
     console.error("Unhandled error:", error);
     emitStage("complete", "error", error.message ?? "Internal Server Error");
+    res.status(500).json({ error: error.message ?? "Internal Server Error" });
+  } finally {
+    await safeUnlink(req.file.path);
+  }
+});
+
+// Word-level timestamp transcription endpoint
+app.post("/api/transcribe-words", upload.single("media"), async (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ error: 'Media file is required under field name "media".' });
+  }
+
+  try {
+    const result = await transcribeWithWordTimestamps({
+      inputPath: req.file.path,
+      logger: createRequestLogger(req),
+    });
+
+    res.json({
+      text: result.text,
+      segments: result.segments,
+      words: result.words,
+      formattedOutput: result.formattedOutput,
+    });
+  } catch (error) {
+    console.error("Word transcription error:", error);
     res.status(500).json({ error: error.message ?? "Internal Server Error" });
   } finally {
     await safeUnlink(req.file.path);
