@@ -4,7 +4,7 @@ import type { Segment, Word } from "../types";
 import { SubtitleTimeline } from "./SubtitleTimeline";
 import { VideoPlayer } from "./VideoPlayer";
 import { SubtitleEditor } from "./SubtitleEditor";
-import { VideoToolbar, type BurnOptions } from "./VideoToolbar";
+import { VideoToolbar } from "./VideoToolbar";
 
 type SaveState = "idle" | "saving" | "success" | "error";
 
@@ -69,7 +69,6 @@ export function TranscriptionMainContent({
   words,
   isEditable,
   videoDuration,
-  renderDimensions,
   currentTime,
   selectedSegmentId,
   activeSegmentId,
@@ -81,7 +80,6 @@ export function TranscriptionMainContent({
   isBurning,
   burnError,
   burnedVideo,
-  videoDimensions,
   saveState,
   saveError,
   downloadUrl,

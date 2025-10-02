@@ -1,6 +1,5 @@
 ﻿import type { FormEvent } from "react";
-import { Alert, Card, CardContent, Divider, Fade, Stack, Typography } from "@mui/material";
-import { CloudUploadRounded } from "@mui/icons-material";
+import { Alert, Card, CardContent, Fade, Stack } from "@mui/material";
 import { UploadForm } from "./UploadForm";
 import type { StageState } from "../types";
 import type { FormatOption } from "../hooks/useTranscriptionWorkflow";

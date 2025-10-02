@@ -192,18 +192,9 @@ export function SubtitleTimeline({
       const positionPx = startLeft + time * pixelsPerUnit;
 
       // Get actual current scroll position from timeline, fallback to tracked position
-      let actualScroll = scrollLeftRef.current;
-      if (timelineRef.current.getScrollLeft && typeof timelineRef.current.getScrollLeft === 'function') {
-        try {
-          actualScroll = timelineRef.current.getScrollLeft();
-        } catch (error) {
-          // Fallback to tracked scroll position if getScrollLeft fails
-        }
-      }
+      const actualScroll = scrollLeftRef.current;
 
       // Always center the current time when it changes during video playback
-      // Use a smaller margin to be more aggressive about scrolling
-      const margin = Math.min(50, viewWidth / 8);
       let targetScroll = actualScroll;
 
       // More aggressive scrolling: always center if not in the center 25% of viewport

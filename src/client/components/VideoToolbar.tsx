@@ -7,7 +7,6 @@ import {
   DialogContent,
   DialogActions,
   FormLabel,
-  IconButton,
   Menu,
   MenuItem,
   Paper,
@@ -16,13 +15,10 @@ import {
   Slider,
   Stack,
   TextField,
-  Tooltip,
   CircularProgress,
   Alert,
   FormControl,
   InputLabel,
-  Switch,
-  FormControlLabel,
 } from "@mui/material";
 import {
   DownloadRounded,

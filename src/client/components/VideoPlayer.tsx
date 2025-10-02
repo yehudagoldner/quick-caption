@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from "react";
 import { Box, Stack, Typography } from "@mui/material";
-import { VideoLibraryRounded } from "@mui/icons-material";
 import type { Word } from "../types";
 import { useActiveWord } from "../hooks/useActiveWord";
 

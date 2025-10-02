@@ -12,8 +12,6 @@ import { useVideoControls } from "../hooks/useVideoControls";
 
 export type { BurnOptions };
 type BurnResult = { blob: Blob; filename?: string; };
-type BurnedVideo = { url: string; name: string; };
-type SaveState = "idle" | "saving" | "success" | "error";
 
 type TranscriptionResultProps = {
   response: ApiResponse;

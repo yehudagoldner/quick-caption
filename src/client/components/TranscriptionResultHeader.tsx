@@ -1,7 +1,5 @@
 import {
   Alert,
-  Button,
-  Chip,
   List,
   ListItem,
   ListItemIcon,
@@ -9,12 +7,8 @@ import {
   Typography,
 } from "@mui/material";
 import {
-  DownloadRounded,
   FormatListBulletedRounded,
-  ReplayRounded,
-  SubtitlesRounded,
 } from "@mui/icons-material";
-import type { ApiResponse } from "../types";
 
 type TranscriptionResultHeaderProps = {
   subtitleFormatLabel: string;
@@ -25,11 +19,7 @@ type TranscriptionResultHeaderProps = {
 };
 
 export function TranscriptionResultHeader({
-  subtitleFormatLabel,
-  downloadUrl,
-  downloadName,
   warnings,
-  onBack,
 }: TranscriptionResultHeaderProps) {
   return (
     <Stack spacing={3}>

@@ -97,7 +97,7 @@ function App() {
     }
   };
 
-  const handleSaveSegments = async (segments: any[], subtitleContent: string) => {
+  const handleSaveSegments = async (segments: any[]) => {
     if (!videoToken || !workflow.user?.uid) {
       throw new Error("Invalid session");
     }
@@ -135,7 +135,7 @@ function App() {
           onNavigate={(page) => navigateToScreen(page === "videos" ? "videos" : "home")}
         />
 
-        <Container maxWidth="100%" sx={{ py: { xs: 4, md: 6 }, mt: { xs: 12, md: 10 } }}>
+        <Container maxWidth={false} sx={{ py: { xs: 4, md: 6 }, mt: { xs: 12, md: 10 } }}>
           {currentScreen === "home" && (
             <PromotionalHome
               user={workflow.user}
