@@ -57,6 +57,11 @@ export async function ensureSchema() {
   if (Array.isArray(mimeTypeColumns) && mimeTypeColumns.length === 0) {
     await pool.execute("ALTER TABLE videos ADD COLUMN mime_type VARCHAR(100) NULL AFTER media_type");
   }
+
+  const [wordsJsonColumns] = await pool.query("SHOW COLUMNS FROM videos LIKE 'words_json'");
+  if (Array.isArray(wordsJsonColumns) && wordsJsonColumns.length === 0) {
+    await pool.execute("ALTER TABLE videos ADD COLUMN words_json JSON NULL AFTER subtitle_json");
+  }
 }
 
 export async function upsertUser({
@@ -105,10 +110,11 @@ export async function saveVideo({
   sizeBytes = null,
   transcriptionId = null,
   subtitleJson = null,
+  wordsJson = null,
 }) {
   const [result] = await pool.execute(
-    `INSERT INTO videos (user_uid, original_filename, stored_path, status, media_type, mime_type, format, duration_seconds, size_bytes, transcription_id, subtitle_json)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO videos (user_uid, original_filename, stored_path, status, media_type, mime_type, format, duration_seconds, size_bytes, transcription_id, subtitle_json, words_json)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       userUid,
       originalFilename,
@@ -121,16 +127,17 @@ export async function saveVideo({
       sizeBytes,
       transcriptionId,
       subtitleJson,
+      wordsJson,
     ],
   );
 
   return result?.insertId ?? null;
 }
 
-export async function updateVideoSubtitles({ videoId, userUid, subtitleJson }) {
+export async function updateVideoSubtitles({ videoId, userUid, subtitleJson, wordsJson = null }) {
   const [result] = await pool.execute(
-    `UPDATE videos SET subtitle_json = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_uid = ?`,
-    [subtitleJson, videoId, userUid],
+    `UPDATE videos SET subtitle_json = ?, words_json = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_uid = ?`,
+    [subtitleJson, wordsJson, videoId, userUid],
   );
 
   return result;
@@ -155,7 +162,7 @@ export async function getUserVideos({ userUid, limit = 50, offset = 0 }) {
 
 export async function getVideoById({ videoId, userUid }) {
   const [rows] = await pool.execute(
-    `SELECT id, user_uid, original_filename, stored_path, status, media_type, mime_type, format, duration_seconds, size_bytes, transcription_id, subtitle_json, created_at, updated_at
+    `SELECT id, user_uid, original_filename, stored_path, status, media_type, mime_type, format, duration_seconds, size_bytes, transcription_id, subtitle_json, words_json, created_at, updated_at
      FROM videos
      WHERE id = ? AND user_uid = ?
      LIMIT 1`,

@@ -62,6 +62,10 @@ export function VideoEditPage({ user, videoToken, onSaveSegments }: VideoEditPag
         ? JSON.parse(video.subtitle_json)
         : video.subtitle_json;
 
+      const words = video.words_json
+        ? (typeof video.words_json === "string" ? JSON.parse(video.words_json) : video.words_json)
+        : undefined;
+
       const subtitleContent = segmentsToSrt(segments);
       const videoFormat = video.format || ".srt";
 
@@ -70,6 +74,7 @@ export function VideoEditPage({ user, videoToken, onSaveSegments }: VideoEditPag
       setResponse({
         text: segments.map((s: Segment) => s.text).join("\n"),
         segments,
+        words,
         subtitle: {
           format: videoFormat,
           content: subtitleContent,

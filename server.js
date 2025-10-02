@@ -470,6 +470,7 @@ app.post("/api/transcribe", upload.single("media"), async (req, res) => {
           sizeBytes: req.file?.size ?? null,
           transcriptionId: null,
           subtitleJson: result.segments ? JSON.stringify(result.segments) : null,
+          wordsJson: result.words ? JSON.stringify(result.words) : null,
         });
       } catch (videoError) {
         console.error('Failed to store video metadata:', videoError);
@@ -541,6 +542,15 @@ app.post("/api/transcribe-words", upload.single("media"), async (req, res) => {
   } finally {
     await safeUnlink(req.file.path);
   }
+});
+
+// Serve static files from the React app build directory
+app.use(express.static(path.join(process.cwd(), 'dist')));
+
+// Handle all unhandled routes by serving the React app
+// This must be after all API routes
+app.get(/.*/, (req, res) => {
+  res.sendFile(path.join(process.cwd(), 'dist', 'index.html'));
 });
 
 httpServer.listen(port, () => {
