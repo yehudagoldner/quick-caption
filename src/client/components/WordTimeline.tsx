@@ -165,6 +165,13 @@ export function WordTimeline({
     timelineRef.current.setTime(currentTime - segment.start);
   }, [currentTime, segment.start]);
 
+  const handleActionClick = useCallback((action: TimelineAction) => {
+    const wordData = wordLookup.get(action.id);
+    if (wordData) {
+      setSelectedWordIndex(wordData.index);
+    }
+  }, [wordLookup]);
+
   const renderAction = useCallback(
     (action: TimelineAction) => {
       const wordData = wordLookup.get(action.id);
@@ -219,13 +226,6 @@ export function WordTimeline({
     const decimalPart = millis ? `.${Math.floor(millis / 100)}` : "";
     return `${wholeSeconds}${decimalPart}s`;
   }, [baseScale]);
-
-  const handleActionClick = useCallback((action: TimelineAction) => {
-    const wordData = wordLookup.get(action.id);
-    if (wordData) {
-      setSelectedWordIndex(wordData.index);
-    }
-  }, [wordLookup]);
 
   const handleEditWord = useCallback(() => {
     if (selectedWordIndex === null) return;
