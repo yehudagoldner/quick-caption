@@ -15,7 +15,8 @@ import {
   type TimelineRow,
   type TimelineState,
 } from "@xzdarcy/react-timeline-editor";
-import type { Segment } from "../types";
+import type { Segment, Word } from "../types";
+import { WordTimeline } from "./WordTimeline";
 
 const ROW_ID = "subtitle-row";
 
@@ -37,6 +38,10 @@ export type SubtitleTimelineProps = {
   // Video control props
   isPlaying?: boolean;
   onPlayPause?: () => void;
+  // Word editing props
+  words?: Word[];
+  activeWordEnabled?: boolean;
+  onWordsChange?: (words: Word[]) => void;
 };
 
 export function SubtitleTimeline({
@@ -52,6 +57,9 @@ export function SubtitleTimeline({
   onSegmentTextChange,
   isPlaying = false,
   onPlayPause,
+  words,
+  activeWordEnabled = false,
+  onWordsChange,
 }: SubtitleTimelineProps) {
   const editorData = useMemo<TimelineRow[]>(() => {
     const actions: TimelineAction[] = segments.map((segment) => ({
@@ -362,6 +370,14 @@ export function SubtitleTimeline({
     [disabled, onSegmentSelect, segmentLookup],
   );
 
+  const handleWordTimelineSave = useCallback(() => {
+    onSegmentSelect?.(null);
+  }, [onSegmentSelect]);
+
+  const handleWordTimelineClose = useCallback(() => {
+    onSegmentSelect?.(null);
+  }, [onSegmentSelect]);
+
   const renderAction = useCallback(
     (action: TimelineAction) => {
       const segment = segmentLookup.get(action.id);
@@ -593,70 +609,85 @@ export function SubtitleTimeline({
       </Stack>
 
       {selectedSegment && !disabled && (
-        <Card
-          elevation={3}
-          sx={{
-            p: 2,
-            bgcolor: "primary.main",
-            color: "primary.contrastText",
-            borderRadius: 2,
-          }}
-        >
-          <Stack spacing={2}>
-            <Stack direction="row" justifyContent="space-between" alignItems="center">
-              <Typography variant="subtitle1" fontWeight={600}>
-                עריכת כתובית
-              </Typography>
-              <IconButton size="small" onClick={handleCancelEdit} sx={{ color: "inherit" }}>
-                <CloseRoundedIcon />
-              </IconButton>
-            </Stack>
-            <TextField
-              multiline
-              minRows={3}
-              value={editText}
-              onChange={(e) => setEditText(e.target.value)}
-              fullWidth
-              sx={{
-                bgcolor: "background.paper",
-                borderRadius: 1,
-                "& .MuiInputBase-root": {
-                  color: "text.primary",
-                },
-              }}
+        <>
+          {activeWordEnabled && words && words.length > 0 && onWordsChange ? (
+            // Word-level editing mode
+            <WordTimeline
+              segment={selectedSegment}
+              words={words}
+              currentTime={currentTime}
+              onWordsChange={onWordsChange}
+              onClose={handleWordTimelineClose}
+              onSave={handleWordTimelineSave}
             />
-            <Stack direction="row" spacing={1} justifyContent="flex-end">
-              <Button
-                variant="outlined"
-                onClick={handleCancelEdit}
-                sx={{
-                  color: "inherit",
-                  borderColor: "inherit",
-                  "&:hover": {
-                    borderColor: "inherit",
-                    bgcolor: "rgba(255, 255, 255, 0.1)",
-                  },
-                }}
-              >
-                ביטול
-              </Button>
-              <Button
-                variant="contained"
-                startIcon={<CheckRoundedIcon />}
-                onClick={handleSaveEdit}
-                sx={{
-                  bgcolor: "background.paper",
-                  color: "primary.main",
-                  "&:hover": {
-                    bgcolor: "rgba(255, 255, 255, 0.9)",
-                  },
-                }}
-              >
-                שמור שינויים
-              </Button>
-            </Stack>
-          </Stack>
-        </Card>
+          ) : (
+            // Text editing mode
+            <Card
+              elevation={3}
+              sx={{
+                p: 2,
+                bgcolor: "primary.main",
+                color: "primary.contrastText",
+                borderRadius: 2,
+              }}
+            >
+              <Stack spacing={2}>
+                <Stack direction="row" justifyContent="space-between" alignItems="center">
+                  <Typography variant="subtitle1" fontWeight={600}>
+                    עריכת כתובית
+                  </Typography>
+                  <IconButton size="small" onClick={handleCancelEdit} sx={{ color: "inherit" }}>
+                    <CloseRoundedIcon />
+                  </IconButton>
+                </Stack>
+                <TextField
+                  multiline
+                  minRows={3}
+                  value={editText}
+                  onChange={(e) => setEditText(e.target.value)}
+                  fullWidth
+                  sx={{
+                    bgcolor: "background.paper",
+                    borderRadius: 1,
+                    "& .MuiInputBase-root": {
+                      color: "text.primary",
+                    },
+                  }}
+                />
+                <Stack direction="row" spacing={1} justifyContent="flex-end">
+                  <Button
+                    variant="outlined"
+                    onClick={handleCancelEdit}
+                    sx={{
+                      color: "inherit",
+                      borderColor: "inherit",
+                      "&:hover": {
+                        borderColor: "inherit",
+                        bgcolor: "rgba(255, 255, 255, 0.1)",
+                      },
+                    }}
+                  >
+                    ביטול
+                  </Button>
+                  <Button
+                    variant="contained"
+                    startIcon={<CheckRoundedIcon />}
+                    onClick={handleSaveEdit}
+                    sx={{
+                      bgcolor: "background.paper",
+                      color: "primary.main",
+                      "&:hover": {
+                        bgcolor: "rgba(255, 255, 255, 0.9)",
+                      },
+                    }}
+                  >
+                    שמור שינויים
+                  </Button>
+                </Stack>
+              </Stack>
+            </Card>
+          )}
+        </>
       )}
     </Stack>
   );

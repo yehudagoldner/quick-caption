@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import type { Segment } from "../types";
+import type { Segment, Word } from "../types";
 import { segmentsToSrt } from "../utils/transcriptionUtils";
 
 type BurnedVideo = {
@@ -11,20 +11,25 @@ type SaveState = "idle" | "saving" | "success" | "error";
 
 type UseTranscriptionStateProps = {
   responseSegments: Segment[];
+  responseWords?: Word[];
   mediaUrl: string | null;
   isEditable: boolean;
   videoId: number | null;
   onSaveSegments: (segments: Segment[], subtitleContent: string) => Promise<void>;
+  onSaveWords?: (words: Word[]) => Promise<void>;
 };
 
 export function useTranscriptionState({
   responseSegments,
+  responseWords,
   mediaUrl,
   isEditable,
   videoId,
   onSaveSegments,
+  onSaveWords,
 }: UseTranscriptionStateProps) {
   const [editableSegments, setEditableSegments] = useState<Segment[]>(responseSegments);
+  const [editableWords, setEditableWords] = useState<Word[]>(responseWords ?? []);
   const [activeSegmentId, setActiveSegmentId] = useState<Segment["id"] | null>(null);
   const [fontSize, setFontSize] = useState(60);
   const [fontColor, setFontColor] = useState("#ffffff");
@@ -46,6 +51,10 @@ export function useTranscriptionState({
   useEffect(() => {
     setEditableSegments(responseSegments.map((segment) => ({ ...segment })));
   }, [responseSegments]);
+
+  useEffect(() => {
+    setEditableWords(responseWords ?? []);
+  }, [responseWords]);
 
   useEffect(() => {
     setActiveSegmentId(null);
@@ -138,9 +147,27 @@ export function useTranscriptionState({
     setActiveWordEnabled((prev) => !prev);
   }, []);
 
+  const handleWordsChange = useCallback(
+    async (words: Word[]) => {
+      setEditableWords(words);
+
+      if (!isEditable || !videoId || !onSaveWords) {
+        return;
+      }
+
+      try {
+        await onSaveWords(words);
+      } catch (error) {
+        console.error("Failed to save words:", error);
+      }
+    },
+    [isEditable, videoId, onSaveWords],
+  );
+
   return {
     // State
     editableSegments,
+    editableWords,
     activeSegmentId,
     setActiveSegmentId,
     fontSize,
@@ -178,6 +205,7 @@ export function useTranscriptionState({
     handleSegmentBlur,
     handleAddSubtitle,
     handleToggleActiveWord,
+    handleWordsChange,
     persistSegments,
   };
 }

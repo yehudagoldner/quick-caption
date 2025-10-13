@@ -56,6 +56,7 @@ type TranscriptionMainContentProps = {
   onBurnVideo: () => void;
   onAddSubtitle: (text: string, startTime: number, endTime: number) => void;
   onToggleActiveWord: () => void;
+  onWordsChange?: (words: Word[]) => void;
   // Video control props
   isPlaying?: boolean;
   onPlayPause?: () => void;
@@ -105,6 +106,7 @@ export function TranscriptionMainContent({
   onBurnVideo,
   onAddSubtitle,
   onToggleActiveWord,
+  onWordsChange,
 }: TranscriptionMainContentProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
@@ -168,6 +170,9 @@ export function TranscriptionMainContent({
               onSegmentTextChange={onSegmentTextChangeAndSave}
               isPlaying={isPlaying}
               onPlayPause={onPlayPause}
+              words={words}
+              activeWordEnabled={activeWordEnabled}
+              onWordsChange={onWordsChange}
             />
           )}
         </Stack>

@@ -43,6 +43,7 @@ export function TranscriptionResult({
 
   const {
     editableSegments,
+    editableWords,
     activeSegmentId,
     setActiveSegmentId,
     fontSize,
@@ -79,9 +80,11 @@ export function TranscriptionResult({
     handleSegmentBlur,
     handleAddSubtitle,
     handleToggleActiveWord,
+    handleWordsChange,
     persistSegments,
   } = useTranscriptionState({
     responseSegments,
+    responseWords: response.words,
     mediaUrl,
     isEditable,
     videoId,
@@ -173,7 +176,7 @@ export function TranscriptionResult({
             activeSegmentText={activeSegment?.text ?? null}
             previewStyle={previewStyle}
             editableSegments={editableSegments}
-            words={response.words}
+            words={editableWords}
             isEditable={isEditable}
             videoDuration={videoDuration}
             renderDimensions={renderDimensions}
@@ -211,6 +214,7 @@ export function TranscriptionResult({
             onBurnVideo={handleBurnVideo}
             onAddSubtitle={handleAddSubtitle}
             onToggleActiveWord={handleToggleActiveWord}
+            onWordsChange={handleWordsChange}
             isPlaying={isPlaying}
             onPlayPause={handlePlayPause}
           />
