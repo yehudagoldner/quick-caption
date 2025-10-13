@@ -51,11 +51,6 @@ export function useTranscriptionState({
   }, [responseSegments]);
 
   useEffect(() => {
-    console.debug('🔄 useTranscriptionState - responseWords changed:', {
-      hasResponseWords: !!responseWords,
-      responseWordsCount: responseWords?.length || 0,
-      responseWords: responseWords?.slice(0, 3) // Log first 3 words for debugging
-    });
     setEditableWords(responseWords ?? []);
   }, [responseWords]);
 
@@ -153,19 +148,13 @@ export function useTranscriptionState({
 
   const handleWordsChange = useCallback(
     async (words: Word[]) => {
-      console.debug('🎤 handleWordsChange called:', {
-        newWordsCount: words.length,
-        firstWords: words.slice(0, 3)
-      });
       setEditableWords(words);
 
       if (!isEditable || !videoId) {
-        console.debug('🎤 handleWordsChange skipped - not editable or no videoId');
         return;
       }
 
       // Save words along with segments
-      console.debug('🎤 handleWordsChange - persisting words');
       await persistSegments(editableSegments, words);
     },
     [isEditable, videoId, editableSegments, persistSegments],

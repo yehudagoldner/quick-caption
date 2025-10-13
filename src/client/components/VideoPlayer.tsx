@@ -34,17 +34,6 @@ export function VideoPlayer({
     enabled: activeWordEnabled,
   });
 
-  // Debug logging for active word feature
-  useEffect(() => {
-    console.debug('🎤 VideoPlayer active word state:', {
-      activeWordEnabled,
-      wordsCount: words?.length || 0,
-      currentTime,
-      activeWord: activeWord?.word,
-      hasWords: !!words && words.length > 0
-    });
-  }, [activeWordEnabled, words, currentTime, activeWord]);
-
   // Debug logging for active segment text changes
   useEffect(() => {
     console.debug('📺 VideoPlayer activeSegmentText changed:', {
