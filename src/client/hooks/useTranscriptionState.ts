@@ -15,8 +15,7 @@ type UseTranscriptionStateProps = {
   mediaUrl: string | null;
   isEditable: boolean;
   videoId: number | null;
-  onSaveSegments: (segments: Segment[], subtitleContent: string) => Promise<void>;
-  onSaveWords?: (words: Word[]) => Promise<void>;
+  onSaveSegments: (segments: Segment[], subtitleContent: string, words?: Word[]) => Promise<void>;
 };
 
 export function useTranscriptionState({
@@ -26,7 +25,6 @@ export function useTranscriptionState({
   isEditable,
   videoId,
   onSaveSegments,
-  onSaveWords,
 }: UseTranscriptionStateProps) {
   const [editableSegments, setEditableSegments] = useState<Segment[]>(responseSegments);
   const [editableWords, setEditableWords] = useState<Word[]>(responseWords ?? []);
@@ -70,7 +68,7 @@ export function useTranscriptionState({
   }, [burnedVideo]);
 
   const persistSegments = useCallback(
-    async (nextSegments: Segment[]) => {
+    async (nextSegments: Segment[], nextWords?: Word[]) => {
       setEditableSegments(nextSegments);
 
       if (!isEditable || !videoId) {
@@ -81,7 +79,7 @@ export function useTranscriptionState({
       setSaveError(null);
       try {
         const subtitleContent = segmentsToSrt(nextSegments);
-        await onSaveSegments(nextSegments, subtitleContent);
+        await onSaveSegments(nextSegments, subtitleContent, nextWords ?? editableWords);
         setSaveState("success");
         setTimeout(() => setSaveState("idle"), 2000);
       } catch (error) {
@@ -90,7 +88,7 @@ export function useTranscriptionState({
         setSaveError("שמירת השינויים נכשלה. נסו שוב.");
       }
     },
-    [isEditable, videoId, onSaveSegments],
+    [isEditable, videoId, onSaveSegments, editableWords],
   );
 
   const handleSegmentTextChange = useCallback(
@@ -151,17 +149,14 @@ export function useTranscriptionState({
     async (words: Word[]) => {
       setEditableWords(words);
 
-      if (!isEditable || !videoId || !onSaveWords) {
+      if (!isEditable || !videoId) {
         return;
       }
 
-      try {
-        await onSaveWords(words);
-      } catch (error) {
-        console.error("Failed to save words:", error);
-      }
+      // Save words along with segments
+      await persistSegments(editableSegments, words);
     },
-    [isEditable, videoId, onSaveWords],
+    [isEditable, videoId, editableSegments, persistSegments],
   );
 
   return {

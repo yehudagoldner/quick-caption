@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Box, Button, Card, IconButton, Slider, Stack, Typography } from "@mui/material";
+import { Box, Button, Card, Dialog, DialogActions, DialogContent, DialogTitle, IconButton, Slider, Stack, TextField, Typography } from "@mui/material";
 import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
 import CheckRoundedIcon from "@mui/icons-material/CheckRounded";
 import ZoomInRoundedIcon from "@mui/icons-material/ZoomInRounded";
 import ZoomOutRoundedIcon from "@mui/icons-material/ZoomOutRounded";
 import RecordVoiceOverRoundedIcon from "@mui/icons-material/RecordVoiceOverRounded";
+import DeleteRoundedIcon from "@mui/icons-material/DeleteRounded";
+import EditRoundedIcon from "@mui/icons-material/EditRounded";
+import AddRoundedIcon from "@mui/icons-material/AddRounded";
 import {
   Timeline,
   type TimelineAction,
@@ -45,6 +48,13 @@ export function WordTimeline({
   }, [initialWords, segment.start, segment.end]);
 
   const [editableWords, setEditableWords] = useState<Word[]>(segmentWords);
+  const [selectedWordIndex, setSelectedWordIndex] = useState<number | null>(null);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [editWordText, setEditWordText] = useState("");
+  const [addDialogOpen, setAddDialogOpen] = useState(false);
+  const [newWordText, setNewWordText] = useState("");
+  const [newWordStart, setNewWordStart] = useState(segment.start);
+  const [newWordEnd, setNewWordEnd] = useState(segment.start + 0.5);
 
   const editorData = useMemo<TimelineRow[]>(() => {
     const actions: TimelineAction[] = editableWords.map((word, index) => ({
@@ -159,6 +169,7 @@ export function WordTimeline({
     (action: TimelineAction) => {
       const wordData = wordLookup.get(action.id);
       const text = wordData?.word.word ?? effects[action.effectId]?.name ?? "מילה";
+      const isSelected = wordData && selectedWordIndex === wordData.index;
 
       return (
         <Stack
@@ -166,6 +177,7 @@ export function WordTimeline({
           direction="row"
           spacing={0.5}
           alignItems="center"
+          onClick={() => handleActionClick(action)}
           sx={{
             position: "relative",
             width: "100%",
@@ -179,8 +191,10 @@ export function WordTimeline({
               position: "absolute",
               inset: 0,
               borderRadius: 1,
-              background: "linear-gradient(90deg, rgba(76, 175, 80, 0.95), rgba(56, 142, 60, 0.95))",
-              boxShadow: "0 2px 6px rgba(0, 0, 0, 0.3)",
+              background: isSelected
+                ? "linear-gradient(90deg, rgba(33, 150, 243, 0.95), rgba(21, 101, 192, 0.95))"
+                : "linear-gradient(90deg, rgba(76, 175, 80, 0.95), rgba(56, 142, 60, 0.95))",
+              boxShadow: isSelected ? "0 2px 8px rgba(33, 150, 243, 0.5)" : "0 2px 6px rgba(0, 0, 0, 0.3)",
               transition: "all 0.2s ease-in-out",
             }}
           />
@@ -191,7 +205,7 @@ export function WordTimeline({
         </Stack>
       );
     },
-    [effects, wordLookup],
+    [effects, wordLookup, selectedWordIndex, handleActionClick],
   );
 
   const formatScaleLabel = useCallback((value: number) => {
@@ -206,17 +220,79 @@ export function WordTimeline({
     return `${wholeSeconds}${decimalPart}s`;
   }, [baseScale]);
 
+  const handleActionClick = useCallback((action: TimelineAction) => {
+    const wordData = wordLookup.get(action.id);
+    if (wordData) {
+      setSelectedWordIndex(wordData.index);
+    }
+  }, [wordLookup]);
+
+  const handleEditWord = useCallback(() => {
+    if (selectedWordIndex === null) return;
+    const word = editableWords[selectedWordIndex];
+    if (word) {
+      setEditWordText(word.word);
+      setEditDialogOpen(true);
+    }
+  }, [selectedWordIndex, editableWords]);
+
+  const handleSaveEditWord = useCallback(() => {
+    if (selectedWordIndex === null) return;
+
+    const updatedWords = [...editableWords];
+    updatedWords[selectedWordIndex] = {
+      ...updatedWords[selectedWordIndex],
+      word: editWordText,
+    };
+    setEditableWords(updatedWords);
+    setEditDialogOpen(false);
+    setSelectedWordIndex(null);
+    setEditWordText("");
+  }, [selectedWordIndex, editableWords, editWordText]);
+
+  const handleDeleteWord = useCallback(() => {
+    if (selectedWordIndex === null) return;
+
+    const updatedWords = editableWords.filter((_, index) => index !== selectedWordIndex);
+    setEditableWords(updatedWords);
+    setSelectedWordIndex(null);
+  }, [selectedWordIndex, editableWords]);
+
+  const handleAddWord = useCallback(() => {
+    setAddDialogOpen(true);
+  }, []);
+
+  const handleSaveNewWord = useCallback(() => {
+    const newWord: Word = {
+      word: newWordText,
+      start: newWordStart,
+      end: newWordEnd,
+    };
+
+    const updatedWords = [...editableWords, newWord].sort((a, b) => a.start - b.start);
+    setEditableWords(updatedWords);
+    setAddDialogOpen(false);
+    setNewWordText("");
+    setNewWordStart(segment.start);
+    setNewWordEnd(segment.start + 0.5);
+  }, [editableWords, newWordText, newWordStart, newWordEnd, segment.start]);
+
   const handleSaveClick = useCallback(() => {
     // Merge updated words back into the full words array
-    const updatedWordsMap = new Map(editableWords.map(w => [`${w.start}-${w.end}`, w]));
-    const allWords = initialWords.map(w => {
-      const key = `${w.start}-${w.end}`;
-      return updatedWordsMap.has(key) ? updatedWordsMap.get(key)! : w;
+    const segmentWordKeys = new Set(segmentWords.map(w => `${w.start.toFixed(3)}-${w.end.toFixed(3)}`));
+
+    // Remove old segment words from initialWords
+    const wordsOutsideSegment = initialWords.filter(w => {
+      const key = `${w.start.toFixed(3)}-${w.end.toFixed(3)}`;
+      return !segmentWordKeys.has(key);
     });
+
+    // Combine with new edited words and sort
+    const allWords = [...wordsOutsideSegment, ...editableWords].sort((a, b) => a.start - b.start);
 
     onWordsChange(allWords);
     onSave();
-  }, [editableWords, initialWords, onWordsChange, onSave]);
+  }, [editableWords, initialWords, segmentWords, onWordsChange, onSave]);
 
   return (
     <Card
@@ -244,6 +320,62 @@ export function WordTimeline({
         <Typography variant="body2" sx={{ opacity: 0.9 }}>
           כתובית: {segment.text}
         </Typography>
+
+        {/* Action Buttons */}
+        <Stack direction="row" spacing={1} justifyContent="center">
+          <Button
+            variant="outlined"
+            size="small"
+            startIcon={<AddRoundedIcon />}
+            onClick={handleAddWord}
+            sx={{
+              color: "inherit",
+              borderColor: "inherit",
+              "&:hover": {
+                borderColor: "inherit",
+                bgcolor: "rgba(255, 255, 255, 0.1)",
+              },
+            }}
+          >
+            הוסף מילה
+          </Button>
+          {selectedWordIndex !== null && (
+            <>
+              <Button
+                variant="outlined"
+                size="small"
+                startIcon={<EditRoundedIcon />}
+                onClick={handleEditWord}
+                sx={{
+                  color: "inherit",
+                  borderColor: "inherit",
+                  "&:hover": {
+                    borderColor: "inherit",
+                    bgcolor: "rgba(255, 255, 255, 0.1)",
+                  },
+                }}
+              >
+                ערוך מילה
+              </Button>
+              <Button
+                variant="outlined"
+                size="small"
+                startIcon={<DeleteRoundedIcon />}
+                onClick={handleDeleteWord}
+                sx={{
+                  color: "inherit",
+                  borderColor: "inherit",
+                  "&:hover": {
+                    borderColor: "rgba(255, 82, 82, 0.8)",
+                    bgcolor: "rgba(255, 82, 82, 0.1)",
+                  },
+                }}
+              >
+                מחק מילה
+              </Button>
+            </>
+          )}
+        </Stack>
 
         <Stack direction="row" spacing={1} sx={{ position: "relative" }}>
           {/* Word Timeline */}
@@ -341,6 +473,71 @@ export function WordTimeline({
             שמור שינויים
           </Button>
         </Stack>
+
+        {/* Edit Word Dialog */}
+        <Dialog open={editDialogOpen} onClose={() => setEditDialogOpen(false)}>
+          <DialogTitle>ערוך מילה</DialogTitle>
+          <DialogContent>
+            <TextField
+              autoFocus
+              margin="dense"
+              label="טקסט המילה"
+              fullWidth
+              value={editWordText}
+              onChange={(e) => setEditWordText(e.target.value)}
+            />
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setEditDialogOpen(false)}>ביטול</Button>
+            <Button onClick={handleSaveEditWord} variant="contained">שמור</Button>
+          </DialogActions>
+        </Dialog>
+
+        {/* Add Word Dialog */}
+        <Dialog open={addDialogOpen} onClose={() => setAddDialogOpen(false)}>
+          <DialogTitle>הוסף מילה חדשה</DialogTitle>
+          <DialogContent>
+            <Stack spacing={2} sx={{ mt: 1, minWidth: 300 }}>
+              <TextField
+                autoFocus
+                label="טקסט המילה"
+                fullWidth
+                value={newWordText}
+                onChange={(e) => setNewWordText(e.target.value)}
+              />
+              <TextField
+                label="זמן התחלה (שניות)"
+                type="number"
+                fullWidth
+                value={newWordStart}
+                onChange={(e) => setNewWordStart(Number(e.target.value))}
+                inputProps={{
+                  step: 0.1,
+                  min: segment.start,
+                  max: segment.end,
+                }}
+              />
+              <TextField
+                label="זמן סיום (שניות)"
+                type="number"
+                fullWidth
+                value={newWordEnd}
+                onChange={(e) => setNewWordEnd(Number(e.target.value))}
+                inputProps={{
+                  step: 0.1,
+                  min: segment.start,
+                  max: segment.end,
+                }}
+              />
+            </Stack>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setAddDialogOpen(false)}>ביטול</Button>
+            <Button onClick={handleSaveNewWord} variant="contained" disabled={!newWordText || newWordStart >= newWordEnd}>
+              הוסף
+            </Button>
+          </DialogActions>
+        </Dialog>
       </Stack>
     </Card>
   );

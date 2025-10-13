@@ -269,7 +269,7 @@ app.get("/api/videos/:id/token", async (req, res) => {
 
 // Secure subtitle update endpoint using token
 app.put("/api/videos/update-subtitles", async (req, res) => {
-  const { token, userUid, subtitleJson } = req.body ?? {};
+  const { token, userUid, subtitleJson, wordsJson } = req.body ?? {};
 
   if (!token || !userUid || typeof subtitleJson !== 'string') {
     return res.status(400).json({ error: 'token, userUid and subtitleJson are required' });
@@ -298,7 +298,8 @@ app.put("/api/videos/update-subtitles", async (req, res) => {
     const result = await updateVideoSubtitles({
       videoId: tokenData.videoId,
       userUid,
-      subtitleJson
+      subtitleJson,
+      wordsJson: wordsJson || null
     });
 
     if (!result || result.affectedRows === 0) {

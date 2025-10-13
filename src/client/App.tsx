@@ -97,7 +97,7 @@ function App() {
     }
   };
 
-  const handleSaveSegments = async (segments: any[]) => {
+  const handleSaveSegments = async (segments: any[], subtitleContent?: string, words?: any[]) => {
     if (!videoToken || !workflow.user?.uid) {
       throw new Error("Invalid session");
     }
@@ -111,6 +111,7 @@ function App() {
         token: videoToken,
         userUid: workflow.user.uid,
         subtitleJson: JSON.stringify(segments),
+        wordsJson: words ? JSON.stringify(words) : undefined,
       }),
     });
 
