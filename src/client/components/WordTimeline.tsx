@@ -278,6 +278,12 @@ export function WordTimeline({
   }, [editableWords, newWordText, newWordStart, newWordEnd, segment.start]);
 
   const handleSaveClick = useCallback(() => {
+    console.log('💾 WordTimeline handleSaveClick:', {
+      editableWordsCount: editableWords.length,
+      initialWordsCount: initialWords.length,
+      segmentWordsCount: segmentWords.length
+    });
+
     // Merge updated words back into the full words array
     const segmentWordKeys = new Set(segmentWords.map(w => `${w.start.toFixed(3)}-${w.end.toFixed(3)}`));
 
@@ -289,6 +295,13 @@ export function WordTimeline({
 
     // Combine with new edited words and sort
     const allWords = [...wordsOutsideSegment, ...editableWords].sort((a, b) => a.start - b.start);
+
+    console.log('💾 WordTimeline - merged words:', {
+      wordsOutsideSegmentCount: wordsOutsideSegment.length,
+      editableWordsCount: editableWords.length,
+      allWordsCount: allWords.length,
+      firstThree: allWords.slice(0, 3).map(w => ({ word: w.word, start: w.start, end: w.end }))
+    });
 
     onWordsChange(allWords);
     onSave();

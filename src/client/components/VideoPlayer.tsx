@@ -34,6 +34,26 @@ export function VideoPlayer({
     enabled: activeWordEnabled,
   });
 
+  // Debug logging for words prop
+  useEffect(() => {
+    console.log('📺 VideoPlayer - words prop changed:', {
+      wordsCount: words?.length || 0,
+      firstThree: words?.slice(0, 3).map(w => ({ word: w.word, start: w.start, end: w.end })) || [],
+      activeWordEnabled
+    });
+  }, [words, activeWordEnabled]);
+
+  // Debug logging for active word
+  useEffect(() => {
+    if (activeWordEnabled && currentTime > 0) {
+      console.log('📺 VideoPlayer - active word check:', {
+        currentTime,
+        activeWord: activeWord?.word,
+        hasActiveWord: !!activeWord
+      });
+    }
+  }, [activeWord, currentTime, activeWordEnabled]);
+
   // Debug logging for active segment text changes
   useEffect(() => {
     console.debug('📺 VideoPlayer activeSegmentText changed:', {

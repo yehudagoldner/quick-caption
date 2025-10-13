@@ -148,14 +148,21 @@ export function useTranscriptionState({
 
   const handleWordsChange = useCallback(
     async (words: Word[]) => {
+      console.log('🎤 handleWordsChange - updating editableWords:', {
+        wordsCount: words.length,
+        firstThree: words.slice(0, 3).map(w => ({ word: w.word, start: w.start, end: w.end }))
+      });
       setEditableWords(words);
 
       if (!isEditable || !videoId) {
+        console.log('🎤 handleWordsChange - skipping save (not editable or no videoId)');
         return;
       }
 
       // Save words along with segments
+      console.log('🎤 handleWordsChange - calling persistSegments');
       await persistSegments(editableSegments, words);
+      console.log('🎤 handleWordsChange - persistSegments complete');
     },
     [isEditable, videoId, editableSegments, persistSegments],
   );
