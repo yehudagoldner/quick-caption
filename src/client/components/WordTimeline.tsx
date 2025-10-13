@@ -28,6 +28,7 @@ export type WordTimelineProps = {
   words: Word[];
   currentTime: number | null;
   onWordsChange: (words: Word[]) => void;
+  onSegmentTextChange?: (segmentId: Segment["id"], text: string) => void;
   onClose: () => void;
   onSave: () => void;
 };
@@ -37,6 +38,7 @@ export function WordTimeline({
   words: initialWords,
   currentTime,
   onWordsChange,
+  onSegmentTextChange,
   onClose,
   onSave,
 }: WordTimelineProps) {
@@ -303,9 +305,20 @@ export function WordTimeline({
       firstThree: allWords.slice(0, 3).map(w => ({ word: w.word, start: w.start, end: w.end }))
     });
 
+    // Update segment text to match edited words
+    const newSegmentText = editableWords.map(w => w.word).join(' ');
+    console.log('💾 WordTimeline - updating segment text:', {
+      oldText: segment.text,
+      newText: newSegmentText
+    });
+
+    if (onSegmentTextChange && newSegmentText !== segment.text) {
+      onSegmentTextChange(segment.id, newSegmentText);
+    }
+
     onWordsChange(allWords);
     onSave();
-  }, [editableWords, initialWords, segmentWords, onWordsChange, onSave]);
+  }, [editableWords, initialWords, segmentWords, segment, onWordsChange, onSegmentTextChange, onSave]);
 
   return (
     <Card
