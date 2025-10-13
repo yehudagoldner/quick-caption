@@ -299,7 +299,7 @@ app.put("/api/videos/update-subtitles", async (req, res) => {
       videoId: tokenData.videoId,
       userUid,
       subtitleJson,
-      wordsJson: wordsJson || null
+      wordsJson: wordsJson ? wordsJson : undefined
     });
 
     if (!result || result.affectedRows === 0) {

@@ -134,12 +134,18 @@ export async function saveVideo({
   return result?.insertId ?? null;
 }
 
-export async function updateVideoSubtitles({ videoId, userUid, subtitleJson, wordsJson = null }) {
-  const [result] = await pool.execute(
-    `UPDATE videos SET subtitle_json = ?, words_json = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_uid = ?`,
-    [subtitleJson, wordsJson, videoId, userUid],
-  );
+export async function updateVideoSubtitles({ videoId, userUid, subtitleJson, wordsJson = undefined }) {
+  // Only update words_json if explicitly provided (not undefined)
+  let query, params;
+  if (wordsJson !== undefined) {
+    query = `UPDATE videos SET subtitle_json = ?, words_json = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_uid = ?`;
+    params = [subtitleJson, wordsJson, videoId, userUid];
+  } else {
+    query = `UPDATE videos SET subtitle_json = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_uid = ?`;
+    params = [subtitleJson, videoId, userUid];
+  }
 
+  const [result] = await pool.execute(query, params);
   return result;
 }
 

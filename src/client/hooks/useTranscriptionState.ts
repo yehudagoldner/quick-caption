@@ -51,6 +51,11 @@ export function useTranscriptionState({
   }, [responseSegments]);
 
   useEffect(() => {
+    console.debug('🔄 useTranscriptionState - responseWords changed:', {
+      hasResponseWords: !!responseWords,
+      responseWordsCount: responseWords?.length || 0,
+      responseWords: responseWords?.slice(0, 3) // Log first 3 words for debugging
+    });
     setEditableWords(responseWords ?? []);
   }, [responseWords]);
 
@@ -79,7 +84,8 @@ export function useTranscriptionState({
       setSaveError(null);
       try {
         const subtitleContent = segmentsToSrt(nextSegments);
-        await onSaveSegments(nextSegments, subtitleContent, nextWords ?? editableWords);
+        // Only pass words if explicitly provided, otherwise undefined (don't update words in DB)
+        await onSaveSegments(nextSegments, subtitleContent, nextWords);
         setSaveState("success");
         setTimeout(() => setSaveState("idle"), 2000);
       } catch (error) {
@@ -88,7 +94,7 @@ export function useTranscriptionState({
         setSaveError("שמירת השינויים נכשלה. נסו שוב.");
       }
     },
-    [isEditable, videoId, onSaveSegments, editableWords],
+    [isEditable, videoId, onSaveSegments],
   );
 
   const handleSegmentTextChange = useCallback(
@@ -147,13 +153,19 @@ export function useTranscriptionState({
 
   const handleWordsChange = useCallback(
     async (words: Word[]) => {
+      console.debug('🎤 handleWordsChange called:', {
+        newWordsCount: words.length,
+        firstWords: words.slice(0, 3)
+      });
       setEditableWords(words);
 
       if (!isEditable || !videoId) {
+        console.debug('🎤 handleWordsChange skipped - not editable or no videoId');
         return;
       }
 
       // Save words along with segments
+      console.debug('🎤 handleWordsChange - persisting words');
       await persistSegments(editableSegments, words);
     },
     [isEditable, videoId, editableSegments, persistSegments],
