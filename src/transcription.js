@@ -96,7 +96,7 @@ export async function transcribeMedia({
     return {
       text: refinedResult.text,
       segments: refinedResult.segments,
-      words: timedResult.words ?? [],
+      words: refinedResult.words ?? timedResult.words ?? [],
       subtitle: {
         format: normalizedFormat,
         content: subtitleContent,
@@ -288,6 +288,226 @@ function extractSegmentsFromTranscription(transcription) {
     .filter((segment) => Number.isFinite(segment.start) && Number.isFinite(segment.end));
 }
 
+/**
+ * Aligns corrected segment text with original word-level timestamps
+ * Uses fuzzy matching to map corrected words to their original timestamps
+ */
+function alignWordsToSegments(originalWords, originalSegments, correctedSegments) {
+  const alignedWords = [];
+
+  for (const correctedSegment of correctedSegments) {
+    const originalSegment = originalSegments.find(seg => seg.id === correctedSegment.id);
+    if (!originalSegment) continue;
+
+    // Get words that fall within this segment's time range (with small buffer for boundary issues)
+    const segmentWords = originalWords.filter(
+      word => word.start >= originalSegment.start - 0.01 && word.start <= originalSegment.end + 0.01
+    );
+
+    if (segmentWords.length === 0) continue;
+
+    // Tokenize corrected text (split by whitespace and punctuation)
+    const correctedTokens = tokenizeText(correctedSegment.text);
+
+    if (correctedTokens.length === 0) {
+      // No corrected text, just use original words
+      alignedWords.push(...segmentWords);
+      continue;
+    }
+
+    const originalTokens = segmentWords.map(w => normalizeWord(w.word));
+
+    // Align corrected tokens to original words using sequence alignment
+    const alignment = alignTokenSequences(originalTokens, correctedTokens, segmentWords);
+
+    // Map aligned tokens back to timestamps
+    for (const item of alignment) {
+      if (item.originalIndex !== null && item.originalIndex < segmentWords.length) {
+        const originalWord = segmentWords[item.originalIndex];
+        alignedWords.push({
+          word: item.correctedToken || originalWord.word,
+          start: originalWord.start,
+          end: originalWord.end,
+        });
+      } else if (item.correctedToken) {
+        // New word with no original match - estimate timing
+        const prevWord = alignedWords[alignedWords.length - 1];
+        if (prevWord) {
+          const estimatedDuration = 0.3; // Default word duration
+          alignedWords.push({
+            word: item.correctedToken,
+            start: prevWord.end,
+            end: prevWord.end + estimatedDuration,
+          });
+        }
+      }
+    }
+  }
+
+  return alignedWords;
+}
+
+/**
+ * Tokenize text into words, preserving Hebrew and handling punctuation
+ */
+function tokenizeText(text) {
+  // Split on whitespace and separate punctuation
+  return text
+    .trim()
+    .split(/\s+/)
+    .flatMap(token => {
+      // Keep Hebrew/alphanumeric together, split off trailing punctuation
+      const match = token.match(/^([\u0590-\u05FF\w]+)(.*?)$/);
+      if (match) {
+        return [match[1], ...(match[2] ? [match[2]] : [])].filter(Boolean);
+      }
+      return [token];
+    })
+    .filter(t => t.length > 0);
+}
+
+/**
+ * Normalize word for comparison (remove punctuation, lowercase)
+ */
+function normalizeWord(word) {
+  return word.replace(/[^\u0590-\u05FF\w]/g, '').toLowerCase();
+}
+
+/**
+ * Align two token sequences using improved dynamic programming approach
+ * Returns array of {originalIndex, correctedToken} mappings
+ */
+function alignTokenSequences(originalTokens, correctedTokens, segmentWords) {
+  const alignment = [];
+  let origIdx = 0;
+  let corrIdx = 0;
+
+  while (origIdx < originalTokens.length || corrIdx < correctedTokens.length) {
+    // If we've exhausted corrected tokens, add remaining original words
+    if (corrIdx >= correctedTokens.length) {
+      if (origIdx < originalTokens.length) {
+        alignment.push({
+          originalIndex: origIdx,
+          correctedToken: segmentWords[origIdx].word
+        });
+        origIdx++;
+      }
+      continue;
+    }
+
+    // If we've exhausted original tokens, add remaining corrected words without timestamps
+    if (origIdx >= originalTokens.length) {
+      alignment.push({
+        originalIndex: null,
+        correctedToken: correctedTokens[corrIdx]
+      });
+      corrIdx++;
+      continue;
+    }
+
+    const origNorm = originalTokens[origIdx];
+    const corrNorm = normalizeWord(correctedTokens[corrIdx]);
+
+    // Exact match
+    if (origNorm === corrNorm) {
+      alignment.push({ originalIndex: origIdx, correctedToken: correctedTokens[corrIdx] });
+      origIdx++;
+      corrIdx++;
+    }
+    // Prefix match (corrected word is longer - e.g., "hello" -> "hello!")
+    else if (corrNorm.startsWith(origNorm) && origNorm.length >= 2) {
+      alignment.push({ originalIndex: origIdx, correctedToken: correctedTokens[corrIdx] });
+      origIdx++;
+      corrIdx++;
+    }
+    // Prefix match (original word is longer - e.g., "hello!" -> "hello")
+    else if (origNorm.startsWith(corrNorm) && corrNorm.length >= 2) {
+      alignment.push({ originalIndex: origIdx, correctedToken: correctedTokens[corrIdx] });
+      origIdx++;
+      corrIdx++;
+    }
+    // Check if next corrected token matches current original (insertion in corrected)
+    else if (corrIdx + 1 < correctedTokens.length &&
+             originalTokens[origIdx] === normalizeWord(correctedTokens[corrIdx + 1])) {
+      // Corrected has an insertion - add it without timestamp
+      alignment.push({ originalIndex: null, correctedToken: correctedTokens[corrIdx] });
+      corrIdx++;
+    }
+    // Check if next original token matches current corrected (deletion in corrected)
+    else if (origIdx + 1 < originalTokens.length &&
+             originalTokens[origIdx + 1] === corrNorm) {
+      // Corrected deleted a word - skip original but keep timestamp for context
+      alignment.push({ originalIndex: origIdx, correctedToken: segmentWords[origIdx].word });
+      origIdx++;
+    }
+    // Fuzzy similarity match
+    else {
+      const similarity = computeSimilarity(origNorm, corrNorm);
+      if (similarity > 0.5) {
+        // Similar enough - map them
+        alignment.push({ originalIndex: origIdx, correctedToken: correctedTokens[corrIdx] });
+        origIdx++;
+        corrIdx++;
+      } else {
+        // No match at all - check lookahead for better match
+        let foundBetterMatch = false;
+
+        // Look ahead 2 positions in both directions
+        for (let lookAhead = 1; lookAhead <= 2 && !foundBetterMatch; lookAhead++) {
+          // Check if current corrected matches a future original
+          if (origIdx + lookAhead < originalTokens.length &&
+              corrNorm === originalTokens[origIdx + lookAhead]) {
+            // Skip original words that were deleted
+            for (let skip = 0; skip < lookAhead; skip++) {
+              alignment.push({
+                originalIndex: origIdx + skip,
+                correctedToken: segmentWords[origIdx + skip].word
+              });
+            }
+            origIdx += lookAhead;
+            foundBetterMatch = true;
+          }
+          // Check if current original matches a future corrected
+          else if (corrIdx + lookAhead < correctedTokens.length &&
+                   origNorm === normalizeWord(correctedTokens[corrIdx + lookAhead])) {
+            // Skip corrected words that were inserted
+            for (let skip = 0; skip < lookAhead; skip++) {
+              alignment.push({
+                originalIndex: null,
+                correctedToken: correctedTokens[corrIdx + skip]
+              });
+            }
+            corrIdx += lookAhead;
+            foundBetterMatch = true;
+          }
+        }
+
+        if (!foundBetterMatch) {
+          // No better match found - assume they correspond
+          alignment.push({ originalIndex: origIdx, correctedToken: correctedTokens[corrIdx] });
+          origIdx++;
+          corrIdx++;
+        }
+      }
+    }
+  }
+
+  return alignment;
+}
+
+/**
+ * Compute similarity between two strings (0-1)
+ * Using simple character overlap ratio
+ */
+function computeSimilarity(str1, str2) {
+  if (!str1 || !str2) return 0;
+  const set1 = new Set(str1.split(''));
+  const set2 = new Set(str2.split(''));
+  const intersection = new Set([...set1].filter(x => set2.has(x)));
+  const union = new Set([...set1, ...set2]);
+  return union.size > 0 ? intersection.size / union.size : 0;
+}
+
 async function refineTranscriptWithGPT(client, baseResult, highAccuracyResult, options, logger) {
   const model = options.correctionModel;
   if (!model) {
@@ -379,9 +599,13 @@ async function refineTranscriptWithGPT(client, baseResult, highAccuracyResult, o
 
   const refinedText = refinedSegments.map((segment) => segment.text).join(" ").trim();
 
+  // Align corrected words with original timestamps
+  const refinedWords = baseResult.words ? alignWordsToSegments(baseResult.words, baseResult.segments, refinedSegments) : [];
+
   return {
     text: refinedText || baseResult.text,
     segments: refinedSegments,
+    words: refinedWords,
   };
 }
 
