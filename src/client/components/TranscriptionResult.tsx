@@ -21,7 +21,7 @@ type TranscriptionResultProps = {
   mediaUrl: string | null;
   onBack: () => void;
   onBurn: (options: BurnOptions) => Promise<BurnResult>;
-  onSaveSegments: (segments: Segment[], subtitleContent: string) => Promise<void>;
+  onSaveSegments: (segments: Segment[], subtitleContent: string, words?: any[]) => Promise<void>;
   videoId: number | null;
   isEditable: boolean;
 };
@@ -105,11 +105,12 @@ export function TranscriptionResult({
   const activeSegment = useMemo(
     () => {
       const segment = editableSegments.find((segment) => segment.id === activeSegmentId) ?? null;
-      console.debug('🎯 Active segment computed:', {
+      console.log('🎯 Active segment recomputed:', {
         activeSegmentId,
-        segmentFound: segment,
+        segmentFound: !!segment,
         segmentText: segment?.text,
-        totalSegments: editableSegments.length
+        totalSegments: editableSegments.length,
+        timestamp: Date.now()
       });
       return segment;
     },

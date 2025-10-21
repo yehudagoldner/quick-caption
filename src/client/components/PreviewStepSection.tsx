@@ -12,7 +12,7 @@ type PreviewStepSectionProps = {
   mediaUrl: string | null;
   onBack: () => void;
   onBurn: (options: BurnOptions) => Promise<{ blob: Blob; filename?: string | undefined }>;
-  onSaveSegments: (segments: Segment[], subtitleContent: string) => Promise<void>;
+  onSaveSegments: (segments: Segment[], subtitleContent: string, words?: any[]) => Promise<void>;
   videoId: number | null;
   isEditable: boolean;
 };

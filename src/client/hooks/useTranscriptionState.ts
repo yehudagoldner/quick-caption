@@ -44,7 +44,14 @@ export function useTranscriptionState({
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const [saveError, setSaveError] = useState<string | null>(null);
   const [selectedSegmentId, setSelectedSegmentId] = useState<Segment["id"] | null>(null);
-  const [activeWordEnabled, setActiveWordEnabled] = useState(false);
+  const [activeWordEnabled, setActiveWordEnabled] = useState(() => {
+    try {
+      const stored = localStorage.getItem("activeWordEnabled");
+      return stored === "true";
+    } catch {
+      return false;
+    }
+  });
 
   useEffect(() => {
     setEditableSegments(responseSegments.map((segment) => ({ ...segment })));
@@ -69,9 +76,17 @@ export function useTranscriptionState({
 
   const persistSegments = useCallback(
     async (nextSegments: Segment[], nextWords?: Word[]) => {
+      console.log('💾 persistSegments called:', {
+        segmentsCount: nextSegments.length,
+        hasWords: !!nextWords,
+        wordsCount: nextWords?.length,
+        firstSegmentText: nextSegments[0]?.text?.substring(0, 50)
+      });
       setEditableSegments(nextSegments);
+      console.log('💾 persistSegments - editableSegments state updated');
 
       if (!isEditable || !videoId) {
+        console.log('💾 persistSegments - skipping save (not editable or no videoId)');
         return;
       }
 
@@ -103,10 +118,17 @@ export function useTranscriptionState({
 
   const handleSegmentTextChangeAndSave = useCallback(
     async (segmentId: Segment["id"], value: string) => {
+      console.log('🔄 handleSegmentTextChangeAndSave called:', {
+        segmentId,
+        oldText: editableSegments.find(s => s.id === segmentId)?.text,
+        newText: value
+      });
       const newSegments = editableSegments.map((segment) =>
         segment.id === segmentId ? { ...segment, text: value } : segment,
       );
+      console.log('🔄 handleSegmentTextChangeAndSave - calling persistSegments with updated segments');
       await persistSegments(newSegments);
+      console.log('🔄 handleSegmentTextChangeAndSave - persistSegments complete');
     },
     [editableSegments, persistSegments],
   );
@@ -143,7 +165,15 @@ export function useTranscriptionState({
   );
 
   const handleToggleActiveWord = useCallback(() => {
-    setActiveWordEnabled((prev) => !prev);
+    setActiveWordEnabled((prev) => {
+      const newValue = !prev;
+      try {
+        localStorage.setItem("activeWordEnabled", String(newValue));
+      } catch (error) {
+        console.warn("Failed to save activeWordEnabled to localStorage:", error);
+      }
+      return newValue;
+    });
   }, []);
 
   const handleWordsChange = useCallback(

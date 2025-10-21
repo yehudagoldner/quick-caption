@@ -44,9 +44,18 @@ export function WordTimeline({
 }: WordTimelineProps) {
   // Filter words that belong to this segment
   const segmentWords = useMemo(() => {
-    return initialWords.filter(
+    const filtered = initialWords.filter(
       (word) => word.start >= segment.start - 0.01 && word.start <= segment.end + 0.01
     );
+    console.log('🎯 WordTimeline - segmentWords filter:', {
+      segmentStart: segment.start,
+      segmentEnd: segment.end,
+      segmentDuration: segment.end - segment.start,
+      totalWords: initialWords.length,
+      filteredWords: filtered.length,
+      filteredWordTimes: filtered.map(w => ({ word: w.word, start: w.start, relativeStart: w.start - segment.start }))
+    });
+    return filtered;
   }, [initialWords, segment.start, segment.end]);
 
   const [editableWords, setEditableWords] = useState<Word[]>(segmentWords);
@@ -58,15 +67,36 @@ export function WordTimeline({
   const [newWordStart, setNewWordStart] = useState(segment.start);
   const [newWordEnd, setNewWordEnd] = useState(segment.start + 0.5);
 
+  // Update editableWords when segment changes
+  useEffect(() => {
+    console.log('🔄 WordTimeline - segment changed, updating editableWords:', {
+      segmentId: segment.id,
+      segmentStart: segment.start,
+      segmentEnd: segment.end,
+      newSegmentWordsCount: segmentWords.length
+    });
+    setEditableWords(segmentWords);
+    setSelectedWordIndex(null); // Clear selection when switching segments
+    setZoom(0); // Reset zoom when switching segments
+    setNewWordStart(segment.start);
+    setNewWordEnd(segment.start + 0.5);
+  }, [segment.id, segment.start, segment.end, segmentWords]);
+
   const editorData = useMemo<TimelineRow[]>(() => {
     const actions: TimelineAction[] = editableWords.map((word, index) => ({
       id: wordKey(word, index),
-      start: word.start,
-      end: word.end,
+      start: word.start - segment.start, // Convert to relative time
+      end: word.end - segment.start,     // Convert to relative time
       effectId: wordKey(word, index),
       flexible: true,
       movable: true,
     }));
+
+    console.log('📊 WordTimeline - editorData:', {
+      actionsCount: actions.length,
+      actionTimes: actions.map(a => ({ start: a.start, end: a.end })),
+      segmentStart: segment.start
+    });
 
     return [
       {
@@ -74,7 +104,7 @@ export function WordTimeline({
         actions,
       },
     ];
-  }, [editableWords]);
+  }, [editableWords, segment.start]);
 
   const effects = useMemo<Record<string, TimelineEffect>>(() => {
     return editableWords.reduce<Record<string, TimelineEffect>>((acc, word, index) => {
@@ -102,13 +132,21 @@ export function WordTimeline({
   const isCursorDraggingRef = useRef(false);
   const lastAppliedTimeRef = useRef<number | null>(null);
 
-  const baseScaleCount = useMemo(() => Math.max(10, Math.ceil(duration) + 1), [duration]);
+  const baseScaleCount = useMemo(() => Math.max(20, Math.ceil(duration) + 2), [duration]);
   const baseScale = 1;
   const baseScaleWidth = 160; // Larger scale for word-level precision
 
   const zoomFactor = useMemo(() => Math.pow(2, zoom / 50), [zoom]);
   const scaleWidth = baseScaleWidth * zoomFactor;
   const scaleSplitCount = 4;
+
+  console.log('⚙️ WordTimeline config:', {
+    duration,
+    baseScaleCount,
+    baseScale,
+    scaleWidth,
+    timelineMaxTime: baseScaleCount * baseScale
+  });
 
   const handleRowsChange = useCallback(
     (rows: TimelineRow[]) => {
@@ -126,8 +164,8 @@ export function WordTimeline({
 
           return {
             ...original.word,
-            start: action.start,
-            end: action.end,
+            start: action.start + segment.start, // Convert back to absolute time
+            end: action.end + segment.start,     // Convert back to absolute time
           };
         })
         .filter((word): word is Word => word !== null)
@@ -147,7 +185,7 @@ export function WordTimeline({
         setEditableWords(updatedWords);
       }
     },
-    [wordLookup, editableWords],
+    [wordLookup, editableWords, segment.start],
   );
 
   useEffect(() => {
@@ -424,7 +462,6 @@ export function WordTimeline({
               minScaleCount={baseScaleCount}
               scaleWidth={scaleWidth}
               scaleSplitCount={scaleSplitCount}
-              startLeft={segment.start}
               getScaleRender={(value) => <span>{formatScaleLabel(value)}</span>}
               onChange={handleRowsChange}
               getActionRender={(action) => renderAction(action)}

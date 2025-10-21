@@ -97,7 +97,7 @@ function App() {
     }
   };
 
-  const handleSaveSegments = async (segments: any[], subtitleContent?: string, words?: any[]) => {
+  const handleSaveSegments = async (segments: any[], _subtitleContent?: string, words?: any[]) => {
     if (!videoToken || !workflow.user?.uid) {
       throw new Error("Invalid session");
     }

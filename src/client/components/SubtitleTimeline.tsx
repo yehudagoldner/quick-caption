@@ -615,7 +615,7 @@ export function SubtitleTimeline({
             <WordTimeline
               segment={selectedSegment}
               words={words}
-              currentTime={currentTime}
+              currentTime={currentTime ?? null}
               onWordsChange={onWordsChange}
               onSegmentTextChange={onSegmentTextChange}
               onClose={handleWordTimelineClose}

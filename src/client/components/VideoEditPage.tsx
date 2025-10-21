@@ -8,7 +8,7 @@ import type { BurnOptions } from "./TranscriptionResult";
 interface VideoEditPageProps {
   user: AuthUser;
   videoToken: string; // Secure token instead of plain ID
-  onSaveSegments: (segments: Segment[], subtitleContent: string) => Promise<void>;
+  onSaveSegments: (segments: Segment[], subtitleContent: string, words?: any[]) => Promise<void>;
 }
 
 const RAW_API_BASE = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.trim() ?? "";
@@ -143,17 +143,18 @@ export function VideoEditPage({ user, videoToken, onSaveSegments }: VideoEditPag
     return { blob, filename };
   };
 
-  const handleSaveSegments = async (segments: Segment[], subtitleContent: string) => {
+  const handleSaveSegments = async (segments: Segment[], subtitleContent: string, words?: any[]) => {
     setResponse(prev =>
       prev ? {
         ...prev,
         segments,
+        words: words !== undefined ? words : prev.words,
         subtitle: prev.subtitle ? { ...prev.subtitle, content: subtitleContent } : prev.subtitle,
         text: segments.map(segment => segment.text).join("\n"),
       } : prev
     );
 
-    await onSaveSegments(segments, subtitleContent);
+    await onSaveSegments(segments, subtitleContent, words);
   };
 
   if (loading) {
