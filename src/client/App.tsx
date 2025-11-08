@@ -5,6 +5,7 @@ import { PromotionalHome } from "./components/PromotionalHome";
 import { TranscriptionPage } from "./components/TranscriptionPage";
 import { VideoEditPage } from "./components/VideoEditPage";
 import { VideosPage } from "./components/VideosPage";
+import { BuyCreditsPage } from "./components/BuyCreditsPage";
 import { useTranscriptionWorkflow } from "./hooks/useTranscriptionWorkflow";
 import "./App.css";
 
@@ -21,7 +22,7 @@ const theme = createTheme({
 const RAW_API_BASE = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.trim() ?? "";
 const API_BASE_URL = RAW_API_BASE.replace(/\/?$/, "");
 
-type AppScreen = "home" | "transcription" | "videos" | "edit";
+type AppScreen = "home" | "transcription" | "videos" | "edit" | "buy-credits";
 
 function getScreenFromUrl(): { screen: AppScreen; videoToken?: string } {
   const params = new URLSearchParams(window.location.search);
@@ -32,7 +33,7 @@ function getScreenFromUrl(): { screen: AppScreen; videoToken?: string } {
     return { screen: "edit", videoToken };
   }
 
-  if (["transcription", "videos"].includes(screen)) {
+  if (["transcription", "videos", "buy-credits"].includes(screen)) {
     return { screen };
   }
 
@@ -56,12 +57,43 @@ function App() {
   const workflow = useTranscriptionWorkflow();
   const [currentScreen, setCurrentScreen] = useState<AppScreen>("home");
   const [videoToken, setVideoToken] = useState<string | undefined>();
+  const [credits, setCredits] = useState<number | null>(null);
 
   useEffect(() => {
     const { screen, videoToken: token } = getScreenFromUrl();
     setCurrentScreen(screen);
     setVideoToken(token);
   }, []);
+
+  // Fetch user credits when user is authenticated
+  useEffect(() => {
+    if (workflow.user?.uid) {
+      fetchCredits();
+    } else {
+      setCredits(null);
+    }
+  }, [workflow.user?.uid]);
+
+  const fetchCredits = async () => {
+    if (!workflow.user?.uid) return;
+
+    try {
+      const response = await fetch(`${API_BASE_URL || ""}/api/users/credits?userUid=${encodeURIComponent(workflow.user.uid)}`);
+      if (response.ok) {
+        const data = await response.json();
+        setCredits(data.credits);
+      }
+    } catch (error) {
+      console.error("Failed to fetch credits:", error);
+    }
+  };
+
+  // Refresh credits when transcription completes (activePage changes to preview)
+  useEffect(() => {
+    if (workflow.activePage === "preview" && workflow.user?.uid) {
+      fetchCredits();
+    }
+  }, [workflow.activePage, workflow.user?.uid]);
 
   useEffect(() => {
     const handlePopState = () => {
@@ -120,6 +152,10 @@ function App() {
     }
   };
 
+  const handleBuyCredits = () => {
+    navigateToScreen("buy-credits");
+  };
+
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
@@ -129,11 +165,13 @@ function App() {
           authLoading={workflow.authLoading}
           profileAnchorEl={workflow.profileAnchorEl}
           currentPage={currentScreen === "videos" ? "videos" : "home"}
+          credits={credits}
           onProfileClick={workflow.onProfileClick}
           onProfileClose={workflow.onProfileClose}
           onSignIn={workflow.onSignIn}
           onSignOut={workflow.onSignOut}
           onNavigate={(page) => navigateToScreen(page === "videos" ? "videos" : "home")}
+          onBuyCredits={handleBuyCredits}
         />
 
         <Container maxWidth={false} sx={{ py: { xs: 4, md: 6 }, mt: { xs: 12, md: 10 } }}>
@@ -154,6 +192,14 @@ function App() {
 
           {currentScreen === "videos" && (
             <VideosPage onEditVideo={handleEditVideo} />
+          )}
+
+          {currentScreen === "buy-credits" && (
+            <BuyCreditsPage
+              user={workflow.user}
+              currentCredits={credits}
+              onCreditsUpdated={fetchCredits}
+            />
           )}
 
           {currentScreen === "edit" && videoToken && (

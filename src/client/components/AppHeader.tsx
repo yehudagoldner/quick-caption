@@ -4,6 +4,7 @@ import {
   Avatar,
   Box,
   Button,
+  Chip,
   CircularProgress,
   IconButton,
   Menu,
@@ -11,7 +12,7 @@ import {
   Toolbar,
   Tooltip,
 } from "@mui/material";
-import { VideoLibraryRounded, HomeRounded } from "@mui/icons-material";
+import { VideoLibraryRounded, HomeRounded, AccountBalanceWalletRounded } from "@mui/icons-material";
 import type { AuthUser } from "../hooks/useTranscriptionWorkflow";
 
 type AppHeaderProps = {
@@ -19,11 +20,13 @@ type AppHeaderProps = {
   authLoading: boolean;
   profileAnchorEl: HTMLElement | null;
   currentPage: "home" | "videos";
+  credits: number | null;
   onProfileClick: (event: MouseEvent<HTMLElement>) => void;
   onProfileClose: () => void;
   onSignIn: () => Promise<void>;
   onSignOut: () => Promise<void>;
   onNavigate: (page: "home" | "videos") => void;
+  onBuyCredits: () => void;
 };
 
 export function AppHeader({
@@ -31,12 +34,16 @@ export function AppHeader({
   authLoading,
   profileAnchorEl,
   currentPage,
+  credits,
   onProfileClick,
   onProfileClose,
   onSignIn,
   onSignOut,
   onNavigate,
+  onBuyCredits,
 }: AppHeaderProps) {
+  const creditsColor = credits === null ? "default" : credits < 20 ? "error" : credits < 50 ? "warning" : "success";
+
   return (
     <AppBar position="fixed" color="default" elevation={0} sx={{ borderBottom: 1, borderColor: "divider" }}>
       <Toolbar>
@@ -65,6 +72,17 @@ export function AppHeader({
         </Box>
         {user ? (
           <>
+            {credits !== null && (
+              <Tooltip title={`יתרת קרדיטים: ${credits} (${(credits / 100).toFixed(2)}$)`}>
+                <Chip
+                  icon={<AccountBalanceWalletRounded />}
+                  label={`${credits} קרדיטים`}
+                  color={creditsColor}
+                  size="small"
+                  sx={{ ml: 2, fontWeight: "bold" }}
+                />
+              </Tooltip>
+            )}
             <Tooltip title={user.displayName ?? user.email ?? "משתמש"}>
               <IconButton onClick={onProfileClick} size="small" sx={{ ml: 1 }}>
                 <Avatar src={user.photoURL ?? undefined} alt={user.displayName ?? user.email ?? "User"} sx={{ width: 38, height: 38 }} />
@@ -78,6 +96,15 @@ export function AppHeader({
               transformOrigin={{ horizontal: "right", vertical: "top" }}
             >
               <MenuItem disabled>{user.displayName ?? user.email ?? "משתמש"}</MenuItem>
+              {credits !== null && (
+                <MenuItem disabled>
+                  קרדיטים: {credits}
+                </MenuItem>
+              )}
+              <MenuItem onClick={() => { onProfileClose(); onBuyCredits(); }}>
+                <AccountBalanceWalletRounded sx={{ ml: 1 }} />
+                רכישת קרדיטים
+              </MenuItem>
               <MenuItem onClick={onSignOut}>התנתקות</MenuItem>
             </Menu>
           </>

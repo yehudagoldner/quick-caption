@@ -8,6 +8,7 @@
   is_email_verified TINYINT(1) DEFAULT 0,
   provider_id VARCHAR(128),
   last_login_at DATETIME,
+  credits INT DEFAULT 100 NOT NULL COMMENT 'User credits: 100 credits = $1',
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;

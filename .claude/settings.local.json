@@ -3,7 +3,19 @@
     "allow": [
       "Bash(node:*)",
       "Bash(npm run build:*)",
-      "Bash(npm run dev:*)"
+      "Bash(npm run dev:*)",
+      "Bash(npx playwright:*)",
+      "Bash(claude mcp add chrome-devtools npx chrome-devtools-mcp@latest:*)",
+      "Bash(npx:*)",
+      "Bash(claude mcp tools chrome-devtools)",
+      "WebFetch(domain:github.com)",
+      "mcp__chrome-devtools__navigate_page",
+      "mcp__chrome-devtools__list_console_messages",
+      "mcp__chrome-devtools__take_snapshot",
+      "WebSearch",
+      "WebFetch(domain:openai.com)",
+      "WebFetch(domain:platform.openai.com)",
+      "mcp__chrome-devtools__wait_for"
     ],
     "deny": [],
     "ask": []

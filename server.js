@@ -9,9 +9,11 @@ import { createServer } from "http";
 import { Server as SocketIOServer } from "socket.io";
 import dotenv from "dotenv";
 
-import { transcribeMedia, normalizeSubtitleFormat, transcribeWithWordTimestamps } from "./src/transcription.js";
+import { transcribeMedia, normalizeSubtitleFormat, transcribeWithWordTimestamps, getMediaDuration } from "./src/transcription.js";
 import { createBurnSubtitlesRouter } from "./routes/burnSubtitles.js";
-import { ensureSchema, upsertUser, saveVideo, updateVideoSubtitles, getUserVideos, getVideoById } from "./db.js";
+import paypalRouter from "./routes/paypal.js";
+import { ensureSchema, upsertUser, saveVideo, updateVideoSubtitles, getUserVideos, getVideoById, getUserCredits, deductCredits } from "./db.js";
+import { estimateTranscriptionCredits, creditsToDollars, calculateTotalWorkflowCredits } from "./src/creditCalculator.js";
 
 
 dotenv.config();
@@ -48,6 +50,7 @@ const upload = multer({
   }
 });
 app.use("/api/burn-subtitles", createBurnSubtitlesRouter(upload));
+app.use("/api/payments", paypalRouter);
 
 const httpServer = createServer(app);
 const io = new SocketIOServer(httpServer, {
@@ -98,6 +101,25 @@ app.post("/api/users/sync", async (req, res) => {
   } catch (error) {
     console.error("Failed to sync user:", error);
     res.status(500).json({ error: "Failed to sync user" });
+  }
+});
+
+app.get("/api/users/credits", async (req, res) => {
+  const userUid = req.query.userUid;
+
+  if (!userUid) {
+    return res.status(400).json({ error: 'userUid is required' });
+  }
+
+  try {
+    const credits = await getUserCredits(userUid);
+    if (credits === null) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    res.json({ credits });
+  } catch (error) {
+    console.error('Failed to fetch user credits:', error);
+    res.status(500).json({ error: 'Failed to fetch user credits' });
   }
 });
 
@@ -353,6 +375,12 @@ app.post("/api/transcribe", upload.single("media"), async (req, res) => {
     return res.status(400).json({ error: 'Media file is required under field name "media".' });
   }
 
+  if (!userUid) {
+    emitStage("complete", "error", "נדרש מזהה משתמש");
+    await safeUnlink(req.file.path);
+    return res.status(400).json({ error: 'userUid is required for credit check' });
+  }
+
   // Fix filename encoding - multer often corrupts UTF-8 filenames
   let originalFilename = req.file.originalname;
   if (originalFilename) {
@@ -402,6 +430,56 @@ app.post("/api/transcribe", upload.single("media"), async (req, res) => {
     emitStage("complete", "error", error.message);
     await safeUnlink(req.file.path);
     return res.status(400).json({ error: error.message });
+  }
+
+  // Check if user has minimum credits (estimate for pre-check only)
+  let durationSeconds = null;
+  let estimatedCredits = 0;
+  try {
+    // Get media duration for credit estimation
+    durationSeconds = await getMediaDuration(req.file.path);
+    const durationMinutes = durationSeconds / 60;
+
+    // Get transcription options to estimate cost
+    const timedModel = process.env.OPENAI_TIMED_MODEL ?? "whisper-1";
+    const highAccuracyModel = process.env.OPENAI_HIGH_ACCURACY_MODEL ?? "gpt-4o-transcribe";
+    const correctionModel = process.env.OPENAI_CORRECTION_MODEL ?? "gpt-5";
+
+    estimatedCredits = estimateTranscriptionCredits(durationMinutes, {
+      timedModel,
+      highAccuracyModel,
+      correctionModel,
+    });
+
+    console.log(`Estimated credits for ${durationMinutes.toFixed(2)} minutes: ${estimatedCredits} credits (${creditsToDollars(estimatedCredits)})`);
+
+    // Check if user has enough credits (pre-check only, actual deduction after API response)
+    const currentCredits = await getUserCredits(userUid);
+    if (currentCredits === null) {
+      emitStage("complete", "error", "משתמש לא נמצא");
+      await safeUnlink(req.file.path);
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    if (currentCredits < estimatedCredits) {
+      const shortfall = estimatedCredits - currentCredits;
+      emitStage("complete", "error", `אין מספיק קרדיטים. נדרשים ${estimatedCredits} קרדיטים, יש לך ${currentCredits}`);
+      await safeUnlink(req.file.path);
+      return res.status(402).json({
+        error: 'Insufficient credits',
+        required: estimatedCredits,
+        available: currentCredits,
+        shortfall: shortfall,
+        cost: creditsToDollars(estimatedCredits),
+      });
+    }
+
+    console.log(`User has sufficient credits (${currentCredits} >= ${estimatedCredits}). Proceeding with transcription.`);
+  } catch (error) {
+    console.error("Credit check failed:", error);
+    emitStage("complete", "error", "בדיקת קרדיטים נכשלה");
+    await safeUnlink(req.file.path);
+    return res.status(500).json({ error: 'Credit check failed' });
   }
 
   try {
@@ -481,6 +559,20 @@ app.post("/api/transcribe", upload.single("media"), async (req, res) => {
       }
     }
 
+    // Calculate actual credits used based on API usage
+    const actualCredits = calculateTotalWorkflowCredits(result.usage || {});
+    console.log(`Actual credits used: ${actualCredits} credits (${creditsToDollars(actualCredits)})`);
+    console.log(`Usage breakdown:`, JSON.stringify(result.usage, null, 2));
+
+    // Deduct actual credits
+    const deductResult = await deductCredits(userUid, actualCredits);
+    if (!deductResult.success) {
+      console.error(`Failed to deduct actual credits: ${deductResult.error}`);
+      // Log error but don't fail the request - transcription already completed
+    } else {
+      console.log(`Deducted ${actualCredits} credits. New balance: ${deductResult.newBalance}`);
+    }
+
     emitStage("complete", "done");
     res.json({
       text: result.text,
@@ -490,6 +582,8 @@ app.post("/api/transcribe", upload.single("media"), async (req, res) => {
       warnings: result.warnings,
       models: result.models,
       videoId: savedVideoId,
+      creditsUsed: actualCredits,
+      creditsRemaining: deductResult.newBalance,
     });
   } catch (error) {
     if (userUid) {

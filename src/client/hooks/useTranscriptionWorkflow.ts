@@ -241,12 +241,23 @@ export function useTranscriptionWorkflow(): TranscriptionWorkflow {
           setError(null);
           setActivePage("preview");
         } else {
-          setError(payload?.error ?? `אירעה שגיאה (${xhr.status})`);
+          // Handle insufficient credits error (402 Payment Required)
+          let errorMessage = payload?.error ?? `אירעה שגיאה (${xhr.status})`;
+          if (xhr.status === 402) {
+            const { required, available, shortfall, cost } = payload as any;
+            if (required && available !== undefined) {
+              errorMessage = `אין מספיק קרדיטים! נדרשים ${required} קרדיטים (${cost || ''}), יש לך רק ${available}. חסרים ${shortfall} קרדיטים.`;
+            } else {
+              errorMessage = `אין מספיק קרדיטים לביצוע הפעולה. ${payload?.error || ''}`;
+            }
+          }
+
+          setError(errorMessage);
           setVideoId(null);
           setStages((prev) =>
             prev.map((stage) =>
               stage.id === "complete"
-                ? { ...stage, status: "error", message: payload?.error ?? "הבקשה בוטלה" }
+                ? { ...stage, status: "error", message: errorMessage }
                 : stage,
             ),
           );

@@ -23,6 +23,7 @@ export async function ensureSchema() {
       is_email_verified TINYINT(1) DEFAULT 0,
       provider_id VARCHAR(128),
       last_login_at DATETIME,
+      credits INT DEFAULT 100 NOT NULL COMMENT 'User credits: 100 credits = $1',
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
     ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
@@ -61,6 +62,15 @@ export async function ensureSchema() {
   const [wordsJsonColumns] = await pool.query("SHOW COLUMNS FROM videos LIKE 'words_json'");
   if (Array.isArray(wordsJsonColumns) && wordsJsonColumns.length === 0) {
     await pool.execute("ALTER TABLE videos ADD COLUMN words_json JSON NULL AFTER subtitle_json");
+  }
+
+  // Add credits column to existing users table
+  const [creditsColumns] = await pool.query("SHOW COLUMNS FROM users LIKE 'credits'");
+  if (Array.isArray(creditsColumns) && creditsColumns.length === 0) {
+    console.log("Adding credits column to users table...");
+    await pool.execute("ALTER TABLE users ADD COLUMN credits INT DEFAULT 100 NOT NULL COMMENT 'User credits: 100 credits = $1' AFTER last_login_at");
+    console.log("Granting 100 credits to all existing users...");
+    await pool.execute("UPDATE users SET credits = 100 WHERE credits = 0 OR credits IS NULL");
   }
 }
 
@@ -180,6 +190,89 @@ export async function getVideoById({ videoId, userUid }) {
   }
 
   return rows[0];
+}
+
+/**
+ * Get user's credit balance
+ * @param {string} userUid - User's Firebase UID
+ * @returns {Promise<number|null>} Credit balance or null if user not found
+ */
+export async function getUserCredits(userUid) {
+  const [rows] = await pool.execute(
+    `SELECT credits FROM users WHERE uid = ? LIMIT 1`,
+    [userUid],
+  );
+
+  if (!Array.isArray(rows) || rows.length === 0) {
+    return null;
+  }
+
+  return rows[0].credits;
+}
+
+/**
+ * Deduct credits from user's balance (with transaction safety)
+ * @param {string} userUid - User's Firebase UID
+ * @param {number} amount - Amount of credits to deduct
+ * @returns {Promise<{success: boolean, newBalance: number|null, error?: string}>}
+ */
+export async function deductCredits(userUid, amount) {
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
+
+    // Lock the user row and get current balance
+    const [rows] = await connection.execute(
+      `SELECT credits FROM users WHERE uid = ? FOR UPDATE`,
+      [userUid],
+    );
+
+    if (!Array.isArray(rows) || rows.length === 0) {
+      await connection.rollback();
+      return { success: false, newBalance: null, error: 'User not found' };
+    }
+
+    const currentBalance = rows[0].credits;
+
+    if (currentBalance < amount) {
+      await connection.rollback();
+      return { success: false, newBalance: currentBalance, error: 'Insufficient credits' };
+    }
+
+    const newBalance = currentBalance - amount;
+
+    await connection.execute(
+      `UPDATE users SET credits = ? WHERE uid = ?`,
+      [newBalance, userUid],
+    );
+
+    await connection.commit();
+    return { success: true, newBalance };
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+}
+
+/**
+ * Add credits to user's balance
+ * @param {string} userUid - User's Firebase UID
+ * @param {number} amount - Amount of credits to add
+ * @returns {Promise<number|null>} New balance or null if user not found
+ */
+export async function addCredits(userUid, amount) {
+  const [result] = await pool.execute(
+    `UPDATE users SET credits = credits + ? WHERE uid = ?`,
+    [amount, userUid],
+  );
+
+  if (result.affectedRows === 0) {
+    return null;
+  }
+
+  return await getUserCredits(userUid);
 }
 
 export default pool;

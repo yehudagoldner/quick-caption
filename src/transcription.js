@@ -28,6 +28,7 @@ export async function transcribeMedia({
   const client = createOpenAIClient();
   const options = getTranscriptionOptions();
   const warnings = [];
+  const usage = {}; // Track API usage for billing
 
   const notify = (stage, status, message) => {
     try {
@@ -47,6 +48,9 @@ export async function transcribeMedia({
       options,
       logger,
     );
+    if (timedResult.usage) {
+      usage.timedTranscription = timedResult.usage;
+    }
     notify("timed-transcription", "done");
 
     let highAccuracyResult = null;
@@ -59,6 +63,9 @@ export async function transcribeMedia({
           options,
           logger,
         );
+        if (highAccuracyResult.usage) {
+          usage.highAccuracy = highAccuracyResult.usage;
+        }
         notify("high-accuracy", "done");
       } catch (error) {
         warnings.push(`High accuracy transcription failed: ${error.message ?? error}`);
@@ -80,6 +87,9 @@ export async function transcribeMedia({
           options,
           logger,
         );
+        if (refinedResult.usage) {
+          usage.correction = refinedResult.usage;
+        }
         notify("correction", "done");
       } catch (error) {
         warnings.push(`Correction model failed: ${error.message ?? error}`);
@@ -107,6 +117,7 @@ export async function transcribeMedia({
         highAccuracy: highAccuracyResult ? options.highAccuracyModel : null,
         correction: options.correctionModel ?? null,
       },
+      usage, // Include API usage data
     };
   } finally {
     if (audioPreparation.cleanup) {
@@ -238,7 +249,19 @@ async function transcribeWithTimedModel(client, audioPath, options, logger) {
     throw new Error(`No segments returned by model ${timedModel}; cannot proceed without timestamps.`);
   }
 
-  return { text: combinedText, segments, words };
+  // Extract usage data for billing (duration in seconds)
+  const duration = segments.length > 0 ? segments[segments.length - 1].end : 0;
+
+  return {
+    text: combinedText,
+    segments,
+    words,
+    usage: {
+      model: timedModel,
+      durationSeconds: duration,
+      durationMinutes: duration / 60,
+    },
+  };
 }
 
 function shouldRunHighAccuracy(modelName) {
@@ -270,9 +293,17 @@ async function transcribeWithHighAccuracyModel(client, audioPath, options, logge
     throw new Error(`High-accuracy model ${highAccuracyModel} returned no text.`);
   }
 
+  // Extract usage data for billing
+  const duration = segments.length > 0 ? segments[segments.length - 1].end : 0;
+
   return {
     text: combinedText,
     segments: segments.length ? segments : null,
+    usage: {
+      model: highAccuracyModel,
+      durationSeconds: duration,
+      durationMinutes: duration / 60,
+    },
   };
 }
 
@@ -602,10 +633,19 @@ async function refineTranscriptWithGPT(client, baseResult, highAccuracyResult, o
   // Align corrected words with original timestamps
   const refinedWords = baseResult.words ? alignWordsToSegments(baseResult.words, baseResult.segments, refinedSegments) : [];
 
+  // Extract token usage for billing
+  const usage = {
+    model: model,
+    inputTokens: response.usage?.input_tokens || 0,
+    outputTokens: response.usage?.output_tokens || 0,
+    cachedTokens: response.usage?.cached_tokens || 0,
+  };
+
   return {
     text: refinedText || baseResult.text,
     segments: refinedSegments,
     words: refinedWords,
+    usage,
   };
 }
 
@@ -705,6 +745,51 @@ async function assertFfmpeg() {
   } catch (error) {
     throw new Error("ffmpeg is required but was not found in PATH.");
   }
+}
+
+/**
+ * Get media duration in seconds using ffprobe
+ * @param {string} filePath - Path to media file
+ * @returns {Promise<number>} Duration in seconds
+ */
+export async function getMediaDuration(filePath) {
+  return new Promise((resolve, reject) => {
+    const args = [
+      "-v", "error",
+      "-show_entries", "format=duration",
+      "-of", "default=noprint_wrappers=1:nokey=1",
+      filePath
+    ];
+
+    const child = spawn("ffprobe", args, { stdio: ["ignore", "pipe", "pipe"] });
+    let output = "";
+    let errorOutput = "";
+
+    child.stdout.on("data", (data) => {
+      output += data.toString();
+    });
+
+    child.stderr.on("data", (data) => {
+      errorOutput += data.toString();
+    });
+
+    child.on("error", (error) => {
+      reject(new Error(`ffprobe not found: ${error.message}`));
+    });
+
+    child.on("close", (code) => {
+      if (code === 0) {
+        const duration = parseFloat(output.trim());
+        if (Number.isFinite(duration) && duration > 0) {
+          resolve(duration);
+        } else {
+          reject(new Error("Could not parse media duration"));
+        }
+      } else {
+        reject(new Error(`ffprobe failed: ${errorOutput}`));
+      }
+    });
+  });
 }
 
 function buildBurnedVideoPath(inputVideoPath) {
