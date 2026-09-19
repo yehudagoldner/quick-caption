@@ -9,12 +9,13 @@ interface VideoEditPageProps {
   user: AuthUser;
   videoToken: string; // Secure token instead of plain ID
   onSaveSegments: (segments: Segment[], subtitleContent: string, words?: any[]) => Promise<void>;
+  onNewUpload: () => void;
 }
 
 const RAW_API_BASE = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.trim() ?? "";
 const API_BASE_URL = RAW_API_BASE.replace(/\/?$/, "");
 
-export function VideoEditPage({ user, videoToken, onSaveSegments }: VideoEditPageProps) {
+export function VideoEditPage({ user, videoToken, onSaveSegments, onNewUpload }: VideoEditPageProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [response, setResponse] = useState<ApiResponse | null>(null);
@@ -115,7 +116,13 @@ export function VideoEditPage({ user, videoToken, onSaveSegments }: VideoEditPag
 
     const formData = new FormData();
     formData.append("media", videoBlob, "video");
-    formData.append("subtitleContent", response.subtitle.content);
+    formData.append("subtitleContent", options.subtitleContent ?? response.subtitle.content);
+    formData.append("textDirection", options.textDirection ?? "rtl");
+    if (options.activeWordEnabled) {
+      formData.append("activeWordEnabled", "true");
+      formData.append("segments", JSON.stringify(options.segments ?? []));
+      formData.append("words", JSON.stringify(options.words ?? []));
+    }
     formData.append("fontSize", String(options.fontSize));
     formData.append("fontColor", options.fontColor);
     formData.append("outlineColor", options.outlineColor);
@@ -203,8 +210,8 @@ export function VideoEditPage({ user, videoToken, onSaveSegments }: VideoEditPag
   const downloadName = `subtitle${format}`;
 
   return (
-    <Container maxWidth="lg">
-      <Box sx={{ py: 4 }}>
+    <Container maxWidth={false} disableGutters>
+      <Box sx={{ py: 1 }}>
         <Typography variant="h4" gutterBottom sx={{ fontWeight: 600, textAlign: "center" }}>
           עריכת כתוביות
         </Typography>
@@ -216,7 +223,7 @@ export function VideoEditPage({ user, videoToken, onSaveSegments }: VideoEditPag
           downloadUrl={downloadUrl}
           downloadName={downloadName}
           mediaUrl={mediaUrl}
-          onBack={() => {}}
+          onBack={onNewUpload}
           onBurn={handleBurnVideoRequest}
           onSaveSegments={handleSaveSegments}
           videoId={videoId}

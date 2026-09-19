@@ -9,6 +9,9 @@ export type Word = {
   word: string;
   start: number;
   end: number;
+  segmentId?: Segment["id"];
+  wordIndex?: number;
+  timingSource?: "original" | "aligned" | "estimated";
 };
 
 export type SubtitlePayload = {

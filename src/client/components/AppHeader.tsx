@@ -50,7 +50,7 @@ export function AppHeader({
         <Box sx={{ flexGrow: 1, display: "flex", alignItems: "center", gap: 2 }}>
           <Box component="img" src="/quickcaption-logo.svg" alt="QuickCaption" sx={{ height: 32 }} />
           {user && (
-            <Box sx={{ display: "flex", gap: 1 }}>
+            <Box sx={{ display: { xs: "none", md: "flex" }, gap: 1 }}>
               <Button
                 startIcon={<HomeRounded />}
                 variant={currentPage === "home" ? "contained" : "outlined"}
@@ -101,6 +101,18 @@ export function AppHeader({
                   קרדיטים: {credits}
                 </MenuItem>
               )}
+
+              <Box sx={{ display: { xs: "block", md: "none" } }}>
+                <MenuItem onClick={() => { onProfileClose(); onNavigate("home"); }}>
+                  <HomeRounded sx={{ ml: 1 }} />
+                  דף הבית
+                </MenuItem>
+                <MenuItem onClick={() => { onProfileClose(); onNavigate("videos"); }}>
+                  <VideoLibraryRounded sx={{ ml: 1 }} />
+                  הווידאו שלי
+                </MenuItem>
+              </Box>
+
               <MenuItem onClick={() => { onProfileClose(); onBuyCredits(); }}>
                 <AccountBalanceWalletRounded sx={{ ml: 1 }} />
                 רכישת קרדיטים

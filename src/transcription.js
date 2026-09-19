@@ -4,6 +4,8 @@ import { spawn } from "child_process";
 import path from "path";
 import OpenAI from "openai";
 import dotenv from "dotenv";
+import { limitSubtitleCharacters } from "./subtitleSegmentation.js";
+import { synchronizeWords, mergeCorrectedSegments, subtitleTokens } from "./wordAlignment.js";
 
 dotenv.config();
 
@@ -11,9 +13,422 @@ const AUDIO_EXTENSIONS = new Set([".mp3", ".wav", ".m4a", ".aac", ".ogg", ".flac
 const SUBTITLE_FORMATS = new Set([".txt", ".srt", ".vtt"]);
 const OPENAI_UPLOAD_LIMIT_BYTES = 25 * 1024 * 1024; // 25 MB per upload
 
+/**
+ * Intelligently split a segment using AI with reasoning/thinking to find the best split point.
+ * Considers sentence endings, joke punchlines (to avoid spoilers), and natural pauses.
+ * Uses OpenAI reasoning models (o3, o4-mini) for deeper analysis.
+ * @param {Object} segment - The segment to split {id, start, end, text}
+ * @param {Array} words - Word-level timing data for the segment
+ * @param {number} splitTime - The cursor position (approximate split time)
+ * @returns {Promise<{segments: Array, splitIndex: number}>} Two new segments
+ */
+/**
+ * AI-powered subtitle editor that modifies existing subtitles based on user instructions.
+ * Can merge, split, rewrite, fix grammar, adjust timing, etc.
+ * @param {Array} segments - Current subtitle segments
+ * @param {Array} words - Word-level timing data
+ * @param {string} instructions - User's instructions for how to modify the subtitles
+ * @returns {Promise<{segments: Array}>} Modified segments
+ */
+export async function aiEditSubtitles(segments, words, instructions) {
+  const client = createOpenAIClient();
+  const model = process.env.OPENAI_EDIT_MODEL || "gpt-5.2";
+
+  console.log(`AI editing subtitles with ${model} (reasoning enabled)...`);
+
+  const segmentsData = segments.map((s, i) => ({
+    index: i,
+    id: s.id,
+    start: s.start,
+    end: s.end,
+    text: s.text,
+  }));
+
+  // Include word timing data for reference
+  const wordsData = words.map(w => ({
+    word: w.word,
+    start: w.start,
+    end: w.end,
+  }));
+
+  const systemPrompt = `You are an expert Hebrew subtitle editor. The user will give you instructions on how to modify their subtitles.
+
+You have access to:
+1. The current subtitles with their timing (start/end in seconds)
+2. Word-level timing data for precise adjustments
+
+RULES:
+- Follow the user's instructions carefully
+- Preserve timing as much as possible - only adjust when necessary
+- When splitting a subtitle, use the word timing to set accurate start/end times
+- When merging subtitles, keep the first subtitle's start time and last subtitle's end time
+- Keep the same segment IDs when modifying text (only change ID if splitting/merging)
+- For new segments created by splitting, use timestamp-based IDs (Date.now() + index)
+- If there's a joke or punchline, keep it in a separate subtitle to avoid spoilers
+- Return valid JSON with a "segments" array
+
+CAPABILITIES:
+- Split long subtitles into shorter ones
+- Merge short subtitles together
+- Fix grammar and spelling
+- Rewrite for clarity
+- Adjust timing
+- Remove or add subtitles
+- Any other editing the user requests`;
+
+  const userPrompt = `Current subtitles:
+${JSON.stringify(segmentsData, null, 2)}
+
+Word timing data (for reference when splitting):
+${JSON.stringify(wordsData, null, 2)}
+
+USER INSTRUCTIONS:
+${instructions}
+
+Return a JSON object with "segments" array containing the modified subtitles. Each segment must have: id, start, end, text`;
+
+  const response = await client.responses.create({
+    model: model,
+    input: [
+      {
+        role: "user",
+        content: [
+          {
+            type: "input_text",
+            text: systemPrompt + "\n\n" + userPrompt,
+          },
+        ],
+      },
+    ],
+    reasoning: {
+      effort: "medium",
+    },
+    text: {
+      format: {
+        type: "json_object",
+      },
+    },
+  });
+
+  if (response.reasoning_summary) {
+    console.log("AI reasoning summary:", response.reasoning_summary);
+  }
+
+  let result;
+  try {
+    result = JSON.parse(response.output_text);
+  } catch (e) {
+    throw new Error("Failed to parse AI response");
+  }
+
+  if (!result.segments || !Array.isArray(result.segments)) {
+    throw new Error("AI response missing segments array");
+  }
+
+  // Validate and clean segments
+  const validatedSegments = result.segments.map((s, i) => ({
+    id: s.id ?? Date.now() + i,
+    start: typeof s.start === "number" ? s.start : 0,
+    end: typeof s.end === "number" ? s.end : 0,
+    text: String(s.text || "").trim(),
+  })).filter(s => s.text.length > 0);
+
+  return {
+    segments: validatedSegments,
+    words: synchronizeWords(validatedSegments, words),
+    reasoning: response.reasoning_summary || null,
+  };
+}
+
+export async function intelligentSplitSegment(segment, words, splitTime) {
+  const client = createOpenAIClient();
+  const model = process.env.OPENAI_SPLIT_MODEL || "gpt-5.2";
+  const useReasoning = true; // Always use reasoning API for better results
+
+  // Filter words that belong to this segment
+  const segmentWords = words.filter(
+    (w) => w.start >= segment.start - 0.01 && w.end <= segment.end + 0.01
+  );
+
+  if (segmentWords.length < 2) {
+    throw new Error("Segment must have at least 2 words to split");
+  }
+
+  // Create word list with indices for the AI
+  const wordList = segmentWords.map((w, i) => ({
+    index: i,
+    word: w.word,
+    start: w.start,
+    end: w.end,
+  }));
+
+  // Find the approximate word index near the cursor
+  const approximateIndex = segmentWords.findIndex(w => w.start >= splitTime) || Math.floor(segmentWords.length / 2);
+
+  const systemPrompt = `You are an expert subtitle editor for Hebrew content. Your task is to find the BEST split point for a subtitle.
+
+THINK CAREFULLY about:
+1. Is there a complete sentence that ends before the suggested split point? If yes, split there.
+2. Is this text a joke or has a punchline? If yes, identify the setup vs the punchline. The punchline MUST go in the SECOND subtitle to avoid spoiling the joke for viewers who read fast.
+3. Are there natural pauses (commas, conjunctions like "ו", "אבל", "כי", "אז", "ש")?
+4. Would splitting here break a phrase, idiom, or expression? If yes, find a better point.
+5. Is the split balanced? Avoid very short segments (1-2 words) unless necessary.
+
+The user suggested splitting around word index ${approximateIndex}, but you should analyze the content and adjust if there's a semantically better point.
+
+Return a JSON object with:
+- "splitAfterIndex": the index of the last word in the FIRST subtitle (0-based)
+- "reason": your reasoning for choosing this split point`;
+
+  const userPrompt = `Analyze this Hebrew subtitle and find the optimal split point.
+
+Words with indices:
+${JSON.stringify(wordList, null, 2)}
+
+Full text: "${segment.text}"
+
+Think about the meaning, any jokes/punchlines, and natural breaks. Then provide the best split point.`;
+
+  let response;
+
+  if (useReasoning) {
+    // Use reasoning model with extended thinking
+    console.log(`Using reasoning model ${model} for intelligent split...`);
+    response = await client.responses.create({
+      model: model,
+      input: [
+        {
+          role: "user",
+          content: [
+            {
+              type: "input_text",
+              text: systemPrompt + "\n\n" + userPrompt,
+            },
+          ],
+        },
+      ],
+      reasoning: {
+        effort: "medium",  // Use medium reasoning effort for balance of speed and quality
+      },
+      text: {
+        format: {
+          type: "json_object",
+        },
+      },
+    });
+
+    // Log thinking summary if available
+    if (response.reasoning_summary) {
+      console.log("AI reasoning summary:", response.reasoning_summary);
+    }
+
+    let result;
+    try {
+      result = JSON.parse(response.output_text);
+    } catch (e) {
+      throw new Error("Failed to parse AI response for split point");
+    }
+
+    return processAISplitResult(result, segmentWords, segment);
+  } else {
+    // Fall back to regular chat completion for non-reasoning models
+    response = await client.chat.completions.create({
+      model: model,
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt }
+      ],
+      temperature: 0.1,
+      response_format: { type: "json_object" },
+    });
+
+    let result;
+    try {
+      result = JSON.parse(response.choices[0].message.content);
+    } catch (e) {
+      throw new Error("Failed to parse AI response for split point");
+    }
+
+    return processAISplitResult(result, segmentWords, segment);
+  }
+}
+
+/**
+ * Process the AI's split result and create the two new segments
+ */
+function processAISplitResult(result, segmentWords, segment) {
+  const splitAfterIndex = result.splitAfterIndex;
+
+  // Validate the split index
+  if (typeof splitAfterIndex !== "number" || splitAfterIndex < 0 || splitAfterIndex >= segmentWords.length - 1) {
+    throw new Error(`Invalid split index: ${splitAfterIndex}`);
+  }
+
+  // Create two new segments based on the AI's recommendation
+  const firstHalfWords = segmentWords.slice(0, splitAfterIndex + 1);
+  const secondHalfWords = segmentWords.slice(splitAfterIndex + 1);
+
+  const firstSegment = {
+    id: Date.now(),
+    start: segment.start,
+    end: firstHalfWords[firstHalfWords.length - 1].end,
+    text: firstHalfWords.map(w => w.word).join(" "),
+  };
+
+  const secondSegment = {
+    id: Date.now() + 1,
+    start: secondHalfWords[0].start,
+    end: segment.end,
+    text: secondHalfWords.map(w => w.word).join(" "),
+  };
+
+  return {
+    segments: [firstSegment, secondSegment],
+    splitIndex: splitAfterIndex,
+    reason: result.reason || "AI-determined optimal split point",
+  };
+}
+
+export async function resegmentWithGPT(words, maxWords, options = {}) {
+  const client = createOpenAIClient();
+  const model = process.env.OPENAI_RESEGMENT_MODEL || "gpt-5.2";
+  const customInstructions = options.customInstructions || "";
+
+  // Prepare the text content
+  const fullText = words.map(w => w.word).join(" ");
+
+  // Build system prompt with optional custom instructions
+  let systemPrompt = `You are a subtitle segmentation expert for Hebrew content. Your task is to split the provided text into subtitle segments.
+
+THINK CAREFULLY about:
+1. Each segment should have at most ${maxWords} words (but can be fewer for natural breaks)
+2. ALWAYS split at sentence endings (periods, question marks, exclamation marks)
+3. If there's a joke or punchline, keep the punchline in a SEPARATE segment to avoid spoilers
+4. Split at natural pauses (commas, conjunctions like "ו", "אבל", "כי", "אז")
+5. Never split in the middle of a phrase or idiom
+6. Keep segments balanced - avoid very short (1-2 words) or very long segments
+
+Do NOT change any words. Only insert newlines to separate segments.
+Return ONLY the text with newlines separating segments. No JSON, no markdown, no numbering.`;
+
+  if (customInstructions) {
+    systemPrompt += `\n\nADDITIONAL USER INSTRUCTIONS:\n${customInstructions}`;
+  }
+
+  // Use reasoning API for better segmentation
+  console.log(`Resegmenting with ${model} (reasoning enabled)...`);
+  const response = await client.responses.create({
+    model: model,
+    input: [
+      {
+        role: "user",
+        content: [
+          {
+            type: "input_text",
+            text: systemPrompt + "\n\nText to segment:\n" + fullText,
+          },
+        ],
+      },
+    ],
+    reasoning: {
+      effort: "medium",
+    },
+  });
+
+  if (response.reasoning_summary) {
+    console.log("AI reasoning summary:", response.reasoning_summary);
+  }
+
+  const segmentedText = response.output_text.trim();
+
+  const segmentLines = segmentedText.split("\n").map(l => l.trim()).filter(Boolean);
+
+  // Re-align original words to the new segments
+  const newSegments = [];
+  let currentWordIndex = 0;
+
+  for (let i = 0; i < segmentLines.length; i++) {
+    const lineText = segmentLines[i];
+    // simple tokenization to count words in the line for alignment
+    // This is a naive approach; for strict safety we should match word-for-word.
+    // Given we asked GPT *not* to change text, we can try to walk forward in the words array.
+
+    const lineTokens = subtitleTokens(lineText);
+    const segmentWords = [];
+
+    let matchCount = 0;
+    // Try to match tokens to original words
+    while (currentWordIndex < words.length && matchCount < lineTokens.length) {
+      segmentWords.push(words[currentWordIndex]);
+      currentWordIndex++;
+      matchCount++;
+
+      // Heuristic updates could go here if GPT changed punctuation, but we assume strict adherence.
+    }
+
+    if (segmentWords.length > 0) {
+      newSegments.push({
+        id: Date.now() + i,
+        start: segmentWords[0].start,
+        end: segmentWords[segmentWords.length - 1].end,
+        text: segmentWords.map(w => w.word).join(" "),
+      });
+    }
+  }
+
+  // Catch any remaining words and append to last segment or create new one
+  if (currentWordIndex < words.length) {
+    const remainingWords = words.slice(currentWordIndex);
+    newSegments.push({
+      id: Date.now() + segmentLines.length,
+      start: remainingWords[0].start,
+      end: remainingWords[remainingWords.length - 1].end,
+      text: remainingWords.map(w => w.word).join(" "),
+    });
+  }
+
+  return newSegments;
+}
+
+/**
+ * Simple resegmentation by word count without GPT.
+ * Splits words into segments where each has at most maxWords words.
+ */
+function resegmentByWordCount(words, maxWords) {
+  if (!words || words.length === 0 || !maxWords || maxWords < 1) {
+    return [];
+  }
+
+  const segments = [];
+  let currentWords = [];
+
+  for (let i = 0; i < words.length; i++) {
+    currentWords.push(words[i]);
+
+    if (currentWords.length >= maxWords || i === words.length - 1) {
+      const start = currentWords[0].start;
+      const end = currentWords[currentWords.length - 1].end;
+      const text = currentWords.map(w => w.word).join(" ");
+
+      segments.push({
+        id: Date.now() + segments.length,
+        start,
+        end,
+        text,
+      });
+
+      currentWords = [];
+    }
+  }
+
+  return segments;
+}
+
 export async function transcribeMedia({
   inputPath,
   format = ".srt",
+  maxWordsPerSubtitle = 5,
+  maxCharactersPerSubtitle = null,
   logger = console,
   onStage,
 } = {}) {
@@ -101,12 +516,31 @@ export async function transcribeMedia({
       notify("correction", "skipped");
     }
 
-    const subtitleContent = renderSubtitleContent(refinedResult, normalizedFormat);
+    // Apply word limit resegmentation if words are available and maxWords is specified
+    let words = synchronizeWords(refinedResult.segments, refinedResult.words?.length ? refinedResult.words : timedResult.words);
+    let finalSegments = refinedResult.segments;
+
+    if (maxCharactersPerSubtitle !== null) {
+      finalSegments = limitSubtitleCharacters(finalSegments, words, maxCharactersPerSubtitle);
+    } else if (words.length > 0 && maxWordsPerSubtitle > 0) {
+      finalSegments = resegmentByWordCount(words, maxWordsPerSubtitle);
+      logger.log?.(`Resegmented ${refinedResult.segments?.length ?? 0} segments into ${finalSegments.length} segments (max ${maxWordsPerSubtitle} words each)`);
+    }
+
+    words = synchronizeWords(finalSegments, words);
+    if (words.some(word => word.timingSource === "estimated")) {
+      warnings.push("לחלק מהמילים שהשתנו או שלא קיבלו תזמון מהמודל הותאם תזמון משוער. אפשר לדייק אותו בציר המילים.");
+    }
+    const resultForRender = {
+      ...refinedResult,
+      segments: finalSegments,
+    };
+    const subtitleContent = renderSubtitleContent(resultForRender, normalizedFormat);
 
     return {
-      text: refinedResult.text,
-      segments: refinedResult.segments,
-      words: refinedResult.words ?? timedResult.words ?? [],
+      text: finalSegments.map(segment => segment.text).join(" "),
+      segments: finalSegments,
+      words,
       subtitle: {
         format: normalizedFormat,
         content: subtitleContent,
@@ -121,7 +555,7 @@ export async function transcribeMedia({
     };
   } finally {
     if (audioPreparation.cleanup) {
-      await audioPreparation.cleanup().catch(() => {});
+      await audioPreparation.cleanup().catch(() => { });
     }
   }
 }
@@ -175,6 +609,11 @@ export async function burnSubtitles(inputVideoPath, subtitlePath, { logger = con
   await runCommand("ffmpeg", args, { logger });
   return outputPath;
 }
+
+/**
+ * Tokenize text into words, preserving Hebrew and handling punctuation
+ * (Exported for resegmentation usage if needed intra-module, though defined below)
+ */
 
 export function normalizeSubtitleFormat(format) {
   if (!format) {
@@ -319,225 +758,6 @@ function extractSegmentsFromTranscription(transcription) {
     .filter((segment) => Number.isFinite(segment.start) && Number.isFinite(segment.end));
 }
 
-/**
- * Aligns corrected segment text with original word-level timestamps
- * Uses fuzzy matching to map corrected words to their original timestamps
- */
-function alignWordsToSegments(originalWords, originalSegments, correctedSegments) {
-  const alignedWords = [];
-
-  for (const correctedSegment of correctedSegments) {
-    const originalSegment = originalSegments.find(seg => seg.id === correctedSegment.id);
-    if (!originalSegment) continue;
-
-    // Get words that fall within this segment's time range (with small buffer for boundary issues)
-    const segmentWords = originalWords.filter(
-      word => word.start >= originalSegment.start - 0.01 && word.start <= originalSegment.end + 0.01
-    );
-
-    if (segmentWords.length === 0) continue;
-
-    // Tokenize corrected text (split by whitespace and punctuation)
-    const correctedTokens = tokenizeText(correctedSegment.text);
-
-    if (correctedTokens.length === 0) {
-      // No corrected text, just use original words
-      alignedWords.push(...segmentWords);
-      continue;
-    }
-
-    const originalTokens = segmentWords.map(w => normalizeWord(w.word));
-
-    // Align corrected tokens to original words using sequence alignment
-    const alignment = alignTokenSequences(originalTokens, correctedTokens, segmentWords);
-
-    // Map aligned tokens back to timestamps
-    for (const item of alignment) {
-      if (item.originalIndex !== null && item.originalIndex < segmentWords.length) {
-        const originalWord = segmentWords[item.originalIndex];
-        alignedWords.push({
-          word: item.correctedToken || originalWord.word,
-          start: originalWord.start,
-          end: originalWord.end,
-        });
-      } else if (item.correctedToken) {
-        // New word with no original match - estimate timing
-        const prevWord = alignedWords[alignedWords.length - 1];
-        if (prevWord) {
-          const estimatedDuration = 0.3; // Default word duration
-          alignedWords.push({
-            word: item.correctedToken,
-            start: prevWord.end,
-            end: prevWord.end + estimatedDuration,
-          });
-        }
-      }
-    }
-  }
-
-  return alignedWords;
-}
-
-/**
- * Tokenize text into words, preserving Hebrew and handling punctuation
- */
-function tokenizeText(text) {
-  // Split on whitespace and separate punctuation
-  return text
-    .trim()
-    .split(/\s+/)
-    .flatMap(token => {
-      // Keep Hebrew/alphanumeric together, split off trailing punctuation
-      const match = token.match(/^([\u0590-\u05FF\w]+)(.*?)$/);
-      if (match) {
-        return [match[1], ...(match[2] ? [match[2]] : [])].filter(Boolean);
-      }
-      return [token];
-    })
-    .filter(t => t.length > 0);
-}
-
-/**
- * Normalize word for comparison (remove punctuation, lowercase)
- */
-function normalizeWord(word) {
-  return word.replace(/[^\u0590-\u05FF\w]/g, '').toLowerCase();
-}
-
-/**
- * Align two token sequences using improved dynamic programming approach
- * Returns array of {originalIndex, correctedToken} mappings
- */
-function alignTokenSequences(originalTokens, correctedTokens, segmentWords) {
-  const alignment = [];
-  let origIdx = 0;
-  let corrIdx = 0;
-
-  while (origIdx < originalTokens.length || corrIdx < correctedTokens.length) {
-    // If we've exhausted corrected tokens, add remaining original words
-    if (corrIdx >= correctedTokens.length) {
-      if (origIdx < originalTokens.length) {
-        alignment.push({
-          originalIndex: origIdx,
-          correctedToken: segmentWords[origIdx].word
-        });
-        origIdx++;
-      }
-      continue;
-    }
-
-    // If we've exhausted original tokens, add remaining corrected words without timestamps
-    if (origIdx >= originalTokens.length) {
-      alignment.push({
-        originalIndex: null,
-        correctedToken: correctedTokens[corrIdx]
-      });
-      corrIdx++;
-      continue;
-    }
-
-    const origNorm = originalTokens[origIdx];
-    const corrNorm = normalizeWord(correctedTokens[corrIdx]);
-
-    // Exact match
-    if (origNorm === corrNorm) {
-      alignment.push({ originalIndex: origIdx, correctedToken: correctedTokens[corrIdx] });
-      origIdx++;
-      corrIdx++;
-    }
-    // Prefix match (corrected word is longer - e.g., "hello" -> "hello!")
-    else if (corrNorm.startsWith(origNorm) && origNorm.length >= 2) {
-      alignment.push({ originalIndex: origIdx, correctedToken: correctedTokens[corrIdx] });
-      origIdx++;
-      corrIdx++;
-    }
-    // Prefix match (original word is longer - e.g., "hello!" -> "hello")
-    else if (origNorm.startsWith(corrNorm) && corrNorm.length >= 2) {
-      alignment.push({ originalIndex: origIdx, correctedToken: correctedTokens[corrIdx] });
-      origIdx++;
-      corrIdx++;
-    }
-    // Check if next corrected token matches current original (insertion in corrected)
-    else if (corrIdx + 1 < correctedTokens.length &&
-             originalTokens[origIdx] === normalizeWord(correctedTokens[corrIdx + 1])) {
-      // Corrected has an insertion - add it without timestamp
-      alignment.push({ originalIndex: null, correctedToken: correctedTokens[corrIdx] });
-      corrIdx++;
-    }
-    // Check if next original token matches current corrected (deletion in corrected)
-    else if (origIdx + 1 < originalTokens.length &&
-             originalTokens[origIdx + 1] === corrNorm) {
-      // Corrected deleted a word - skip original but keep timestamp for context
-      alignment.push({ originalIndex: origIdx, correctedToken: segmentWords[origIdx].word });
-      origIdx++;
-    }
-    // Fuzzy similarity match
-    else {
-      const similarity = computeSimilarity(origNorm, corrNorm);
-      if (similarity > 0.5) {
-        // Similar enough - map them
-        alignment.push({ originalIndex: origIdx, correctedToken: correctedTokens[corrIdx] });
-        origIdx++;
-        corrIdx++;
-      } else {
-        // No match at all - check lookahead for better match
-        let foundBetterMatch = false;
-
-        // Look ahead 2 positions in both directions
-        for (let lookAhead = 1; lookAhead <= 2 && !foundBetterMatch; lookAhead++) {
-          // Check if current corrected matches a future original
-          if (origIdx + lookAhead < originalTokens.length &&
-              corrNorm === originalTokens[origIdx + lookAhead]) {
-            // Skip original words that were deleted
-            for (let skip = 0; skip < lookAhead; skip++) {
-              alignment.push({
-                originalIndex: origIdx + skip,
-                correctedToken: segmentWords[origIdx + skip].word
-              });
-            }
-            origIdx += lookAhead;
-            foundBetterMatch = true;
-          }
-          // Check if current original matches a future corrected
-          else if (corrIdx + lookAhead < correctedTokens.length &&
-                   origNorm === normalizeWord(correctedTokens[corrIdx + lookAhead])) {
-            // Skip corrected words that were inserted
-            for (let skip = 0; skip < lookAhead; skip++) {
-              alignment.push({
-                originalIndex: null,
-                correctedToken: correctedTokens[corrIdx + skip]
-              });
-            }
-            corrIdx += lookAhead;
-            foundBetterMatch = true;
-          }
-        }
-
-        if (!foundBetterMatch) {
-          // No better match found - assume they correspond
-          alignment.push({ originalIndex: origIdx, correctedToken: correctedTokens[corrIdx] });
-          origIdx++;
-          corrIdx++;
-        }
-      }
-    }
-  }
-
-  return alignment;
-}
-
-/**
- * Compute similarity between two strings (0-1)
- * Using simple character overlap ratio
- */
-function computeSimilarity(str1, str2) {
-  if (!str1 || !str2) return 0;
-  const set1 = new Set(str1.split(''));
-  const set2 = new Set(str2.split(''));
-  const intersection = new Set([...set1].filter(x => set2.has(x)));
-  const union = new Set([...set1, ...set2]);
-  return union.size > 0 ? intersection.size / union.size : 0;
-}
 
 async function refineTranscriptWithGPT(client, baseResult, highAccuracyResult, options, logger) {
   const model = options.correctionModel;
@@ -555,15 +775,15 @@ async function refineTranscriptWithGPT(client, baseResult, highAccuracyResult, o
     base_text: baseResult.text,
     high_accuracy: highAccuracyResult
       ? {
-          text: highAccuracyResult.text,
-          segments:
-            highAccuracyResult.segments?.map((segment) => ({
-              id: segment.id,
-              start: segment.start,
-              end: segment.end,
-              text: segment.text,
-            })) ?? null,
-        }
+        text: highAccuracyResult.text,
+        segments:
+          highAccuracyResult.segments?.map((segment) => ({
+            id: segment.id,
+            start: segment.start,
+            end: segment.end,
+            text: segment.text,
+          })) ?? null,
+      }
       : null,
   };
 
@@ -615,23 +835,12 @@ async function refineTranscriptWithGPT(client, baseResult, highAccuracyResult, o
     throw new Error('Correction model response missing "segments" array.');
   }
 
-  const refinedSegments = parsed.segments.map((original) => {
-    const reference = baseResult.segments.find((seg) => seg.id === original.id);
-    if (!reference) {
-      throw new Error(`Correction output references unknown segment id ${original.id}`);
-    }
-    return {
-      id: reference.id,
-      start: reference.start,
-      end: reference.end,
-      text: String(original.text ?? "").trim() || reference.text,
-    };
-  });
+  const refinedSegments = mergeCorrectedSegments(baseResult.segments, parsed.segments);
 
   const refinedText = refinedSegments.map((segment) => segment.text).join(" ").trim();
 
   // Align corrected words with original timestamps
-  const refinedWords = baseResult.words ? alignWordsToSegments(baseResult.words, baseResult.segments, refinedSegments) : [];
+  const refinedWords = synchronizeWords(refinedSegments, baseResult.words);
 
   // Extract token usage for billing
   const usage = {
@@ -892,7 +1101,7 @@ export async function transcribeWithWordTimestamps({
     };
   } finally {
     if (audioPreparation.cleanup) {
-      await audioPreparation.cleanup().catch(() => {});
+      await audioPreparation.cleanup().catch(() => { });
     }
   }
 }
@@ -905,7 +1114,7 @@ export async function transcribeWithWordTimestamps({
  */
 function formatWordTimestampsAsText(words, segments) {
   let output = "WORD-LEVEL TIMESTAMPS\n";
-  output += "=" .repeat(80) + "\n\n";
+  output += "=".repeat(80) + "\n\n";
 
   // Group words by segments
   for (const segment of segments) {
@@ -934,7 +1143,7 @@ function formatWordTimestampsAsText(words, segments) {
   }
 
   // Add summary
-  output += "=" .repeat(80) + "\n";
+  output += "=".repeat(80) + "\n";
   output += `SUMMARY\n`;
   output += "-".repeat(80) + "\n";
   output += `Total segments: ${segments.length}\n`;

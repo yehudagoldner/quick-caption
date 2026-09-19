@@ -16,6 +16,8 @@ import {
   type TimelineState,
 } from "@xzdarcy/react-timeline-editor";
 import type { Word, Segment } from "../types";
+import { useEditorPreferences } from "../contexts/EditorPreferences";
+import { formatTimecode, snapToFrame } from "../utils/timecode";
 
 const ROW_ID = "word-row";
 
@@ -27,7 +29,7 @@ export type WordTimelineProps = {
   segment: Segment;
   words: Word[];
   currentTime: number | null;
-  onWordsChange: (words: Word[]) => void;
+  onWordsChange: (words: Word[], segmentId?: Segment["id"], text?: string) => void;
   onSegmentTextChange?: (segmentId: Segment["id"], text: string) => void;
   onClose: () => void;
   onSave: () => void;
@@ -38,14 +40,15 @@ export function WordTimeline({
   words: initialWords,
   currentTime,
   onWordsChange,
-  onSegmentTextChange,
   onClose,
   onSave,
 }: WordTimelineProps) {
+  const { preferences } = useEditorPreferences();
+  const fps = preferences.fps;
   // Filter words that belong to this segment
   const segmentWords = useMemo(() => {
     const filtered = initialWords.filter(
-      (word) => word.start >= segment.start - 0.01 && word.start <= segment.end + 0.01
+      (word) => word.segmentId !== undefined ? word.segmentId === segment.id : word.start >= segment.start - 0.001 && word.start < segment.end && word.end <= segment.end + 0.001
     );
     console.log('🎯 WordTimeline - segmentWords filter:', {
       segmentStart: segment.start,
@@ -56,7 +59,7 @@ export function WordTimeline({
       filteredWordTimes: filtered.map(w => ({ word: w.word, start: w.start, relativeStart: w.start - segment.start }))
     });
     return filtered;
-  }, [initialWords, segment.start, segment.end]);
+  }, [initialWords, segment.id, segment.start, segment.end]);
 
   const [editableWords, setEditableWords] = useState<Word[]>(segmentWords);
   const [selectedWordIndex, setSelectedWordIndex] = useState<number | null>(null);
@@ -132,7 +135,7 @@ export function WordTimeline({
   const isCursorDraggingRef = useRef(false);
   const lastAppliedTimeRef = useRef<number | null>(null);
 
-  const baseScaleCount = useMemo(() => Math.max(20, Math.ceil(duration) + 2), [duration]);
+  const baseScaleCount = useMemo(() => Math.max(2, Math.ceil(duration) + 1), [duration]);
   const baseScale = 1;
   const baseScaleWidth = 160; // Larger scale for word-level precision
 
@@ -156,7 +159,7 @@ export function WordTimeline({
       }
 
       const updatedWords = row.actions
-        .map((action) => {
+        .map((action): Word | null => {
           const original = wordLookup.get(action.id);
           if (!original) {
             return null;
@@ -164,11 +167,12 @@ export function WordTimeline({
 
           return {
             ...original.word,
-            start: action.start + segment.start, // Convert back to absolute time
-            end: action.end + segment.start,     // Convert back to absolute time
+            timingSource: "aligned" as const,
+            start: Math.max(segment.start, snapToFrame(action.start + segment.start, fps)),
+            end: Math.min(segment.end, snapToFrame(action.end + segment.start, fps)),
           };
         })
-        .filter((word): word is Word => word !== null)
+        .filter((word): word is Word => word !== null && word.end > word.start)
         .sort((a, b) => a.start - b.start);
 
       if (updatedWords.length !== editableWords.length) {
@@ -185,7 +189,7 @@ export function WordTimeline({
         setEditableWords(updatedWords);
       }
     },
-    [wordLookup, editableWords, segment.start],
+    [wordLookup, editableWords, segment.start, segment.end, fps],
   );
 
   useEffect(() => {
@@ -221,6 +225,7 @@ export function WordTimeline({
       return (
         <Stack
           className="word-timeline-action"
+          title="גררו את המילה להזזת התזמון, או את הקצוות לשינוי משכה"
           direction="row"
           spacing={0.5}
           alignItems="center"
@@ -307,6 +312,8 @@ export function WordTimeline({
       word: newWordText,
       start: newWordStart,
       end: newWordEnd,
+      segmentId: segment.id,
+      timingSource: "aligned",
     };
 
     const updatedWords = [...editableWords, newWord].sort((a, b) => a.start - b.start);
@@ -325,16 +332,13 @@ export function WordTimeline({
     });
 
     // Merge updated words back into the full words array
-    const segmentWordKeys = new Set(segmentWords.map(w => `${w.start.toFixed(3)}-${w.end.toFixed(3)}`));
+    const segmentWordKeys = new Set(segmentWords);
 
     // Remove old segment words from initialWords
-    const wordsOutsideSegment = initialWords.filter(w => {
-      const key = `${w.start.toFixed(3)}-${w.end.toFixed(3)}`;
-      return !segmentWordKeys.has(key);
-    });
+    const wordsOutsideSegment = initialWords.filter(w => !segmentWordKeys.has(w));
 
     // Combine with new edited words and sort
-    const allWords = [...wordsOutsideSegment, ...editableWords].sort((a, b) => a.start - b.start);
+    const allWords = [...wordsOutsideSegment, ...editableWords.map((w, wordIndex) => ({ ...w, segmentId: segment.id, wordIndex }))].sort((a, b) => a.start - b.start);
 
     console.log('💾 WordTimeline - merged words:', {
       wordsOutsideSegmentCount: wordsOutsideSegment.length,
@@ -350,13 +354,9 @@ export function WordTimeline({
       newText: newSegmentText
     });
 
-    if (onSegmentTextChange && newSegmentText !== segment.text) {
-      onSegmentTextChange(segment.id, newSegmentText);
-    }
-
-    onWordsChange(allWords);
+    onWordsChange(allWords, segment.id, newSegmentText);
     onSave();
-  }, [editableWords, initialWords, segmentWords, segment, onWordsChange, onSegmentTextChange, onSave]);
+  }, [editableWords, initialWords, segmentWords, segment, onWordsChange, onSave]);
 
   return (
     <Card
@@ -373,7 +373,7 @@ export function WordTimeline({
           <Stack direction="row" spacing={1} alignItems="center">
             <RecordVoiceOverRoundedIcon />
             <Typography variant="subtitle1" fontWeight={600}>
-              עריכת מיקום מילים
+              ציר פנימי — מילים במקטע הנבחר
             </Typography>
           </Stack>
           <IconButton size="small" onClick={onClose} sx={{ color: "inherit" }}>
@@ -384,6 +384,7 @@ export function WordTimeline({
         <Typography variant="body2" sx={{ opacity: 0.9 }}>
           כתובית: {segment.text}
         </Typography>
+        <Typography variant="caption">הזמן בציר זה מתחיל בתחילת המקטע. מיקומו בהקלטה: <span dir="ltr">{formatTimecode(segment.start, fps)} – {formatTimecode(segment.end, fps)}</span></Typography>
 
         {/* Action Buttons */}
         <Stack direction="row" spacing={1} justifyContent="center">
@@ -446,6 +447,7 @@ export function WordTimeline({
           <Box
             sx={{
               flex: 1,
+              minWidth: 0,
               direction: "ltr",
               "& *": {
                 direction: "ltr !important",
@@ -456,7 +458,7 @@ export function WordTimeline({
               ref={timelineRef}
               editorData={editorData}
               effects={effects}
-              gridSnap
+              gridSnap={false}
               dragLine
               scale={baseScale}
               minScaleCount={baseScaleCount}

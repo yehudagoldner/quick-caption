@@ -1,5 +1,5 @@
-import { useMemo } from "react";
-import { Card, CardContent, Stack } from "@mui/material";
+import { useEffect, useMemo, useState } from "react";
+import { Alert, Card, CardContent, Stack } from "@mui/material";
 import type { ApiResponse, Segment } from "../types";
 import { useVideoPlayer } from "./VideoPlayer";
 import type { BurnOptions } from "./VideoToolbar";
@@ -9,6 +9,11 @@ import { useTranscriptionState } from "../hooks/useTranscriptionState";
 import { usePreviewStyle } from "../hooks/usePreviewStyle";
 import { useTranscriptionHandlers } from "../hooks/useTranscriptionHandlers";
 import { useVideoControls } from "../hooks/useVideoControls";
+import { EditorSettings } from "./EditorSettings";
+import { serializeSubtitles } from "../utils/subtitleExport";
+import { useEditorPreferences } from "../contexts/EditorPreferences";
+import { cleanSegmentText, fixSegmentOverlaps, findSegment } from "../utils/transcriptionUtils";
+import { synchronizeWords } from "../../wordAlignment.js";
 
 export type { BurnOptions };
 type BurnResult = { blob: Blob; filename?: string; };
@@ -29,8 +34,8 @@ type TranscriptionResultProps = {
 export function TranscriptionResult({
   response,
   subtitleFormatLabel,
-  downloadUrl,
-  downloadName,
+  downloadUrl: _originalDownloadUrl,
+  downloadName: originalDownloadName,
   mediaUrl,
   onBack,
   onBurn,
@@ -38,13 +43,19 @@ export function TranscriptionResult({
   videoId,
   isEditable,
 }: TranscriptionResultProps) {
+  const { preferences } = useEditorPreferences();
+  const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
+  const [exportFormat, setExportFormat] = useState(response.subtitle?.format || ".srt");
+  const downloadName = originalDownloadName.replace(/\.[^.]+$/, "") + exportFormat;
+  useEffect(() => { setExportFormat(response.subtitle?.format || ".srt"); }, [mediaUrl, videoId, response.subtitle?.format]);
   const videoPlayer = useVideoPlayer();
   const responseSegments = response.segments ?? [];
+  const savedSegments = useMemo(() => fixSegmentOverlaps(responseSegments.map(segment => ({ ...segment, text: cleanSegmentText(segment.text) }))), [responseSegments]);
+  const savedWords = useMemo(() => synchronizeWords(savedSegments, response.words), [savedSegments, response.words]);
 
   const {
     editableSegments,
     editableWords,
-    activeSegmentId,
     setActiveSegmentId,
     fontSize,
     setFontSize,
@@ -79,8 +90,15 @@ export function TranscriptionResult({
     handleSegmentTextChangeAndSave,
     handleSegmentBlur,
     handleAddSubtitle,
+    handleDeleteSegment,
+    handleSplitSegment,
     handleToggleActiveWord,
     handleWordsChange,
+    handleResegment,
+    handleAIEdit,
+    handleCharacterReflow,
+    handleUndoReflow,
+    canUndoReflow,
     persistSegments,
   } = useTranscriptionState({
     responseSegments,
@@ -101,21 +119,15 @@ export function TranscriptionResult({
     renderDimensions,
   });
 
+  useEffect(() => {
+    const content = serializeSubtitles(editableSegments, exportFormat, preferences.direction);
+    const url = URL.createObjectURL(new Blob([content], { type: "text/plain;charset=utf-8" }));
+    setDownloadUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [editableSegments, exportFormat, preferences.direction]);
 
-  const activeSegment = useMemo(
-    () => {
-      const segment = editableSegments.find((segment) => segment.id === activeSegmentId) ?? null;
-      console.log('🎯 Active segment recomputed:', {
-        activeSegmentId,
-        segmentFound: !!segment,
-        segmentText: segment?.text,
-        totalSegments: editableSegments.length,
-        timestamp: Date.now()
-      });
-      return segment;
-    },
-    [editableSegments, activeSegmentId],
-  );
+
+  const activeSegment = useMemo(() => findSegment(editableSegments, currentTime) ?? null, [editableSegments, currentTime]);
 
   const { isPlaying, handlePlayPause } = useVideoControls(videoPlayer);
 
@@ -133,6 +145,8 @@ export function TranscriptionResult({
     handleBurnVideo,
   } = useTranscriptionHandlers({
     editableSegments,
+    editableWords,
+    activeWordEnabled,
     setActiveSegmentId,
     setCurrentTime,
     setVideoDimensions,
@@ -163,16 +177,28 @@ export function TranscriptionResult({
   return (
     <Card elevation={3}>
       <CardContent>
-        <Stack spacing={3}>
+        <Stack spacing={1.5}>
           <TranscriptionResultHeader
             subtitleFormatLabel={subtitleFormatLabel}
             downloadUrl={downloadUrl}
             downloadName={downloadName}
             warnings={response.warnings}
-            onBack={onBack}
+            backDisabled={saveState === "saving" || isBurning}
+            onBack={async () => {
+              // Flush in-progress text edits before leaving the editor. Do not
+              // navigate on save failure: the user must be able to retry.
+              if (isEditable && (saveState === "error" || JSON.stringify(editableSegments) !== JSON.stringify(savedSegments) || JSON.stringify(editableWords) !== JSON.stringify(savedWords))) {
+                try { await persistSegments(editableSegments, editableWords, { throwOnError: true }); }
+                catch { return; }
+              }
+              onBack();
+            }}
           />
+          {saveState === "error" && <Alert severity="error">{saveError}</Alert>}
+          {activeWordEnabled && editableWords.some(word => word.timingSource === "estimated") && <Alert severity="info">לחלק מהמילים הושלם תזמון משוער. אפשר לדייק אותן בציר המילים של המקטע; הטקסט המתוקן נשמר במלואו.</Alert>}
 
           <TranscriptionMainContent
+            editorSettings={<EditorSettings disabled={!isEditable || saveState === "saving"} onApply={handleCharacterReflow} onUndo={handleUndoReflow} canUndo={canUndoReflow} exportFormat={exportFormat} onExportFormatChange={setExportFormat} />}
             mediaUrl={mediaUrl}
             activeSegmentText={activeSegment?.text ?? null}
             previewStyle={previewStyle}
@@ -183,7 +209,7 @@ export function TranscriptionResult({
             renderDimensions={renderDimensions}
             currentTime={currentTime}
             selectedSegmentId={selectedSegmentId}
-            activeSegmentId={activeSegmentId}
+            activeSegmentId={activeSegment?.id ?? null}
             fontSize={fontSize}
             fontColor={fontColor}
             outlineColor={outlineColor}
@@ -214,8 +240,12 @@ export function TranscriptionResult({
             onMarginChange={handleMarginChange}
             onBurnVideo={handleBurnVideo}
             onAddSubtitle={handleAddSubtitle}
+            onDeleteSegment={handleDeleteSegment}
+            onSplitSegment={handleSplitSegment}
             onToggleActiveWord={handleToggleActiveWord}
             onWordsChange={handleWordsChange}
+            onResegment={handleResegment}
+            onAIEdit={handleAIEdit}
             isPlaying={isPlaying}
             onPlayPause={handlePlayPause}
           />

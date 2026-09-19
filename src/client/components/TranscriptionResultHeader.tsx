@@ -1,5 +1,6 @@
 import {
   Alert,
+  Button,
   List,
   ListItem,
   ListItemIcon,
@@ -8,6 +9,7 @@ import {
 } from "@mui/material";
 import {
   FormatListBulletedRounded,
+  UploadFileOutlined,
 } from "@mui/icons-material";
 
 type TranscriptionResultHeaderProps = {
@@ -16,13 +18,19 @@ type TranscriptionResultHeaderProps = {
   downloadName: string;
   warnings: string[] | undefined;
   onBack: () => void;
+  backDisabled?: boolean;
 };
 
 export function TranscriptionResultHeader({
   warnings,
+  onBack,
+  backDisabled = false,
 }: TranscriptionResultHeaderProps) {
   return (
     <Stack spacing={3}>
+      <Button variant="outlined" startIcon={<UploadFileOutlined />} onClick={onBack} disabled={backDisabled} sx={{ alignSelf: "flex-start" }}>
+        העלאת סרטון או אודיו אחר
+      </Button>
       {warnings?.length ? (
         <Alert severity="warning" icon={<FormatListBulletedRounded />}>
           <Stack spacing={1}>

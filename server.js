@@ -9,7 +9,7 @@ import { createServer } from "http";
 import { Server as SocketIOServer } from "socket.io";
 import dotenv from "dotenv";
 
-import { transcribeMedia, normalizeSubtitleFormat, transcribeWithWordTimestamps, getMediaDuration } from "./src/transcription.js";
+import { transcribeMedia, normalizeSubtitleFormat, transcribeWithWordTimestamps, getMediaDuration, resegmentWithGPT, intelligentSplitSegment, aiEditSubtitles } from "./src/transcription.js";
 import { createBurnSubtitlesRouter } from "./routes/burnSubtitles.js";
 import paypalRouter from "./routes/paypal.js";
 import { ensureSchema, upsertUser, saveVideo, updateVideoSubtitles, getUserVideos, getVideoById, getUserCredits, deductCredits } from "./db.js";
@@ -239,14 +239,14 @@ app.get("/api/videos/:id/media", async (req, res) => {
 
 app.put("/api/videos/:id/subtitles", async (req, res) => {
   const videoId = Number.parseInt(req.params.id, 10);
-  const { userUid, subtitleJson } = req.body ?? {};
+  const { userUid, subtitleJson, wordsJson } = req.body ?? {};
 
   if (!Number.isFinite(videoId) || !userUid || typeof subtitleJson !== 'string') {
     return res.status(400).json({ error: 'videoId, userUid and subtitleJson are required' });
   }
 
   try {
-    const result = await updateVideoSubtitles({ videoId, userUid, subtitleJson });
+    const result = await updateVideoSubtitles({ videoId, userUid, subtitleJson, wordsJson });
     if (!result || result.affectedRows === 0) {
       return res.status(404).json({ error: 'Video not found' });
     }
@@ -368,6 +368,13 @@ app.get("/api/videos/:id/file", async (req, res) => {
 app.post("/api/transcribe", upload.single("media"), async (req, res) => {
   const socketId = req.body?.socketId;
   const userUid = req.body?.userUid;
+  const maxWordsPerSubtitle = parseInt(req.body?.maxWordsPerSubtitle, 10) || 5;
+  const rawCharacters = req.body?.maxCharactersPerSubtitle;
+  const maxCharactersPerSubtitle = rawCharacters === undefined ? null : Number(rawCharacters);
+  if (maxCharactersPerSubtitle !== null && (!Number.isInteger(maxCharactersPerSubtitle) || maxCharactersPerSubtitle < 7 || maxCharactersPerSubtitle > 20)) {
+    if (req.file) await safeUnlink(req.file.path);
+    return res.status(400).json({ error: "מגבלת התווים חייבת להיות בין 7 ל־20" });
+  }
   const emitStage = createStageEmitter(socketId);
 
   if (!req.file) {
@@ -486,6 +493,8 @@ app.post("/api/transcribe", upload.single("media"), async (req, res) => {
     const result = await transcribeMedia({
       inputPath: req.file.path,
       format,
+      maxWordsPerSubtitle,
+      maxCharactersPerSubtitle,
       logger: createRequestLogger(req),
       onStage: emitStage,
     });
@@ -605,11 +614,81 @@ app.post("/api/transcribe", upload.single("media"), async (req, res) => {
         console.error('Failed to store failed video metadata:', videoError);
       }
     }
-    console.error("Unhandled error:", error);
-    emitStage("complete", "error", error.message ?? "Internal Server Error");
-    res.status(500).json({ error: error.message ?? "Internal Server Error" });
+    console.error("Transcription failed:", { status: error.status, code: error.code });
+    const message = error.status === 401 || /incorrect api key|invalid_api_key/i.test(error.message ?? "")
+      ? "שירות התמלול אינו זמין: מפתח הגישה של השרת נדחה. יש לעדכן את הגדרת השירות ולנסות שוב."
+      : "התמלול נכשל. בדקו שקובץ המדיה תקין ונסו שוב.";
+    emitStage("complete", "error", message);
+    res.status(500).json({ error: message });
   } finally {
     await safeUnlink(req.file.path);
+  }
+});
+
+// AI-powered resegmentation endpoint
+app.post("/api/resegment", async (req, res) => {
+  const { words, maxWords, customInstructions } = req.body ?? {};
+
+  if (!Array.isArray(words) || words.length === 0) {
+    return res.status(400).json({ error: "words array is required" });
+  }
+
+  if (!Number.isFinite(maxWords) || maxWords < 1) {
+    return res.status(400).json({ error: "maxWords must be a positive number" });
+  }
+
+  try {
+    const segments = await resegmentWithGPT(words, maxWords, { customInstructions });
+    res.json({ segments });
+  } catch (error) {
+    console.error("Resegmentation failed:", error);
+    res.status(500).json({ error: error.message ?? "Resegmentation failed" });
+  }
+});
+
+// AI-powered subtitle editing endpoint
+app.post("/api/ai-edit-subtitles", async (req, res) => {
+  const { segments, words, instructions } = req.body ?? {};
+
+  if (!Array.isArray(segments) || segments.length === 0) {
+    return res.status(400).json({ error: "segments array is required" });
+  }
+
+  if (!instructions || typeof instructions !== "string") {
+    return res.status(400).json({ error: "instructions string is required" });
+  }
+
+  try {
+    const result = await aiEditSubtitles(segments, words || [], instructions);
+    res.json(result);
+  } catch (error) {
+    console.error("AI edit subtitles failed:", error);
+    res.status(500).json({ error: error.message ?? "AI edit failed" });
+  }
+});
+
+// AI-powered intelligent split endpoint
+app.post("/api/split-segment", async (req, res) => {
+  const { segment, words, splitTime } = req.body ?? {};
+
+  if (!segment || typeof segment.id === "undefined") {
+    return res.status(400).json({ error: "segment object is required" });
+  }
+
+  if (!Array.isArray(words) || words.length === 0) {
+    return res.status(400).json({ error: "words array is required" });
+  }
+
+  if (typeof splitTime !== "number") {
+    return res.status(400).json({ error: "splitTime is required" });
+  }
+
+  try {
+    const result = await intelligentSplitSegment(segment, words, splitTime);
+    res.json(result);
+  } catch (error) {
+    console.error("Intelligent split failed:", error);
+    res.status(500).json({ error: error.message ?? "Intelligent split failed" });
   }
 });
 

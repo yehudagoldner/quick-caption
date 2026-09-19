@@ -1,6 +1,8 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Segment, Word } from "../types";
-import { segmentsToSrt } from "../utils/transcriptionUtils";
+import { segmentsToSrt, cleanSegmentText, fixSegmentOverlaps } from "../utils/transcriptionUtils";
+import { reflowSubtitleCharacters } from "../../subtitleSegmentation.js";
+import { synchronizeWords } from "../../wordAlignment.js";
 
 type BurnedVideo = {
   url: string;
@@ -27,7 +29,9 @@ export function useTranscriptionState({
   onSaveSegments,
 }: UseTranscriptionStateProps) {
   const [editableSegments, setEditableSegments] = useState<Segment[]>(responseSegments);
-  const [editableWords, setEditableWords] = useState<Word[]>(responseWords ?? []);
+  const [wordTimingData, setEditableWords] = useState<Word[]>(responseWords ?? []);
+  // Repair legacy/missing timing data on load and keep live text edits in sync.
+  const editableWords = useMemo(() => synchronizeWords(editableSegments, wordTimingData), [editableSegments, wordTimingData]);
   const [activeSegmentId, setActiveSegmentId] = useState<Segment["id"] | null>(null);
   const [fontSize, setFontSize] = useState(60);
   const [fontColor, setFontColor] = useState("#ffffff");
@@ -44,6 +48,7 @@ export function useTranscriptionState({
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const [saveError, setSaveError] = useState<string | null>(null);
   const [selectedSegmentId, setSelectedSegmentId] = useState<Segment["id"] | null>(null);
+  const [reflowUndo, setReflowUndo] = useState<{ segments: Segment[]; words: Word[]; after: string } | null>(null);
   const [activeWordEnabled, setActiveWordEnabled] = useState(() => {
     try {
       const stored = localStorage.getItem("activeWordEnabled");
@@ -54,7 +59,13 @@ export function useTranscriptionState({
   });
 
   useEffect(() => {
-    setEditableSegments(responseSegments.map((segment) => ({ ...segment })));
+    const cleaned = fixSegmentOverlaps(
+      responseSegments.map((segment) => ({
+        ...segment,
+        text: cleanSegmentText(segment.text),
+      }))
+    );
+    setEditableSegments(cleaned);
   }, [responseSegments]);
 
   useEffect(() => {
@@ -64,7 +75,8 @@ export function useTranscriptionState({
   useEffect(() => {
     setActiveSegmentId(null);
     setCurrentTime(0);
-  }, [mediaUrl]);
+    setReflowUndo(null);
+  }, [mediaUrl, videoId]);
 
   useEffect(() => {
     return () => {
@@ -75,7 +87,7 @@ export function useTranscriptionState({
   }, [burnedVideo]);
 
   const persistSegments = useCallback(
-    async (nextSegments: Segment[], nextWords?: Word[]) => {
+    async (nextSegments: Segment[], nextWords?: Word[], options?: { throwOnError?: boolean }) => {
       console.log('💾 persistSegments called:', {
         segmentsCount: nextSegments.length,
         hasWords: !!nextWords,
@@ -83,6 +95,8 @@ export function useTranscriptionState({
         firstSegmentText: nextSegments[0]?.text?.substring(0, 50)
       });
       setEditableSegments(nextSegments);
+      const synchronizedWords = synchronizeWords(nextSegments, nextWords ?? editableWords);
+      setEditableWords(synchronizedWords);
       console.log('💾 persistSegments - editableSegments state updated');
 
       if (!isEditable || !videoId) {
@@ -94,17 +108,18 @@ export function useTranscriptionState({
       setSaveError(null);
       try {
         const subtitleContent = segmentsToSrt(nextSegments);
-        // Only pass words if explicitly provided, otherwise undefined (don't update words in DB)
-        await onSaveSegments(nextSegments, subtitleContent, nextWords);
+        // Text and its word map are one revision; always persist them together.
+        await onSaveSegments(nextSegments, subtitleContent, synchronizedWords);
         setSaveState("success");
         setTimeout(() => setSaveState("idle"), 2000);
       } catch (error) {
         console.error(error);
         setSaveState("error");
         setSaveError("שמירת השינויים נכשלה. נסו שוב.");
+        if (options?.throwOnError) throw error;
       }
     },
-    [isEditable, videoId, onSaveSegments],
+    [isEditable, videoId, onSaveSegments, editableWords],
   );
 
   const handleSegmentTextChange = useCallback(
@@ -177,7 +192,7 @@ export function useTranscriptionState({
   }, []);
 
   const handleWordsChange = useCallback(
-    async (words: Word[]) => {
+    async (words: Word[], segmentId?: Segment["id"], text?: string) => {
       console.log('🎤 handleWordsChange - updating editableWords:', {
         wordsCount: words.length,
         firstThree: words.slice(0, 3).map(w => ({ word: w.word, start: w.start, end: w.end }))
@@ -191,11 +206,162 @@ export function useTranscriptionState({
 
       // Save words along with segments
       console.log('🎤 handleWordsChange - calling persistSegments');
-      await persistSegments(editableSegments, words);
+      const nextSegments = segmentId !== undefined && text !== undefined
+        ? editableSegments.map(s => s.id === segmentId ? { ...s, text } : s)
+        : editableSegments;
+      await persistSegments(nextSegments, words);
       console.log('🎤 handleWordsChange - persistSegments complete');
     },
     [isEditable, videoId, editableSegments, persistSegments],
   );
+
+  const handleResegment = useCallback(
+    async (maxWords: number, customInstructions?: string) => {
+      if (!editableWords || editableWords.length === 0) {
+        console.warn("No words available for resegmentation");
+        return;
+      }
+
+      setSaveState("saving"); // Reuse saving state to show activity
+      try {
+        const response = await fetch("/api/resegment", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ words: editableWords, maxWords, customInstructions }),
+        });
+
+        if (!response.ok) {
+          throw new Error("Resegmentation failed");
+        }
+
+        const data = await response.json();
+        const newSegments = data.segments;
+
+        const cleanedSegments = fixSegmentOverlaps(
+          newSegments.map((s: Segment) => ({ ...s, text: cleanSegmentText(s.text) }))
+        );
+
+        console.log('🔄 handleResegment - new segments count:', cleanedSegments.length);
+        await persistSegments(cleanedSegments, data.words ?? editableWords);
+        setSaveState("success");
+      } catch (error) {
+        console.error("Failed to resegment:", error);
+        setSaveState("error");
+        setSaveError("שגיאה בפיצול מחדש");
+      } finally {
+        setTimeout(() => setSaveState("idle"), 2000);
+      }
+    },
+    [editableWords, persistSegments]
+  );
+
+  const handleAIEdit = useCallback(
+    async (instructions: string) => {
+      if (!instructions.trim()) {
+        console.warn("No instructions provided for AI edit");
+        return;
+      }
+
+      setSaveState("saving");
+      try {
+        const response = await fetch("/api/ai-edit-subtitles", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            segments: editableSegments,
+            words: editableWords,
+            instructions: instructions.trim(),
+          }),
+        });
+
+        if (!response.ok) {
+          throw new Error("AI edit failed");
+        }
+
+        const data = await response.json();
+        const newSegments = data.segments;
+
+        const cleanedSegments = fixSegmentOverlaps(
+          newSegments.map((s: Segment) => ({ ...s, text: cleanSegmentText(s.text) }))
+        );
+
+        console.log('🤖 handleAIEdit - new segments count:', cleanedSegments.length);
+        if (data.reasoning) {
+          console.log('🤖 AI reasoning:', data.reasoning);
+        }
+        await persistSegments(cleanedSegments, data.words ?? editableWords);
+        setSaveState("success");
+      } catch (error) {
+        console.error("Failed to AI edit:", error);
+        setSaveState("error");
+        setSaveError("שגיאה בעריכת AI");
+      } finally {
+        setTimeout(() => setSaveState("idle"), 2000);
+      }
+    },
+    [editableSegments, editableWords, persistSegments]
+  );
+
+  const handleDeleteSegment = useCallback(
+    async (segmentId: Segment["id"]) => {
+      const newSegments = editableSegments.filter((segment) => segment.id !== segmentId);
+      await persistSegments(newSegments);
+    },
+    [editableSegments, persistSegments]
+  );
+
+  const handleSplitSegment = useCallback(
+    async (segmentId: Segment["id"], splitTime: number) => {
+      const index = editableSegments.findIndex(s => s.id === segmentId);
+      if (index < 0) return;
+      const segment = editableSegments[index];
+      const tokens = segment.text.trim().split(/\s+/).filter(Boolean);
+      if (tokens.length < 2 || splitTime <= segment.start || splitTime >= segment.end) return;
+      const timed = editableWords.filter(w => w.start >= segment.start - .001 && w.start < segment.end && w.end <= segment.end + .001);
+      const aligned = timed.length === tokens.length && timed.every((w, i) => w.word.trim() === tokens[i]);
+      let boundary = Math.min(tokens.length - 1, Math.max(1, Math.round(tokens.length * (splitTime - segment.start) / (segment.end - segment.start))));
+      if (aligned) {
+        boundary = 1;
+        for (let i = 2; i < timed.length; i++) {
+          if (Math.abs(timed[i].start - splitTime) < Math.abs(timed[boundary].start - splitTime)) boundary = i;
+        }
+      }
+      const fallbackTime = segment.start + (segment.end - segment.start) * boundary / tokens.length;
+      const stamp = Date.now();
+      const next = [
+        { ...segment, id: `split-${stamp}-a`, end: aligned ? timed[boundary - 1].end : fallbackTime, text: tokens.slice(0, boundary).join(" ") },
+        { ...segment, id: `split-${stamp}-b`, start: aligned ? timed[boundary].start : fallbackTime, text: tokens.slice(boundary).join(" ") },
+      ];
+      await persistSegments([...editableSegments.slice(0, index), ...next, ...editableSegments.slice(index + 1)]);
+    },
+    [editableSegments, editableWords, persistSegments],
+  );
+
+  // An undo is valid only immediately after this reflow: never overwrite a
+  // subsequent manual edit, clip move, deletion, or word timing adjustment.
+  const canUndoReflow = reflowUndo !== null && reflowUndo.after === JSON.stringify([editableSegments, editableWords]);
+  const handleCharacterReflow = async (limit: number | null) => {
+    const next = reflowSubtitleCharacters(editableSegments, editableWords, limit);
+    next.words = synchronizeWords(next.segments, next.words);
+    setReflowUndo({ segments: editableSegments.map(s => ({ ...s })), words: editableWords.map(w => ({ ...w })), after: JSON.stringify([next.segments, next.words]) });
+    setSelectedSegmentId(null);
+    setActiveSegmentId(null);
+    await persistSegments(next.segments, next.words, { throwOnError: true });
+  };
+  const handleUndoReflow = async () => {
+    if (!reflowUndo || !canUndoReflow) return;
+    try {
+      await persistSegments(reflowUndo.segments, reflowUndo.words, { throwOnError: true });
+    } catch (error) {
+      // Optimistic state is already restored; retain a retryable undo if its
+      // persistence failed rather than silently reporting a completed undo.
+      setReflowUndo({ ...reflowUndo, after: JSON.stringify([reflowUndo.segments, reflowUndo.words]) });
+      throw error;
+    }
+    setReflowUndo(null);
+    setSelectedSegmentId(null);
+    setActiveSegmentId(null);
+  };
 
   return {
     // State
@@ -237,8 +403,15 @@ export function useTranscriptionState({
     handleSegmentTextChangeAndSave,
     handleSegmentBlur,
     handleAddSubtitle,
+    handleDeleteSegment,
+    handleSplitSegment,
     handleToggleActiveWord,
     handleWordsChange,
+    handleResegment,
+    handleAIEdit,
+    handleCharacterReflow,
+    handleUndoReflow,
+    canUndoReflow,
     persistSegments,
   };
 }

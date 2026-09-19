@@ -18,14 +18,11 @@ export function TranscriptionPage({ workflow }: TranscriptionPageProps) {
       <UploadStepSection
         active={workflow.activePage === "upload"}
         file={workflow.file}
-        format={workflow.format}
         isSubmitting={workflow.isSubmitting}
         uploadProgress={workflow.uploadProgress}
         stages={workflow.stages}
-        formatOptions={workflow.supportedFormats}
         error={workflow.activePage === "upload" ? workflow.error : null}
         onFileChange={workflow.onFileChange}
-        onFormatChange={workflow.onFormatChange}
         onSubmit={workflow.onSubmit}
       />
 

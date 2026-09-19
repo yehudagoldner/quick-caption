@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import type { Word } from "../types";
+import { activeWordAtTime } from "../../wordAlignment.js";
 
 type UseActiveWordParams = {
   words: Word[] | undefined;
@@ -21,10 +22,6 @@ export function useActiveWord({ words, currentTime, enabled }: UseActiveWordPara
     }
 
     // Find the word that matches the current time
-    const activeWord = words.find(
-      (word) => currentTime >= word.start && currentTime < word.end
-    );
-
-    return activeWord ?? null;
+    return activeWordAtTime(words, currentTime);
   }, [words, currentTime, enabled]);
 }

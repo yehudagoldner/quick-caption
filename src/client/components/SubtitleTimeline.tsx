@@ -1,5 +1,5 @@
 import "react-virtualized/styles.css";
-import { Box, Button, Card, IconButton, Slider, Stack, TextField, Typography } from "@mui/material";
+import { Box, Button, Card, IconButton, Slider, Stack, TextField, Tooltip, Typography, ThemeProvider, createTheme, useTheme } from "@mui/material";
 import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
 import CheckRoundedIcon from "@mui/icons-material/CheckRounded";
 import SubtitlesRoundedIcon from "@mui/icons-material/SubtitlesRounded";
@@ -7,6 +7,7 @@ import PlayArrowRoundedIcon from "@mui/icons-material/PlayArrowRounded";
 import PauseRoundedIcon from "@mui/icons-material/PauseRounded";
 import ZoomInRoundedIcon from "@mui/icons-material/ZoomInRounded";
 import ZoomOutRoundedIcon from "@mui/icons-material/ZoomOutRounded";
+import ContentCutRoundedIcon from "@mui/icons-material/ContentCutRounded";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Timeline,
@@ -17,6 +18,8 @@ import {
 } from "@xzdarcy/react-timeline-editor";
 import type { Segment, Word } from "../types";
 import { WordTimeline } from "./WordTimeline";
+import { useEditorPreferences } from "../contexts/EditorPreferences";
+import { formatTimecode, snapToFrame } from "../utils/timecode";
 
 const ROW_ID = "subtitle-row";
 
@@ -35,13 +38,14 @@ export type SubtitleTimelineProps = {
   selectedSegmentId?: Segment["id"] | null;
   onSegmentSelect?: (segmentId: Segment["id"] | null) => void;
   onSegmentTextChange?: (segmentId: Segment["id"], text: string) => void;
+  onSplitSegment?: (segmentId: Segment["id"], splitTime: number) => Promise<void>;
   // Video control props
   isPlaying?: boolean;
   onPlayPause?: () => void;
   // Word editing props
   words?: Word[];
   activeWordEnabled?: boolean;
-  onWordsChange?: (words: Word[]) => void;
+  onWordsChange?: (words: Word[], segmentId?: Segment["id"], text?: string) => void;
 };
 
 export function SubtitleTimeline({
@@ -55,12 +59,17 @@ export function SubtitleTimeline({
   selectedSegmentId,
   onSegmentSelect,
   onSegmentTextChange,
+  onSplitSegment,
   isPlaying = false,
   onPlayPause,
   words,
   activeWordEnabled = false,
   onWordsChange,
 }: SubtitleTimelineProps) {
+  const { preferences } = useEditorPreferences();
+  const fps = preferences.fps;
+  const parentTheme = useTheme();
+  const timelineTheme = useMemo(() => createTheme(parentTheme, { direction: "ltr" }), [parentTheme]);
   const editorData = useMemo<TimelineRow[]>(() => {
     const actions: TimelineAction[] = segments.map((segment) => ({
       id: segmentKey(segment),
@@ -150,7 +159,7 @@ export function SubtitleTimeline({
     return undefined;
   }, [viewportWidth]);
 
-  const baseScaleCount = useMemo(() => Math.max(20, Math.ceil(totalDuration) + 2), [totalDuration]);
+  const baseScaleCount = useMemo(() => Math.max(2, Math.ceil(totalDuration) + 1), [totalDuration]);
   const baseScale = 1;
 
   const effectiveViewportWidth = viewportWidth ?? autoViewportWidth ?? null;
@@ -195,7 +204,7 @@ export function SubtitleTimeline({
       }
 
       const startLeft = 20;
-      const viewWidth = effectiveViewportWidth * 0.9; // Account for 90% timeline width
+      const viewWidth = effectiveViewportWidth;
       const pixelsPerUnit = scaleWidth / baseScale;
       const positionPx = startLeft + time * pixelsPerUnit;
 
@@ -206,8 +215,8 @@ export function SubtitleTimeline({
       let targetScroll = actualScroll;
 
       // More aggressive scrolling: always center if not in the center 25% of viewport
-      const centerStart = actualScroll + (viewWidth * 0.375); // 37.5% from left
-      const centerEnd = actualScroll + (viewWidth * 0.625);   // 62.5% from left
+      const centerStart = actualScroll + 20;
+      const centerEnd = actualScroll + viewWidth - 40;
 
       if (positionPx < centerStart || positionPx > centerEnd) {
         // Center the current time in the viewport
@@ -248,12 +257,12 @@ export function SubtitleTimeline({
     (time: number) => {
       console.debug('⏰ Timeline emitTimeChange called:', { time, hasHandler: !!onRequestTimeChange });
       if (onRequestTimeChange) {
-        const clampedTime = Math.max(0, time);
+        const clampedTime = Math.min(totalDuration, Math.max(0, snapToFrame(time, fps)));
         console.debug('⏰ Calling onRequestTimeChange with:', clampedTime);
         onRequestTimeChange(clampedTime);
       }
     },
-    [onRequestTimeChange],
+    [onRequestTimeChange, fps, totalDuration],
   );
 
 
@@ -271,13 +280,11 @@ export function SubtitleTimeline({
             return null;
           }
 
-          return {
-            ...original,
-            start: action.start,
-            end: action.end,
-          };
+          const length = Math.min(totalDuration, Math.max(1 / fps, snapToFrame(action.end - action.start, fps)));
+          const start = Math.min(Math.max(0, totalDuration - length), Math.max(0, snapToFrame(action.start, fps)));
+          return { ...original, start, end: Math.min(totalDuration, start + length) };
         })
-        .filter((segment): segment is Segment => segment !== null)
+        .filter((segment): segment is Segment => segment !== null && segment.end > segment.start)
         .sort((a, b) => a.start - b.start);
 
       if (updatedSegments.length !== segments.length) {
@@ -294,7 +301,7 @@ export function SubtitleTimeline({
         onSegmentsChange(updatedSegments);
       }
     },
-    [segmentLookup, segments, onSegmentsChange],
+    [segmentLookup, segments, onSegmentsChange, fps, totalDuration],
   );
 
   useEffect(() => {
@@ -398,6 +405,8 @@ export function SubtitleTimeline({
 
       return (
         <Stack
+          title="גררו את גוף המקטע להזזה, את הקצוות לקיצור או הארכה, ולחצו לעריכת הטקסט"
+          data-testid="subtitle-clip"
           className="subtitle-timeline-action"
           direction="row"
           spacing={0.75}
@@ -409,7 +418,7 @@ export function SubtitleTimeline({
             height: "100%",
             pointerEvents: disabled ? "none" : "auto",
             color: "#fff",
-            cursor: disabled ? "default" : "pointer",
+            cursor: disabled ? "default" : "grab",
           }}
         >
           <Box
@@ -427,13 +436,13 @@ export function SubtitleTimeline({
             }}
           />
           <SubtitlesRoundedIcon fontSize="small" sx={{ position: "relative", zIndex: 1 }} />
-          <Typography variant="caption" noWrap sx={{ position: "relative", zIndex: 1, fontWeight: 600 }}>
+          <Typography variant="caption" noWrap sx={{ position: "relative", zIndex: 1, fontWeight: 600, direction: `${preferences.direction} !important`, unicodeBidi: "plaintext" }}>
             {displayText}
           </Typography>
         </Stack>
       );
     },
-    [effects, segmentLookup, selectedSegmentId, disabled, handleActionClick],
+    [effects, segmentLookup, selectedSegmentId, disabled, handleActionClick, preferences.direction],
   );
 
   const formatScaleLabel = useCallback((value: number) => {
@@ -474,18 +483,37 @@ export function SubtitleTimeline({
     onSegmentSelect?.(null);
   }, [onSegmentSelect]);
 
-  const formatTimeDisplay = (time: number) => {
-    const minutes = Math.floor(time / 60);
-    const seconds = Math.floor(time % 60);
-    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
-  };
+  const handleSplitAtCursor = useCallback(async () => {
+    if (!selectedSegment || !onSplitSegment || typeof currentTime !== "number") return;
+
+    // Check if cursor is within the selected segment
+    if (currentTime <= selectedSegment.start || currentTime >= selectedSegment.end) {
+      console.warn("Cursor must be within the segment to split");
+      return;
+    }
+
+    await onSplitSegment(selectedSegment.id, currentTime);
+    onSegmentSelect?.(null);
+  }, [selectedSegment, onSplitSegment, currentTime, onSegmentSelect]);
+
+  // Check if split is possible (cursor is within segment bounds)
+  const canSplit = useMemo(() => {
+    if (!selectedSegment || typeof currentTime !== "number") return false;
+    if (selectedSegment.text.trim().split(/\s+/).length < 2) return false;
+    return currentTime > selectedSegment.start && currentTime < selectedSegment.end;
+  }, [selectedSegment, currentTime]);
+
+  const formatTimeDisplay = (time: number) => formatTimecode(time, fps);
 
   return (
-    <Stack spacing={1.5} sx={{ mt: 2, flex: 1, width: "90%" }} className="subtitle-timeline">
+    <Stack spacing={1.5} sx={{ mt: 2, flex: 1, width: "100%", minWidth: 0 }} className="subtitle-timeline">
+      <Typography variant="subtitle1" fontWeight={700}>ציר הזמן הראשי — כל ההקלטה</Typography>
+      <Typography variant="caption" color="text.secondary">גרירת גוף המקטע מזיזה אותו; גרירת הקצוות משנה את משכו. לחיצה פותחת עריכה של המקטע הנבחר.</Typography>
       {/* Video Controls Row */}
       <Stack direction="row" spacing={2} alignItems="center">
         {/* Play/Pause Button */}
         <IconButton
+          aria-label={isPlaying ? "השהה" : "נגן"}
           onClick={onPlayPause}
           disabled={!onPlayPause}
           sx={{ bgcolor: "primary.main", color: "white", "&:hover": { bgcolor: "primary.dark" } }}
@@ -494,22 +522,21 @@ export function SubtitleTimeline({
         </IconButton>
 
         {/* Current Time */}
-        <Typography variant="body2" color="text.secondary" sx={{ minWidth: 50 }}>
+        <Typography data-testid="playhead-timecode" dir="ltr" variant="body2" color="text.secondary" sx={{ minWidth: 100, fontVariantNumeric: "tabular-nums" }}>
           {formatTimeDisplay(currentTime || 0)}
         </Typography>
 
         {/* Time Scrubber */}
         <Box sx={{ flexGrow: 1 }} dir="ltr">
+          <ThemeProvider theme={timelineTheme}>
           <Slider
             min={0}
             max={totalDuration}
-            step={0.1}
-            value={totalDuration - (currentTime || 0)}
+            aria-label="מיקום בהקלטה"
+            step={1 / fps}
+            value={currentTime || 0}
             onChange={(_event, value) => {
-              const invertedValue = Array.isArray(value) ? value[0] : value;
-              const time = totalDuration - invertedValue;
-              console.debug('🎚️ Scrubber onChange:', { time, invertedValue, hasHandler: !!onRequestTimeChange });
-              onRequestTimeChange?.(time);
+              emitTimeChange(Array.isArray(value) ? value[0] : value);
             }}
             size="small"
             sx={{
@@ -521,10 +548,11 @@ export function SubtitleTimeline({
               }
             }}
           />
+          </ThemeProvider>
         </Box>
 
         {/* Total Duration */}
-        <Typography variant="body2" color="text.secondary" sx={{ minWidth: 50 }}>
+        <Typography dir="ltr" variant="body2" color="text.secondary" sx={{ display: { xs: "none", sm: "block" }, minWidth: 100 }}>
           {formatTimeDisplay(totalDuration)}
         </Typography>
       </Stack>
@@ -535,6 +563,7 @@ export function SubtitleTimeline({
         <Box
           sx={{
             flex: 1,
+            minWidth: 0,
             direction: "ltr",
             "& *": {
               direction: "ltr !important"
@@ -552,7 +581,7 @@ export function SubtitleTimeline({
             ref={timelineRef}
             editorData={editorData}
             effects={effects}
-            gridSnap
+            gridSnap={false}
             dragLine
             disableDrag={disabled}
             scale={baseScale}
@@ -635,13 +664,15 @@ export function SubtitleTimeline({
               <Stack spacing={2}>
                 <Stack direction="row" justifyContent="space-between" alignItems="center">
                   <Typography variant="subtitle1" fontWeight={600}>
-                    עריכת כתובית
+                    עריכת המקטע הנבחר
                   </Typography>
                   <IconButton size="small" onClick={handleCancelEdit} sx={{ color: "inherit" }}>
                     <CloseRoundedIcon />
                   </IconButton>
                 </Stack>
                 <TextField
+                  label="טקסט המקטע"
+                  inputProps={{ dir: preferences.direction }}
                   multiline
                   minRows={3}
                   value={editText}
@@ -656,6 +687,30 @@ export function SubtitleTimeline({
                   }}
                 />
                 <Stack direction="row" spacing={1} justifyContent="flex-end">
+                  <Tooltip title={canSplit ? "פצל כתובית במיקום הנוכחי" : "הזז את הסמן לתוך הכתובית כדי לפצל"}>
+                    <span>
+                      <Button
+                        variant="outlined"
+                        startIcon={<ContentCutRoundedIcon />}
+                        onClick={handleSplitAtCursor}
+                        disabled={!canSplit}
+                        sx={{
+                          color: "inherit",
+                          borderColor: "inherit",
+                          "&:hover": {
+                            borderColor: "inherit",
+                            bgcolor: "rgba(255, 255, 255, 0.1)",
+                          },
+                          "&.Mui-disabled": {
+                            color: "rgba(255, 255, 255, 0.4)",
+                            borderColor: "rgba(255, 255, 255, 0.3)",
+                          },
+                        }}
+                      >
+                        פצל
+                      </Button>
+                    </span>
+                  </Tooltip>
                   <Button
                     variant="outlined"
                     onClick={handleCancelEdit}

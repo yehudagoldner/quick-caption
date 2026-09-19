@@ -1,7 +1,9 @@
-import { useState, type ChangeEvent } from "react";
+import { useId, useState, type ChangeEvent, type ReactNode } from "react";
+import type { Segment, Word } from "../types";
 import {
   Box,
   Button,
+  IconButton,
   Dialog,
   DialogTitle,
   DialogContent,
@@ -19,6 +21,7 @@ import {
   Alert,
   FormControl,
   InputLabel,
+  Typography,
 } from "@mui/material";
 import {
   DownloadRounded,
@@ -31,9 +34,17 @@ import {
   SubtitlesRounded,
   AddRounded,
   RecordVoiceOverRounded,
+  AutoFixHighRounded,
+  SettingsRounded,
+  CloseRounded,
 } from "@mui/icons-material";
 
 export type BurnOptions = {
+  activeWordEnabled?: boolean;
+  segments?: Segment[];
+  words?: Word[];
+  subtitleContent?: string;
+  textDirection?: "rtl" | "ltr";
   fontSize: number;
   fontColor: string;
   outlineColor: string;
@@ -49,6 +60,8 @@ type BurnedVideo = {
 };
 
 type VideoToolbarProps = {
+  editorSettings: ReactNode;
+  canBurn?: boolean;
   fontSize: number;
   fontColor: string;
   outlineColor: string;
@@ -72,9 +85,13 @@ type VideoToolbarProps = {
   onToggleSidebar: () => void;
   onAddSubtitle: (text: string, startTime: number, endTime: number) => void;
   onToggleActiveWord: () => void;
+  onResegment?: (maxWords: number, customInstructions?: string) => Promise<void>;
+  onAIEdit?: (instructions: string) => Promise<void>;
 };
 
 export function VideoToolbar({
+  editorSettings,
+  canBurn = true,
   fontSize,
   fontColor,
   outlineColor,
@@ -98,10 +115,14 @@ export function VideoToolbar({
   onToggleSidebar,
   onAddSubtitle,
   onToggleActiveWord,
+  onAIEdit,
 }: VideoToolbarProps) {
   // Download menu state
   const [downloadAnchorEl, setDownloadAnchorEl] = useState<null | HTMLElement>(null);
   const downloadMenuOpen = Boolean(downloadAnchorEl);
+  const [settingsAnchorEl, setSettingsAnchorEl] = useState<HTMLElement | null>(null);
+  const settingsId = useId();
+  const settingsTitleId = useId();
 
   // Popover states
   const [positionAnchorEl, setPositionAnchorEl] = useState<null | HTMLElement>(null);
@@ -109,6 +130,9 @@ export function VideoToolbar({
   const [fontAnchorEl, setFontAnchorEl] = useState<null | HTMLElement>(null);
   const [colorAnchorEl, setColorAnchorEl] = useState<null | HTMLElement>(null);
   const [addSubtitleDialogOpen, setAddSubtitleDialogOpen] = useState(false);
+  const [aiEditAnchorEl, setAiEditAnchorEl] = useState<null | HTMLElement>(null);
+  const [aiEditInstructions, setAiEditInstructions] = useState("");
+  const [isAIEditing, setIsAIEditing] = useState(false);
 
   // Add subtitle form state
   const [newSubtitleText, setNewSubtitleText] = useState("");
@@ -121,16 +145,6 @@ export function VideoToolbar({
 
   const handleDownloadClose = () => {
     setDownloadAnchorEl(null);
-  };
-
-  const handleDownloadSubtitles = () => {
-    if (downloadUrl) {
-      const link = document.createElement("a");
-      link.href = downloadUrl;
-      link.download = downloadName;
-      link.click();
-    }
-    handleDownloadClose();
   };
 
   const handleBurnAndDownload = async () => {
@@ -153,19 +167,41 @@ export function VideoToolbar({
     }
   };
 
+  const handleApplyAIEdit = async () => {
+    if (onAIEdit && aiEditInstructions.trim()) {
+      try {
+        setIsAIEditing(true);
+        await onAIEdit(aiEditInstructions.trim());
+        setAiEditAnchorEl(null);
+        setAiEditInstructions("");
+      } catch (error) {
+        console.error("AI edit failed", error);
+      } finally {
+        setIsAIEditing(false);
+      }
+    }
+  };
+
   return (
     <>
       <Paper
+        role="group"
+        aria-label="כלי עריכת כתוביות"
         elevation={2}
         sx={{
           display: "flex",
-          flexDirection: "column",
-          alignItems: "stretch",
+          flexDirection: "row",
+          alignItems: "center",
           gap: 1,
           p: 1.5,
           borderRadius: 2,
           bgcolor: "background.paper",
-          minWidth: 140,
+          minWidth: 0,
+          width: "100%",
+          flexWrap: "wrap",
+          "& > .MuiBox-root:empty": { display: "none" },
+          flexShrink: 0,
+          maxWidth: "100%",
         }}
       >
         {/* Download Button */}
@@ -174,12 +210,25 @@ export function VideoToolbar({
           startIcon={<DownloadRounded />}
           onClick={handleDownloadClick}
           size="small"
-          sx={{ justifyContent: "flex-start" }}
+          sx={{ justifyContent: "flex-start", minWidth: "fit-content" }}
         >
           הורדה
         </Button>
 
-        <Box sx={{ height: 1, width: "100%", bgcolor: "divider", my: 0.5 }} />
+        <Button
+          variant={settingsAnchorEl ? "outlined" : "text"}
+          startIcon={<SettingsRounded />}
+          onClick={event => setSettingsAnchorEl(event.currentTarget)}
+          size="small"
+          aria-haspopup="dialog"
+          aria-expanded={Boolean(settingsAnchorEl)}
+          aria-controls={settingsAnchorEl ? settingsId : undefined}
+          sx={{ minWidth: "fit-content" }}
+        >
+          הגדרות כתוביות
+        </Button>
+
+        <Box sx={{ height: { xs: 24, md: 1 }, width: { xs: 1, md: "100%" }, bgcolor: "divider", my: { xs: 0, md: 0.5 }, mx: { xs: 0.5, md: 0 } }} />
 
         {/* Position Control */}
         <Button
@@ -187,7 +236,7 @@ export function VideoToolbar({
           startIcon={<HeightRounded />}
           onClick={(e) => setPositionAnchorEl(e.currentTarget)}
           size="small"
-          sx={{ justifyContent: "flex-start" }}
+          sx={{ justifyContent: "flex-start", minWidth: "fit-content" }}
         >
           מיקום
         </Button>
@@ -198,7 +247,7 @@ export function VideoToolbar({
           startIcon={<SpaceBarRounded />}
           onClick={(e) => setMarginAnchorEl(e.currentTarget)}
           size="small"
-          sx={{ justifyContent: "flex-start" }}
+          sx={{ justifyContent: "flex-start", minWidth: "fit-content" }}
         >
           שוליים
         </Button>
@@ -209,7 +258,7 @@ export function VideoToolbar({
           startIcon={<FormatSizeRounded />}
           onClick={(e) => setFontAnchorEl(e.currentTarget)}
           size="small"
-          sx={{ justifyContent: "flex-start" }}
+          sx={{ justifyContent: "flex-start", minWidth: "fit-content" }}
         >
           פונט
         </Button>
@@ -220,12 +269,12 @@ export function VideoToolbar({
           startIcon={<PaletteRounded />}
           onClick={(e) => setColorAnchorEl(e.currentTarget)}
           size="small"
-          sx={{ justifyContent: "flex-start" }}
+          sx={{ justifyContent: "flex-start", minWidth: "fit-content" }}
         >
           צבעים
         </Button>
 
-        <Box sx={{ height: 1, width: "100%", bgcolor: "divider", my: 0.5 }} />
+        <Box sx={{ height: { xs: 24, md: 1 }, width: { xs: 1, md: "100%" }, bgcolor: "divider", my: { xs: 0, md: 0.5 }, mx: { xs: 0.5, md: 0 } }} />
 
         {/* Add Subtitle Button */}
         <Button
@@ -233,7 +282,7 @@ export function VideoToolbar({
           startIcon={<AddRounded />}
           onClick={handleOpenAddSubtitleDialog}
           size="small"
-          sx={{ justifyContent: "flex-start" }}
+          sx={{ justifyContent: "flex-start", minWidth: "fit-content" }}
         >
           הוסף כתובית
         </Button>
@@ -243,12 +292,26 @@ export function VideoToolbar({
           variant="text"
           startIcon={<RecordVoiceOverRounded />}
           onClick={onToggleActiveWord}
+          aria-pressed={activeWordEnabled}
           size="small"
           color={activeWordEnabled ? "primary" : "inherit"}
-          sx={{ justifyContent: "flex-start" }}
+          sx={{ justifyContent: "flex-start", minWidth: "fit-content" }}
         >
           מילה אקטיבית
         </Button>
+
+        {/* AI Edit Button */}
+        {onAIEdit && (
+          <Button
+            variant="text"
+            startIcon={<AutoFixHighRounded />}
+            onClick={(e) => setAiEditAnchorEl(e.currentTarget)}
+            size="small"
+            sx={{ justifyContent: "flex-start", minWidth: "fit-content" }}
+          >
+            עריכה עם AI
+          </Button>
+        )}
 
         {/* Sidebar Toggle */}
         <Button
@@ -257,21 +320,42 @@ export function VideoToolbar({
           onClick={onToggleSidebar}
           size="small"
           color={sidebarOpen ? "primary" : "inherit"}
-          sx={{ justifyContent: "flex-start" }}
+          sx={{ justifyContent: "flex-start", minWidth: "fit-content" }}
         >
           {sidebarOpen ? "הסתר עורך" : "הצג עורך"}
         </Button>
 
         {/* Burn Status/Error */}
         {isBurning && (
-          <Box sx={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 1, mt: 1 }}>
+          <Box sx={{ display: "flex", flexDirection: { xs: "row", md: "column" }, alignItems: "center", gap: 1, mt: { xs: 0, md: 1 }, ml: { xs: 1, md: 0 } }}>
             <CircularProgress size={20} />
-            <Box component="span" sx={{ fontSize: 12, textAlign: "center" }}>
+            <Box component="span" sx={{ fontSize: 12, textAlign: "center", whiteSpace: "nowrap" }}>
               יוצר וידאו...
             </Box>
           </Box>
         )}
       </Paper>
+
+      <Popover
+        open={Boolean(settingsAnchorEl)}
+        anchorEl={settingsAnchorEl}
+        onClose={() => setSettingsAnchorEl(null)}
+        anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
+        transformOrigin={{ vertical: "top", horizontal: "right" }}
+        keepMounted
+        slotProps={{ paper: {
+          id: settingsId,
+          role: "dialog",
+          "aria-labelledby": settingsTitleId,
+          sx: { width: 640, maxWidth: "calc(100vw - 32px)", maxHeight: "calc(100dvh - 32px)" },
+        } }}
+      >
+        <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ px: 2, py: 1 }}>
+          <Typography id={settingsTitleId} variant="subtitle1" fontWeight={600}>הגדרות כתוביות</Typography>
+          <IconButton aria-label="סגירת הגדרות כתוביות" onClick={() => setSettingsAnchorEl(null)} size="small"><CloseRounded /></IconButton>
+        </Stack>
+        {editorSettings}
+      </Popover>
 
       {/* Error Alert */}
       {burnError && (
@@ -288,13 +372,13 @@ export function VideoToolbar({
         anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
         transformOrigin={{ vertical: "top", horizontal: "right" }}
       >
-        <MenuItem onClick={handleDownloadSubtitles} disabled={!downloadUrl}>
+        <MenuItem component="a" href={downloadUrl ?? undefined} download={downloadName} onClick={handleDownloadClose} disabled={!downloadUrl}>
           <SubtitlesRounded sx={{ mr: 1 }} />
           הורד קובץ כתוביות
         </MenuItem>
-        <MenuItem onClick={handleBurnAndDownload} disabled={isBurning || !mediaUrl}>
+        <MenuItem onClick={handleBurnAndDownload} disabled={isBurning || !mediaUrl || !canBurn}>
           <MovieFilterRounded sx={{ mr: 1 }} />
-          הורד סרטון עם כתוביות
+          {canBurn ? "הורד סרטון עם כתוביות" : "צריבה זמינה לקובץ וידאו בלבד"}
         </MenuItem>
         {burnedVideo && (
           <MenuItem
@@ -391,6 +475,53 @@ export function VideoToolbar({
                 <MenuItem value={96}>96 - ענק מאוד</MenuItem>
               </Select>
             </FormControl>
+          </Stack>
+        </Paper>
+      </Popover>
+
+      {/* AI Edit Popover */}
+      <Popover
+        open={Boolean(aiEditAnchorEl)}
+        anchorEl={aiEditAnchorEl}
+        onClose={() => setAiEditAnchorEl(null)}
+        anchorOrigin={{ vertical: 'center', horizontal: 'left' }}
+        transformOrigin={{ vertical: 'center', horizontal: 'right' }}
+      >
+        <Paper sx={{ p: 3, width: 400 }}>
+          <Stack spacing={2}>
+            <Typography variant="subtitle1" fontWeight={600}>
+              עריכת כתוביות עם AI
+            </Typography>
+
+            <TextField
+              label="מה לעשות?"
+              multiline
+              rows={4}
+              value={aiEditInstructions}
+              onChange={(e) => setAiEditInstructions(e.target.value)}
+              fullWidth
+              autoFocus
+              placeholder="לדוגמה:
+• תפצל את הכתוביות הארוכות
+• תאחד כתוביות קצרות מדי
+• תתקן שגיאות כתיב
+• זה סטנדאפ - תשמור על הפאנצ'ים נפרדים
+• תקצר את כל הכתוביות ל-5 מילים מקסימום"
+            />
+
+            <Button
+              variant="contained"
+              onClick={handleApplyAIEdit}
+              fullWidth
+              disabled={isAIEditing || !aiEditInstructions.trim()}
+              size="large"
+            >
+              {isAIEditing ? "AI מעבד..." : "בצע עריכה"}
+            </Button>
+
+            <Typography variant="caption" color="text.secondary">
+              ה-AI ישנה את הכתוביות הקיימות לפי ההוראות שלך. הוא ישמור על התזמון כמה שאפשר.
+            </Typography>
           </Stack>
         </Paper>
       </Popover>

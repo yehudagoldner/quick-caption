@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Box, Divider, Stack } from "@mui/material";
+import { useState, type ReactNode } from "react";
+import { Box, Divider, FormControlLabel, Stack, Switch, Typography } from "@mui/material";
 import type { Segment, Word } from "../types";
 import { SubtitleTimeline } from "./SubtitleTimeline";
 import { VideoPlayer } from "./VideoPlayer";
@@ -14,6 +14,7 @@ type BurnedVideo = {
 };
 
 type TranscriptionMainContentProps = {
+  editorSettings: ReactNode;
   mediaUrl: string | null;
   activeSegmentText: string | null;
   previewStyle: React.CSSProperties;
@@ -55,14 +56,19 @@ type TranscriptionMainContentProps = {
   onMarginChange: (event: Event, value: number | number[]) => void;
   onBurnVideo: () => void;
   onAddSubtitle: (text: string, startTime: number, endTime: number) => void;
+  onDeleteSegment: (segmentId: Segment["id"]) => Promise<void>;
+  onSplitSegment: (segmentId: Segment["id"], splitTime: number) => Promise<void>;
   onToggleActiveWord: () => void;
-  onWordsChange?: (words: Word[]) => void;
+  onWordsChange?: (words: Word[], segmentId?: Segment["id"], text?: string) => void;
+  onResegment?: (maxWords: number, customInstructions?: string) => Promise<void>;
+  onAIEdit?: (instructions: string) => Promise<void>;
   // Video control props
   isPlaying?: boolean;
   onPlayPause?: () => void;
 };
 
 export function TranscriptionMainContent({
+  editorSettings,
   mediaUrl,
   activeSegmentText,
   previewStyle,
@@ -86,6 +92,7 @@ export function TranscriptionMainContent({
   downloadUrl,
   downloadName,
   activeWordEnabled,
+  videoDimensions,
   // Video control props
   isPlaying,
   onPlayPause,
@@ -105,17 +112,29 @@ export function TranscriptionMainContent({
   onMarginChange,
   onBurnVideo,
   onAddSubtitle,
+  onDeleteSegment,
+  onSplitSegment,
   onToggleActiveWord,
   onWordsChange,
+  onResegment,
+  onAIEdit,
 }: TranscriptionMainContentProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [showSubtitles, setShowSubtitles] = useState(true);
 
   return (
     <>
-      <Stack direction={{ xs: "column", md: "row" }} spacing={3} alignItems="flex-start">
-        <Stack flex={{ xs: 1, md: sidebarOpen ? 4 : 1 }} className="preview-wrapper" spacing={2} sx={{ maxWidth: sidebarOpen ? "calc(100% - 350px)" : "100%" }}>
-          <Stack direction="row" spacing={2} alignItems="flex-start">
+      <Stack direction={{ xs: "column", lg: "row" }} spacing={2} alignItems="flex-start" sx={{ width: "100%", minWidth: 0 }}>
+        <Stack className="preview-wrapper" spacing={2} sx={{ flex: 1, minWidth: 0, width: "100%" }}>
+          <Stack direction="column" spacing={1.5} alignItems="center" justifyContent="center" sx={{ width: "100%", minWidth: 0 }}>
             <VideoToolbar
+              editorSettings={<>
+                {editorSettings}
+                <Box sx={{ p: 2 }}>
+                  <FormControlLabel control={<Switch checked={showSubtitles} onChange={(_, checked) => setShowSubtitles(checked)} />} label="הצג כתוביות בתצוגה המקדימה" />
+                  <Typography variant="caption" display="block" color="text.secondary">כתוביות שכבר צרובות בקובץ הן חלק מהתמונה ואינן ניתנות להסתרה כאן.</Typography>
+                </Box>
+              </>}
               fontSize={fontSize}
               fontColor={fontColor}
               outlineColor={outlineColor}
@@ -125,6 +144,7 @@ export function TranscriptionMainContent({
               burnError={burnError}
               burnedVideo={burnedVideo}
               mediaUrl={mediaUrl}
+              canBurn={Boolean(videoDimensions?.width)}
               downloadUrl={downloadUrl}
               downloadName={downloadName}
               sidebarOpen={sidebarOpen}
@@ -139,12 +159,15 @@ export function TranscriptionMainContent({
               onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
               onAddSubtitle={onAddSubtitle}
               onToggleActiveWord={onToggleActiveWord}
+              onResegment={onResegment}
+              onAIEdit={onAIEdit}
             />
 
-            <Box sx={{ maxWidth: 800, flex: 1 }}>
+            <Box sx={{ minWidth: 0, width: "100%", flex: 1 }}>
               <VideoPlayer
                 mediaUrl={mediaUrl}
-                activeSegmentText={activeSegmentText}
+                activeSegmentText={showSubtitles ? activeSegmentText : null}
+                activeSegmentId={activeSegmentId}
                 previewStyle={previewStyle}
                 words={words}
                 currentTime={currentTime}
@@ -168,6 +191,7 @@ export function TranscriptionMainContent({
               selectedSegmentId={selectedSegmentId}
               onSegmentSelect={onSegmentSelect}
               onSegmentTextChange={onSegmentTextChangeAndSave}
+              onSplitSegment={onSplitSegment}
               isPlaying={isPlaying}
               onPlayPause={onPlayPause}
               words={words}
@@ -181,7 +205,7 @@ export function TranscriptionMainContent({
           <>
             <Divider orientation="vertical" flexItem sx={{ display: { xs: "none", md: "block" } }} />
 
-            <Stack flex={{ xs: 1, md: 1 }} spacing={2}>
+            <Stack spacing={2} sx={{ width: { xs: "100%", lg: 310 }, flexShrink: 0, minWidth: 0 }}>
               <SubtitleEditor
                 segments={editableSegments}
                 isEditable={isEditable}
@@ -190,6 +214,7 @@ export function TranscriptionMainContent({
                 activeSegmentId={activeSegmentId}
                 onSegmentTextChange={onSegmentTextChange}
                 onSegmentBlur={onSegmentBlur}
+                onDeleteSegment={onDeleteSegment}
               />
             </Stack>
           </>

@@ -1,9 +1,10 @@
 import type { ChangeEvent } from "react";
 import { useEffect, useRef } from "react";
-import { CircularProgress, Stack, TextField, Typography, Box } from "@mui/material";
-import { AccessTimeRounded } from "@mui/icons-material";
+import { CircularProgress, IconButton, Stack, TextField, Typography, Box } from "@mui/material";
+import { AccessTimeRounded, DeleteRounded } from "@mui/icons-material";
 import type { Segment } from "../types";
-import { formatTime } from "../utils/formatTime";
+import { formatTimecode } from "../utils/timecode";
+import { useEditorPreferences } from "../contexts/EditorPreferences";
 
 type SaveState = "idle" | "saving" | "success" | "error";
 
@@ -15,6 +16,7 @@ type SubtitleEditorProps = {
   activeSegmentId?: Segment["id"] | null;
   onSegmentTextChange: (segmentId: Segment["id"], value: string) => void;
   onSegmentBlur: (segmentId: Segment["id"]) => Promise<void>;
+  onDeleteSegment: (segmentId: Segment["id"]) => Promise<void>;
 };
 
 export function SubtitleEditor({
@@ -25,17 +27,22 @@ export function SubtitleEditor({
   activeSegmentId,
   onSegmentTextChange,
   onSegmentBlur,
+  onDeleteSegment,
 }: SubtitleEditorProps) {
+  const { preferences } = useEditorPreferences();
   const containerRef = useRef<HTMLDivElement>(null);
   const activeSegmentRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll to active segment
   useEffect(() => {
-    if (activeSegmentId && activeSegmentRef.current && containerRef.current) {
-      activeSegmentRef.current.scrollIntoView({
-        behavior: 'smooth',
-        block: 'center',
-      });
+    if (activeSegmentId != null && activeSegmentRef.current && containerRef.current) {
+      const container = containerRef.current;
+      if (container.contains(document.activeElement)) return;
+      const item = activeSegmentRef.current.getBoundingClientRect();
+      const bounds = container.getBoundingClientRect();
+      if (item.top < bounds.top || item.bottom > bounds.bottom) {
+        container.scrollTo({ top: container.scrollTop + item.top - bounds.top - (bounds.height - item.height) / 2, behavior: "smooth" });
+      }
     }
   }, [activeSegmentId]);
   if (segments.length === 0) {
@@ -53,13 +60,13 @@ export function SubtitleEditor({
   }
 
   return (
-    <Stack spacing={2} ref={containerRef}>
+    <Stack spacing={2}>
       <Stack direction="row" spacing={1} alignItems="center">
         <AccessTimeRounded color="primary" />
         <Typography variant="h6">מקטעים מתוזמנים</Typography>
       </Stack>
 
-      <Stack spacing={2} sx={{ maxHeight: '60vh', overflowY: 'auto' }}>
+      <Stack ref={containerRef} spacing={2} sx={{ maxHeight: '60vh', overflowY: 'auto', overscrollBehavior: 'contain' }}>
         {segments.map((segment) => {
           const isActive = segment.id === activeSegmentId;
           return (
@@ -76,21 +83,36 @@ export function SubtitleEditor({
               }}
             >
               <Stack spacing={1}>
-                <Stack direction="row" spacing={1} alignItems="center">
-                  <AccessTimeRounded
-                    fontSize="small"
-                    color={isActive ? "primary" : "action"}
-                  />
-                  <Typography
-                    variant="body2"
-                    fontWeight={isActive ? 700 : 600}
-                    color={isActive ? "primary" : "text.primary"}
-                  >
-                    {`${formatTime(segment.start)} – ${formatTime(segment.end)}`}
-                  </Typography>
+                <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between">
+                  <Stack direction="row" spacing={1} alignItems="center">
+                    <AccessTimeRounded
+                      fontSize="small"
+                      color={isActive ? "primary" : "action"}
+                    />
+                    <Typography
+                      variant="body2"
+                      fontWeight={isActive ? 700 : 600}
+                      color={isActive ? "primary" : "text.primary"}
+                    >
+                      <span dir="ltr">{`${formatTimecode(segment.start, preferences.fps)} – ${formatTimecode(segment.end, preferences.fps)}`}</span>
+                    </Typography>
+                  </Stack>
+                  {isEditable && (
+                    <IconButton
+                      size="small"
+                      onClick={() => onDeleteSegment(segment.id)}
+                      sx={{
+                        color: "text.secondary",
+                        "&:hover": { color: "error.main" },
+                      }}
+                    >
+                      <DeleteRounded fontSize="small" />
+                    </IconButton>
+                  )}
                 </Stack>
                 <TextField
                   multiline
+                  inputProps={{ dir: preferences.direction, "aria-label": "טקסט הכתובית" }}
                   minRows={2}
                   value={segment.text}
                   onChange={(event: ChangeEvent<HTMLInputElement>) =>

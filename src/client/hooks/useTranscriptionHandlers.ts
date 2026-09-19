@@ -1,8 +1,10 @@
 import type { ChangeEvent } from "react";
 import { useCallback } from "react";
-import type { ApiResponse, Segment } from "../types";
+import type { ApiResponse, Segment, Word } from "../types";
 import type { BurnOptions } from "../components/VideoToolbar";
 import { findSegment } from "../utils/transcriptionUtils";
+import { serializeSubtitles } from "../utils/subtitleExport";
+import { useEditorPreferences } from "../contexts/EditorPreferences";
 
 type BurnResult = {
   blob: Blob;
@@ -16,6 +18,8 @@ type BurnedVideo = {
 
 type UseTranscriptionHandlersProps = {
   editableSegments: Segment[];
+  editableWords: Word[];
+  activeWordEnabled: boolean;
   setActiveSegmentId: (id: Segment["id"] | null) => void;
   setCurrentTime: (time: number) => void;
   setVideoDimensions: (dimensions: { width: number; height: number }) => void;
@@ -29,7 +33,7 @@ type UseTranscriptionHandlersProps = {
   setBurnError: (error: string | null) => void;
   setIsBurning: (burning: boolean) => void;
   setBurnedVideo: (video: BurnedVideo | null) => void;
-  persistSegments: (segments: Segment[]) => Promise<void>;
+  persistSegments: (segments: Segment[], words?: Word[]) => Promise<void>;
   videoPlayer: HTMLVideoElement | null;
   response: ApiResponse;
   downloadName: string;
@@ -45,6 +49,8 @@ type UseTranscriptionHandlersProps = {
 
 export function useTranscriptionHandlers({
   editableSegments,
+  editableWords,
+  activeWordEnabled,
   setActiveSegmentId,
   setCurrentTime,
   setVideoDimensions,
@@ -71,6 +77,7 @@ export function useTranscriptionHandlers({
   videoDimensions,
   onBurn,
 }: UseTranscriptionHandlersProps) {
+  const { preferences } = useEditorPreferences();
   const handleVideoTimeUpdate = useCallback((nextTime: number) => {
     const segment = findSegment(editableSegments, nextTime);
     setActiveSegmentId(segment?.id ?? null);
@@ -119,9 +126,16 @@ export function useTranscriptionHandlers({
   const handleTimelineSegmentsChange = useCallback(
     async (nextSegments: Segment[]) => {
       const newSegments = nextSegments.map((segment) => ({ ...segment }));
-      await persistSegments(newSegments);
+      const words = editableWords.map(word => {
+        const source = editableSegments.find(s => word.start >= s.start - .001 && word.start < s.end && word.end <= s.end + .001);
+        const target = source && newSegments.find(s => s.id === source.id);
+        if (!source || !target || source.end <= source.start || (source.start === target.start && source.end === target.end)) return word;
+        const scale = (target.end - target.start) / (source.end - source.start);
+        return { ...word, start: target.start + (word.start - source.start) * scale, end: target.start + (word.end - source.start) * scale };
+      });
+      await persistSegments(newSegments, words);
     },
-    [persistSegments],
+    [persistSegments, editableSegments, editableWords],
   );
 
   const handleFontSizeChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {
@@ -157,6 +171,11 @@ export function useTranscriptionHandlers({
     setBurnError(null);
     try {
       const result = await onBurn({
+        activeWordEnabled,
+        segments: editableSegments,
+        words: editableWords,
+        subtitleContent: serializeSubtitles(editableSegments, ".srt", preferences.direction),
+        textDirection: preferences.direction,
         fontSize,
         fontColor,
         outlineColor,
@@ -188,6 +207,10 @@ export function useTranscriptionHandlers({
     setBurnError,
     setIsBurning,
     onBurn,
+    editableSegments,
+    editableWords,
+    activeWordEnabled,
+    preferences.direction,
     fontSize,
     fontColor,
     outlineColor,

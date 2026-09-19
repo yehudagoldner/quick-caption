@@ -2,7 +2,7 @@
 import { io } from "socket.io-client";
 import type { ManagerOptions, SocketOptions } from "socket.io-client";
 import type { BurnOptions } from "../components/TranscriptionResult";
-import type { ApiResponse, StageEvent, StageState, StageStatus, Segment } from "../types";
+import type { ApiResponse, StageEvent, StageState, StageStatus, Segment, Word } from "../types";
 import { useAuth } from "../contexts/AuthContext";
 
 export type AuthUser = ReturnType<typeof useAuth>["user"];
@@ -50,7 +50,6 @@ export type TranscriptionWorkflow = {
   profileAnchorEl: HTMLElement | null;
   file: File | null;
   format: string;
-  supportedFormats: FormatOption[];
   isSubmitting: boolean;
   uploadProgress: number | null;
   stages: StageState[];
@@ -64,16 +63,15 @@ export type TranscriptionWorkflow = {
   videoId: number | null;
   steps: string[];
   onFileChange: (file: File | null) => void;
-  onFormatChange: (format: string) => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
   onBackToUpload: () => void;
   onBurnVideoRequest: (options: BurnOptions) => Promise<{ blob: Blob; filename?: string | undefined }>;
-  onSaveSegments: (segments: Segment[], subtitleContent: string) => Promise<void>;
+  onSaveSegments: (segments: Segment[], subtitleContent: string, words?: Word[]) => Promise<void>;
   onProfileClick: (event: MouseEvent<HTMLElement>) => void;
   onProfileClose: () => void;
   onSignIn: () => Promise<void>;
   onSignOut: () => Promise<void>;
-  onLoadVideo: (data: { videoId: number; segments: Segment[]; format: string; filename: string; mediaUrl?: string | null }) => void;
+  onLoadVideo: (data: { videoId: number; segments: Segment[]; words?: Word[]; format: string; filename: string; mediaUrl?: string | null }) => void;
 };
 
 export function useTranscriptionWorkflow(): TranscriptionWorkflow {
@@ -173,7 +171,10 @@ export function useTranscriptionWorkflow(): TranscriptionWorkflow {
 
       const formData = new FormData();
       formData.append("media", file);
-      formData.append("format", format);
+      // New uploads use predictable defaults, never hidden editor preferences.
+      formData.append("format", DEFAULT_FORMAT);
+      formData.append("maxWordsPerSubtitle", "5");
+      formData.append("maxCharactersPerSubtitle", "20");
 
       if (socketId) {
         formData.append("socketId", socketId);
@@ -243,6 +244,9 @@ export function useTranscriptionWorkflow(): TranscriptionWorkflow {
         } else {
           // Handle insufficient credits error (402 Payment Required)
           let errorMessage = payload?.error ?? `אירעה שגיאה (${xhr.status})`;
+          if (/incorrect api key|invalid_api_key|authentication.*401/i.test(errorMessage)) {
+            errorMessage = "שירות התמלול אינו זמין: מפתח הגישה של השרת נדחה. יש לעדכן את הגדרת השירות ולנסות שוב.";
+          }
           if (xhr.status === 402) {
             const { required, available, shortfall, cost } = payload as any;
             if (required && available !== undefined) {
@@ -268,16 +272,17 @@ export function useTranscriptionWorkflow(): TranscriptionWorkflow {
 
       xhr.send(formData);
     },
-    [file, format, socketId, user?.uid],
+    [file, socketId, user?.uid],
   );
 
   const handleSegmentsUpdate = useCallback(
-    async (updatedSegments: Segment[], subtitleContent: string) => {
+    async (updatedSegments: Segment[], subtitleContent: string, words?: Word[]) => {
       setResponse((prev) =>
         prev
           ? {
               ...prev,
               segments: updatedSegments,
+              words: words ?? prev.words,
               subtitle: prev.subtitle ? { ...prev.subtitle, content: subtitleContent } : prev.subtitle,
               text: updatedSegments.map((segment) => segment.text).join("\n"),
             }
@@ -296,6 +301,7 @@ export function useTranscriptionWorkflow(): TranscriptionWorkflow {
         body: JSON.stringify({
           userUid: user.uid,
           subtitleJson: JSON.stringify(updatedSegments),
+          wordsJson: words ? JSON.stringify(words) : undefined,
         }),
       });
 
@@ -308,6 +314,13 @@ export function useTranscriptionWorkflow(): TranscriptionWorkflow {
 
   const handleBackToUpload = useCallback(() => {
     setActivePage("upload");
+    setFile(null);
+    setLoadedMediaUrl(null);
+    setResponse(null);
+    setVideoId(null);
+    setError(null);
+    setUploadProgress(null);
+    setStages(cloneStages(STAGE_DEFINITIONS));
   }, []);
 
   const handleBurnVideoRequest = useCallback(
@@ -318,7 +331,13 @@ export function useTranscriptionWorkflow(): TranscriptionWorkflow {
 
       const formData = new FormData();
       formData.append("media", file);
-      formData.append("subtitleContent", response.subtitle.content);
+      formData.append("subtitleContent", options.subtitleContent ?? response.subtitle.content);
+      formData.append("textDirection", options.textDirection ?? "rtl");
+      if (options.activeWordEnabled) {
+        formData.append("activeWordEnabled", "true");
+        formData.append("segments", JSON.stringify(options.segments ?? []));
+        formData.append("words", JSON.stringify(options.words ?? []));
+      }
       formData.append("fontSize", String(options.fontSize));
       formData.append("fontColor", options.fontColor);
       formData.append("outlineColor", options.outlineColor);
@@ -380,12 +399,8 @@ export function useTranscriptionWorkflow(): TranscriptionWorkflow {
     setFile(nextFile);
   }, []);
 
-  const handleFormatChange = useCallback((nextFormat: string) => {
-    setFormat(nextFormat);
-  }, []);
-
   const handleLoadVideo = useCallback(
-    (data: { videoId: number; segments: Segment[]; format: string; filename: string; mediaUrl?: string | null }) => {
+    (data: { videoId: number; segments: Segment[]; words?: Word[]; format: string; filename: string; mediaUrl?: string | null }) => {
       setVideoId(data.videoId);
       setFormat(data.format);
       setLoadedMediaUrl(data.mediaUrl || null);
@@ -394,6 +409,7 @@ export function useTranscriptionWorkflow(): TranscriptionWorkflow {
       setResponse({
         text: data.segments.map((s) => s.text).join("\n"),
         segments: data.segments,
+        words: data.words,
         subtitle: {
           format: data.format,
           content: subtitleContent,
@@ -413,7 +429,6 @@ export function useTranscriptionWorkflow(): TranscriptionWorkflow {
     profileAnchorEl,
     file,
     format,
-    supportedFormats: SUPPORTED_FORMATS,
     isSubmitting,
     uploadProgress,
     stages,
@@ -427,7 +442,6 @@ export function useTranscriptionWorkflow(): TranscriptionWorkflow {
     videoId,
     steps: STEPS,
     onFileChange: handleFileChange,
-    onFormatChange: handleFormatChange,
     onSubmit: handleSubmit,
     onBackToUpload: handleBackToUpload,
     onBurnVideoRequest: handleBurnVideoRequest,

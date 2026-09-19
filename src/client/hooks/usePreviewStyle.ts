@@ -1,5 +1,6 @@
 import { useEffect, useMemo } from "react";
 import { createOutlineShadow } from "../utils/transcriptionUtils";
+import { useEditorPreferences } from "../contexts/EditorPreferences";
 
 type UsePreviewStyleProps = {
   fontColor: string;
@@ -20,12 +21,13 @@ export function usePreviewStyle({
   videoDimensions,
   renderDimensions,
 }: UsePreviewStyleProps) {
+  const { preferences } = useEditorPreferences();
   const previewStyle = useMemo(() => {
     const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max);
     const clampedBottomPercent = clamp(offsetYPercent, 0, 100);
     const clampedMarginPercent = clamp(marginPercent, 0, 40);
 
-    if (!videoDimensions || !renderDimensions) {
+    if (!videoDimensions?.width || !videoDimensions.height || !renderDimensions) {
       const widthPercent = Math.max(10, 100 - clampedMarginPercent * 2);
 
       return {
@@ -43,6 +45,7 @@ export function usePreviewStyle({
         textShadow: createOutlineShadow(outlineColor),
         width: `${widthPercent}%`,
         maxWidth: `${widthPercent}%`,
+        direction: preferences.direction,
       };
     }
 
@@ -72,8 +75,9 @@ export function usePreviewStyle({
       textShadow: createOutlineShadow(outlineColor),
       width: `${widthPx}px`,
       maxWidth: `${widthPx}px`,
+      direction: preferences.direction,
     };
-  }, [fontColor, fontSize, offsetYPercent, outlineColor, marginPercent, videoDimensions, renderDimensions]);
+  }, [fontColor, fontSize, offsetYPercent, outlineColor, marginPercent, videoDimensions, renderDimensions, preferences.direction]);
 
   useEffect(() => {
     if (import.meta.env.DEV && videoDimensions && renderDimensions) {

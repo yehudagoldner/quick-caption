@@ -1,59 +1,70 @@
 ﻿import type { ChangeEvent, FormEvent } from "react";
 import {
+  Alert,
   Box,
   Button,
   Chip,
-  FormControl,
-  InputLabel,
-  MenuItem,
-  Select,
   Stack,
   Typography,
 } from "@mui/material";
-import type { SelectChangeEvent } from "@mui/material/Select";
 import { InsertDriveFileOutlined, SendRounded, UploadFileOutlined } from "@mui/icons-material";
 import type { StageState } from "../types";
 import { UploadProgress } from "./UploadProgress";
-
-type FormatOption = {
-  value: string;
-  label: string;
-};
+import { useEffect, useRef, useState } from "react";
 
 type UploadFormProps = {
   file: File | null;
-  format: string;
   isSubmitting: boolean;
   uploadProgress: number | null;
   stages: StageState[];
-  formatOptions: FormatOption[];
   onFileChange: (file: File | null) => void;
-  onFormatChange: (format: string) => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
 };
 
 export function UploadForm({
   file,
-  format,
   isSubmitting,
   uploadProgress,
   stages,
-  formatOptions,
   onFileChange,
-  onFormatChange,
   onSubmit,
 }: UploadFormProps) {
-  const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
-    onFileChange(event.target.files?.[0] ?? null);
+  const [dragging, setDragging] = useState(false);
+  const dragDepth = useRef(0);
+  const [fileError, setFileError] = useState<string | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [mediaInfo, setMediaInfo] = useState("");
+  useEffect(() => {
+    setMediaInfo("");
+    if (!file) { setPreviewUrl(null); return; }
+    const url = URL.createObjectURL(file);
+    setPreviewUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [file]);
+  const chooseFile = (next: File | undefined) => {
+    if (!next || isSubmitting) return;
+    if (!/^(audio|video)\//.test(next.type) && !/\.(mp4|mov|webm|mkv|avi|m4v|wav|flac|mp3|m4a|aac|ogg|opus)$/i.test(next.name)) {
+      setFileError("בחרו קובץ וידאו או אודיו נתמך."); return;
+    }
+    setFileError(null); onFileChange(next);
   };
-
-  const handleFormatChange = (event: SelectChangeEvent) => {
-    onFormatChange(event.target.value as string);
+  const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
+    chooseFile(event.target.files?.[0]);
+    event.target.value = "";
   };
 
   return (
     <Stack component="form" spacing={3} onSubmit={onSubmit}>
       <Box
+        data-testid="media-dropzone"
+        onDragEnter={e => { e.preventDefault(); dragDepth.current++; setDragging(true); }}
+        onDragOver={e => { e.preventDefault(); e.dataTransfer.dropEffect = isSubmitting ? "none" : "copy"; }}
+        onDragLeave={e => { e.preventDefault(); if (--dragDepth.current <= 0) { dragDepth.current = 0; setDragging(false); } }}
+        onDrop={e => {
+          e.preventDefault(); dragDepth.current = 0; setDragging(false);
+          if (e.dataTransfer.files.length !== 1) { setFileError("אפשר להעלות קובץ אחד בכל פעם."); return; }
+          chooseFile(e.dataTransfer.files[0]);
+        }}
         display="flex"
         flexDirection="column"
         alignItems="center"
@@ -66,6 +77,9 @@ export function UploadForm({
         borderColor="divider"
         borderRadius={2}
         sx={{
+          bgcolor: dragging ? "action.hover" : "background.paper",
+          borderColor: dragging ? "primary.main" : "divider",
+          minWidth: 0,
           transition: (theme) => theme.transitions.create(["border-color", "box-shadow"]),
           "&:hover": {
             borderColor: "primary.main",
@@ -85,13 +99,14 @@ export function UploadForm({
           variant="outlined"
           size="large"
           startIcon={<InsertDriveFileOutlined />}
+          disabled={isSubmitting}
         >
           בחירת קובץ
-          <input hidden type="file" accept="video/*,audio/*" onChange={handleFileChange} />
+          <input hidden type="file" accept="video/*,audio/*,.wav,.flac,.mp3,.m4a,.mp4,.mov,.mkv" disabled={isSubmitting} onChange={handleFileChange} />
         </Button>
         {file ? (
-          <Stack direction="row" spacing={1} alignItems="center">
-            <Chip icon={<InsertDriveFileOutlined fontSize="small" />} label={file.name} variant="outlined" />
+          <Stack direction="row" spacing={1} alignItems="center" sx={{ maxWidth: "100%", minWidth: 0 }}>
+            <Chip sx={{ minWidth: 0, maxWidth: "100%" }} icon={<InsertDriveFileOutlined fontSize="small" />} label={file.name} variant="outlined" />
             <Typography variant="caption" color="text.secondary">
               {formatFileSize(file.size)}
             </Typography>
@@ -103,23 +118,20 @@ export function UploadForm({
         )}
       </Box>
 
-      <FormControl fullWidth>
-        <InputLabel id="subtitle-format-label">פורמט כתוביות</InputLabel>
-        <Select
-          labelId="subtitle-format-label"
-          id="subtitle-format"
-          value={format}
-          label="פורמט כתוביות"
-          onChange={handleFormatChange}
-        >
-          {formatOptions.map((option) => (
-            <MenuItem key={option.value} value={option.value}>
-              {option.label}
-            </MenuItem>
-          ))}
-        </Select>
-      </FormControl>
-
+      {fileError && <Alert severity="error">{fileError}</Alert>}
+      {previewUrl && <Stack spacing={1} alignItems="center">
+        <Box component={file?.type.startsWith("audio/") || /\.(wav|flac|mp3|m4a|aac|ogg|opus)$/i.test(file?.name || "") ? "audio" : "video"}
+          controls src={previewUrl} preload="metadata" onError={() => setFileError("הדפדפן לא מצליח לנגן את הקובץ. אפשר לנסות לתמלל אותו או לבחור פורמט אחר.")}
+          onLoadedMetadata={(event: React.SyntheticEvent<HTMLMediaElement>) => {
+            const media = event.currentTarget as HTMLVideoElement;
+            const ratio = media.videoWidth && media.videoHeight ? ` · ${media.videoWidth}×${media.videoHeight} · ${media.videoHeight > media.videoWidth ? "אנכי" : "אופקי"}` : " · אודיו בלבד";
+            setMediaInfo(`${Math.round(media.duration)} שניות${ratio}`);
+          }} sx={{ maxWidth: "100%", maxHeight: 220, borderRadius: 2 }} />
+        <Typography variant="caption">{mediaInfo}</Typography>
+      </Stack>}
+      <Typography variant="body2" color="text.secondary" textAlign="center">
+        אחרי התמלול תוכלו לשנות את חלוקת הכתוביות, כיוון הטקסט, FPS ופורמט ההורדה — ללא תמלול נוסף.
+      </Typography>
       {uploadProgress !== null && (
         <UploadProgress progress={uploadProgress} stages={stages} />
       )}
@@ -129,7 +141,7 @@ export function UploadForm({
         variant="contained"
         size="large"
         endIcon={<SendRounded />}
-        disabled={isSubmitting}
+        disabled={isSubmitting || !file}
       >
         {isSubmitting ? "מעבד..." : "שלחו לעיבוד"}
       </Button>

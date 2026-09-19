@@ -1,7 +1,7 @@
 import type { Segment } from "../types";
 
 export function findSegment(segments: Segment[], time: number) {
-  return segments.find((segment) => time >= segment.start && time <= segment.end);
+  return segments.find((segment) => time >= segment.start && time < segment.end);
 }
 
 export function createOutlineShadow(color: string) {
@@ -36,4 +36,34 @@ function formatSrtTimestamp(seconds: number) {
   const secs = Math.floor((totalMillis % 60_000) / 1000);
   const millis = totalMillis % 1000;
   return `${String(hrs).padStart(2, "0")}:${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")},${String(millis).padStart(3, "0")}`;
+}
+
+/**
+ * Cleans segment text by trimming whitespace and normalizing line breaks.
+ */
+export function cleanSegmentText(text: string): string {
+  return text
+    .trim()
+    .replace(/\r\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n");
+}
+
+/**
+ * Fixes overlapping segments by adjusting end times to not exceed the next segment's start time.
+ * Ensures segments don't overlap with each other.
+ */
+export function fixSegmentOverlaps(segments: Segment[]): Segment[] {
+  if (segments.length === 0) return segments;
+
+  const sorted = [...segments].sort((a, b) => a.start - b.start);
+
+  return sorted.map((segment, index) => {
+    if (index < sorted.length - 1) {
+      const nextSegment = sorted[index + 1];
+      if (segment.end > nextSegment.start) {
+        return { ...segment, end: nextSegment.start };
+      }
+    }
+    return segment;
+  });
 }

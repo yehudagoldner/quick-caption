@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import {
   Alert,
+  Button,
   Card,
   CardContent,
   Chip,
@@ -46,6 +47,7 @@ type VideosPageProps = {
 };
 
 export function VideosPage({ onEditVideo }: VideosPageProps) {
+  // Render the videos page with a responsive layout (Table on Desktop, Cards on Mobile)
   const { user } = useAuth();
   const [videos, setVideos] = useState<Video[]>([]);
   const [loading, setLoading] = useState(true);
@@ -176,7 +178,8 @@ export function VideosPage({ onEditVideo }: VideosPageProps) {
             <Chip label={`${videos.length} קבצים`} color="primary" variant="outlined" />
           </Stack>
 
-          <TableContainer>
+          {/* Desktop View - Table */}
+          <TableContainer sx={{ display: { xs: "none", md: "block" } }}>
             <Table>
               <TableHead>
                 <TableRow>
@@ -245,6 +248,57 @@ export function VideosPage({ onEditVideo }: VideosPageProps) {
               </TableBody>
             </Table>
           </TableContainer>
+
+          {/* Mobile View - Cards List */}
+          <Stack spacing={2} sx={{ display: { xs: "flex", md: "none" } }}>
+            {videos.map((video) => (
+              <Card key={video.id} variant="outlined">
+                <CardContent sx={{ pb: 2 }}>
+                  <Stack spacing={2}>
+                    <Stack direction="row" justifyContent="space-between" alignItems="flex-start">
+                      <Stack direction="row" spacing={1} alignItems="center" sx={{ maxWidth: "80%" }}>
+                        {video.media_type === "video" ? (
+                          <VideoLibraryRounded color="primary" />
+                        ) : (
+                          <AudioFileRounded color="secondary" />
+                        )}
+                        <Typography variant="subtitle1" fontWeight={600} noWrap>
+                          {video.original_filename}
+                        </Typography>
+                      </Stack>
+                      <Tooltip title={getStatusLabel(video.status)}>
+                        {getStatusIcon(video.status)}
+                      </Tooltip>
+                    </Stack>
+
+                    <Stack direction="row" spacing={2} sx={{ color: "text.secondary", fontSize: "0.875rem" }}>
+                      <Typography variant="body2">{formatDate(video.created_at)}</Typography>
+                      <Typography variant="body2">•</Typography>
+                      <Typography variant="body2">{formatFileSize(video.size_bytes)}</Typography>
+                      {video.format && (
+                        <>
+                          <Typography variant="body2">•</Typography>
+                          <Typography variant="body2">{video.format}</Typography>
+                        </>
+                      )}
+                    </Stack>
+
+                    {video.status === "completed" && onEditVideo && (
+                      <Button
+                        variant="outlined"
+                        startIcon={<EditRounded />}
+                        onClick={() => onEditVideo(video.id)}
+                        fullWidth
+                        sx={{ mt: 1 }}
+                      >
+                        ערוך כתוביות
+                      </Button>
+                    )}
+                  </Stack>
+                </CardContent>
+              </Card>
+            ))}
+          </Stack>
         </Stack>
       </CardContent>
     </Card>

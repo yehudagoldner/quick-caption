@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Box, Container, CssBaseline, ThemeProvider, createTheme } from "@mui/material";
+import { Alert, Box, Container, CssBaseline, ThemeProvider, createTheme } from "@mui/material";
 import { AppHeader } from "./components/AppHeader";
 import { PromotionalHome } from "./components/PromotionalHome";
 import { TranscriptionPage } from "./components/TranscriptionPage";
@@ -175,6 +175,12 @@ function App() {
         />
 
         <Container maxWidth={false} sx={{ py: { xs: 4, md: 6 }, mt: { xs: 12, md: 10 } }}>
+          {currentScreen === "home" && workflow.error && (
+            <Alert severity="error" sx={{ mb: 3 }}>
+              {workflow.error}
+            </Alert>
+          )}
+
           {currentScreen === "home" && (
             <PromotionalHome
               user={workflow.user}
@@ -207,6 +213,10 @@ function App() {
               user={workflow.user}
               videoToken={videoToken}
               onSaveSegments={handleSaveSegments}
+              onNewUpload={() => {
+                workflow.onBackToUpload();
+                navigateToScreen("transcription");
+              }}
             />
           )}
         </Container>
