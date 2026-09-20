@@ -51,6 +51,7 @@ function Harness() {
     {response ? <>
       <Button onClick={() => setResponse(null)}>בדיקת קובץ נוסף</Button>
       <Button onClick={() => { setResponse(JSON.parse(JSON.stringify(response))); setEditorKey(n => n + 1); }}>טעינה מחדש של נתוני הבדיקה</Button>
+      <Button onClick={() => setResponse(previous => previous && ({ ...previous, warnings: previous.warnings?.length ? [] : ["לחלק מהמילים שהשתנו או שלא קיבלו תזמון מהמודל הותאם תזמון משוער. אפשר לדייק אותו בציר המילים.", "אזהרת בדיקה אחרת נשארת גלויה."] }))}>החלפת אזהרות שרת לבדיקה</Button>
       <TranscriptionResult key={editorKey} response={response} mediaUrl={url} subtitleFormatLabel={format} downloadUrl={null} downloadName={`editor-check${format}`} videoId={1} isEditable onBack={() => { setResponse(null); setFile(null); }}
         onSaveSegments={async (segments: Segment[], _content: string, words?: Word[]) => {
           setResponse(previous => previous && ({ ...previous, segments, words: words ?? previous.words }));

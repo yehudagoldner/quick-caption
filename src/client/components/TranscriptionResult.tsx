@@ -128,6 +128,9 @@ export function TranscriptionResult({
 
 
   const activeSegment = useMemo(() => findSegment(editableSegments, currentTime) ?? null, [editableSegments, currentTime]);
+  // Fresh transcriptions already include this notice in the server warnings.
+  // Keep the editor fallback for older results and newly edited word timings.
+  const hasEstimatedTimingWarning = response.warnings?.some(warning => warning.includes("תזמון משוער")) ?? false;
 
   const { isPlaying, handlePlayPause } = useVideoControls(videoPlayer);
 
@@ -195,7 +198,7 @@ export function TranscriptionResult({
             }}
           />
           {saveState === "error" && <Alert severity="error">{saveError}</Alert>}
-          {activeWordEnabled && editableWords.some(word => word.timingSource === "estimated") && <Alert severity="info">לחלק מהמילים הושלם תזמון משוער. אפשר לדייק אותן בציר המילים של המקטע; הטקסט המתוקן נשמר במלואו.</Alert>}
+          {activeWordEnabled && !hasEstimatedTimingWarning && editableWords.some(word => word.timingSource === "estimated") && <Alert severity="info">לחלק מהמילים הושלם תזמון משוער. אפשר לדייק אותן בציר המילים של המקטע; הטקסט המתוקן נשמר במלואו.</Alert>}
 
           <TranscriptionMainContent
             editorSettings={<EditorSettings disabled={!isEditable || saveState === "saving"} onApply={handleCharacterReflow} onUndo={handleUndoReflow} canUndo={canUndoReflow} exportFormat={exportFormat} onExportFormatChange={setExportFormat} />}
