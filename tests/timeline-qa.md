@@ -58,6 +58,14 @@ Real components in `http://localhost:5173/tests/editor-harness.html`, six-second
 - Native-player browser checks with a generated local 90-second silent WAV: dragged from 0 to ~74 seconds while paused; both timeline grids scrolled to 2254px and timecode matched the player. Dragged back to ~4 seconds while playing; grids returned to 0px and playback continued.
 - Fit-all reported 90 seconds; the 30-second preset restored 30. At 390px viewport: zoom bar height 40px, zero gap above track, no page horizontal overflow. No console errors during these checks.
 
+## Caption text discovery and popup follow-up
+
+- Selecting a caption shows a blue outlined text field, a pencil and a desktop "edit here" hint; the inspector remains exactly 40px tall.
+- Double-clicking a different caption opens its text in an autofocused popup. F2 and the inline expand button also open it, with active-word highlighting either on or off.
+- Popup and inline field share one draft: returning to the timeline preserves edits; saving updates the caption and closes the popup. Ctrl+Enter also saves.
+- A simulated save failure leaves the popup and edited text intact; retry succeeds. Blank text cannot be saved.
+- At 390x844, the popup fits the viewport, its expand button remains available, the toolbar stays 40px and the page has no horizontal overflow. Desktop and narrow layouts were visually inspected.
+
 ## Automated checks
 
 `node --test tests/timeline-editing.test.mjs tests/word-alignment.test.mjs tests/active-word-export.test.mjs`

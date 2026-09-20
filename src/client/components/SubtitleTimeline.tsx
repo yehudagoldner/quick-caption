@@ -1,8 +1,8 @@
 import "react-virtualized/styles.css";
 import "./SubtitleTimeline.css";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { Alert, Box, Button, Chip, IconButton, Slider, Stack, TextField, ThemeProvider, Tooltip, Typography, createTheme, useTheme } from "@mui/material";
-import { PlayArrowRounded, PauseRounded, UndoRounded, RedoRounded, RepeatRounded, ContentCutRounded, SaveOutlined, CloseRounded, RestartAltRounded } from "@mui/icons-material";
+import { Alert, Box, Button, Chip, Dialog, DialogActions, DialogContent, DialogTitle, IconButton, InputAdornment, Slider, Stack, TextField, ThemeProvider, Tooltip, Typography, createTheme, useTheme } from "@mui/material";
+import { PlayArrowRounded, PauseRounded, UndoRounded, RedoRounded, RepeatRounded, ContentCutRounded, SaveOutlined, CloseRounded, RestartAltRounded, EditOutlined, OpenInFullRounded } from "@mui/icons-material";
 import { Timeline, type TimelineRow, type TimelineState } from "@xzdarcy/react-timeline-editor";
 import type { Segment, Word } from "../types";
 import { useEditorPreferences } from "../contexts/EditorPreferences";
@@ -49,6 +49,11 @@ export function SubtitleTimeline({ activeWordEnabled, segments, words = [], disa
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [drafts, setDrafts] = useState<Record<string, CaptionDraft>>({});
+  const [expandedSegmentId, setExpandedSegmentId] = useState<Segment["id"] | null>(null);
+  useEffect(() => { setExpandedSegmentId(null); }, [mediaUrl]);
+  useEffect(() => {
+    if (expandedSegmentId !== null && expandedSegmentId !== selectedSegmentId) setExpandedSegmentId(null);
+  }, [selectedSegmentId, expandedSegmentId]);
   const locked = disabled || busy || saving;
   const dirty = Object.keys(drafts).length > 0;
   useEffect(() => { onDraftStateChange(dirty); }, [dirty, onDraftStateChange]);
@@ -89,18 +94,30 @@ export function SubtitleTimeline({ activeWordEnabled, segments, words = [], disa
   const setDraft = (next: CaptionDraft) => {
     setDrafts(previous => ({ ...previous, [String(next.segment.id)]: next }));
   };
+  const changeText = (text: string) => {
+    if (!draft || locked) return;
+    const segment = { ...draft.segment, text };
+    setDraft({ segment, words: synchronizeWords([segment], draft.words) });
+  };
+  const openExpandedEditor = (id: Segment["id"]) => {
+    if (locked) return;
+    onSegmentSelect(id);
+    setExpandedSegmentId(id);
+  };
+  const expanded = !!draft && !disabled && expandedSegmentId === draft.segment.id;
   const clearDraft = (id: Segment["id"]) => setDrafts(previous => {
     const next = { ...previous }; delete next[String(id)]; return next;
   });
   const save = async (split = false) => {
-    if (!draft || locked) return;
+    if (!draft || locked || !draft.segment.text.trim()) return false;
     setSaving(true); setError(null);
     try {
       if (split) await onSplitSegment(draft.segment.id, time, draft);
       else await onSaveSegment(draft.segment, draft.words);
       clearDraft(draft.segment.id);
       if (split) onSegmentSelect(null);
-    } catch (e) { setError((e as Error).message || "השמירה נכשלה; הטיוטה נשמרה בעורך."); }
+      return true;
+    } catch (e) { setError((e as Error).message || "השמירה נכשלה; הטיוטה נשמרה בעורך."); return false; }
     finally { setSaving(false); }
   };
   useEffect(() => {
@@ -127,7 +144,7 @@ export function SubtitleTimeline({ activeWordEnabled, segments, words = [], disa
     {dirty && <Alert severity="info">יש טיוטות שלא נשמרו. אפשר לעבור בין מקטעים ללא אובדן השינויים; שמרו או בטלו את הטיוטות לפני יציאה, ייצוא או ביטול פעולה.
       <Stack direction="row" useFlexGap flexWrap="wrap" gap={1} sx={{ mt: 1 }}>{Object.values(drafts).map(d => <Chip key={d.segment.id} label={`טיוטה: ${d.segment.text.slice(0, 22)}`} onClick={() => onSegmentSelect(d.segment.id)} />)}</Stack>
     </Alert>}
-    {error && <Alert severity="warning" onClose={() => setError(null)}>{error}</Alert>}
+    {error && !expanded && <Alert severity="warning" onClose={() => setError(null)}>{error}</Alert>}
     <Stack direction="row" alignItems="center" gap={1}>
       <IconButton aria-label={isPlaying ? "השהה" : "נגן"} onClick={onPlayPause}>{isPlaying ? <PauseRounded /> : <PlayArrowRounded />}</IconButton>
       <Button size="small" aria-label="פריים אחורה" onClick={() => seek(time - 1 / fps)}>−1F</Button>
@@ -183,9 +200,14 @@ export function SubtitleTimeline({ activeWordEnabled, segments, words = [], disa
           if (!segment) return null;
           return <Box className="subtitle-timeline-action" data-testid="subtitle-clip" role="button" tabIndex={0}
             aria-label={`עריכת כתובית: ${segment.text}`} aria-pressed={selectedSegmentId === segment.id}
-            title={`${segment.text} · ${formatTimecode(segment.start, fps)} – ${formatTimecode(segment.end, fps)}. גררו להזזה או לחצו לעריכה.`}
+            title={`${segment.text} · ${formatTimecode(segment.start, fps)} – ${formatTimecode(segment.end, fps)}. לחצו לעריכה; לחיצה כפולה או F2 לפתיחה בחלון. גררו להזזה.`}
             onClick={() => { if (!locked) onSegmentSelect(segment.id); }}
-            onKeyDown={e => { if (!locked && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); onSegmentSelect(segment.id); } }}
+            onDoubleClick={e => { e.preventDefault(); e.stopPropagation(); openExpandedEditor(segment.id); }}
+            onKeyDown={e => {
+              if (locked) return;
+              if (e.key === "F2") { e.preventDefault(); openExpandedEditor(segment.id); }
+              else if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onSegmentSelect(segment.id); }
+            }}
             sx={{ bgcolor: selectedSegmentId === segment.id ? "primary.main" : "#9b5700", color: "white", height: "100%", px: 1, display: "flex", alignItems: "center", borderRadius: 1, overflow: "hidden" }}>
             <Typography noWrap variant="caption" sx={{ direction: `${preferences.direction} !important`, unicodeBidi: "plaintext" }}>{segment.text}</Typography>
           </Box>;
@@ -193,12 +215,12 @@ export function SubtitleTimeline({ activeWordEnabled, segments, words = [], disa
     </Box>
     {draft && !disabled && <Box data-testid="segment-inspector">
         <WordTimeline enabled={activeWordEnabled} segment={draft.segment} words={draft.words} currentTime={time} disabled={locked} onSeek={seek}
-          toolbarEditor={<TextField variant="standard" fullWidth value={draft.segment.text} disabled={locked}
+          toolbarEditor={<TextField className="caption-text-editor" variant="standard" fullWidth value={draft.segment.text} disabled={locked}
           placeholder="טקסט המקטע" inputProps={{ dir: preferences.direction, "aria-label": "טקסט המקטע", title: draft.segment.text }}
-          InputProps={{ disableUnderline: true }} onChange={e => {
-            const segment = { ...draft.segment, text: e.target.value };
-            setDraft({ segment, words: synchronizeWords([segment], draft.words) });
-          }} />}
+          InputProps={{ disableUnderline: true,
+            startAdornment: <InputAdornment position="start" sx={{ ml: .75, mr: 0, color: "primary.main", gap: .5 }}><EditOutlined sx={{ fontSize: 16 }} /><Typography component="span" variant="caption" sx={{ fontWeight: 700, color: "primary.main", display: { xs: "none", sm: "inline" } }}>ערכו כאן</Typography></InputAdornment>,
+            endAdornment: <InputAdornment position="end" sx={{ ml: 0 }}><Tooltip title="פתח עריכה בחלון"><span><IconButton size="small" aria-label="פתח עריכה בחלון" disabled={locked} onClick={() => openExpandedEditor(draft.segment.id)}><OpenInFullRounded /></IconButton></span></Tooltip></InputAdornment>,
+          }} onChange={e => changeText(e.target.value)} />}
           toolbarActions={<>
             <Tooltip title="נגן מתחילת המקטע"><span><IconButton size="small" aria-label="נגן מכאן" onClick={() => onPlayFrom(draft.segment.start)} disabled={locked}><PlayArrowRounded /></IconButton></span></Tooltip>
             <Tooltip title="נגן מקטע בלולאה"><IconButton size="small" aria-label="נגן מקטע בלולאה" aria-pressed={loopEnabled} color={loopEnabled ? "primary" : "default"} onClick={() => onLoopChange(!loopEnabled)}><RepeatRounded /></IconButton></Tooltip>
@@ -212,5 +234,20 @@ export function SubtitleTimeline({ activeWordEnabled, segments, words = [], disa
           onWordsChange={nextWords => setDraft({ segment: { ...draft.segment, text: nextWords.map(w => w.word).join(" ") }, words: nextWords })} />
     </Box>}
     </Box>
+    <Dialog open={expanded} onClose={() => { if (!locked) setExpandedSegmentId(null); }} fullWidth maxWidth="sm" aria-labelledby="caption-text-dialog-title">
+      <DialogTitle id="caption-text-dialog-title">עריכת הכתובית</DialogTitle>
+      <DialogContent>
+        {draft && <TextField autoFocus fullWidth multiline minRows={4} maxRows={10} label="טקסט הכתובית" value={draft.segment.text} disabled={locked}
+          inputProps={{ dir: preferences.direction }} sx={{ mt: 1 }} onChange={e => changeText(e.target.value)}
+          onKeyDown={async e => { if ((e.ctrlKey || e.metaKey) && e.key === "Enter") { e.preventDefault(); if (await save()) setExpandedSegmentId(null); } }}
+          helperText="הזמנים נקבעים בציר הראשי. חזרה לציר שומרת את הטיוטה; שמרו שינויים כדי להחיל אותה." />}
+        {error && <Alert severity="error" sx={{ mt: 2 }}>{error}</Alert>}
+      </DialogContent>
+      <DialogActions>
+        <Button disabled={locked} onClick={() => setExpandedSegmentId(null)}>חזרה לציר</Button>
+        <Button variant="contained" disabled={locked || !draft?.segment.text.trim() || !drafts[String(draft?.segment.id)]}
+          onClick={async () => { if (await save()) setExpandedSegmentId(null); }}>{saving ? "שומר…" : "שמור שינויים"}</Button>
+      </DialogActions>
+    </Dialog>
   </Stack>;
 }
