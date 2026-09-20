@@ -277,7 +277,7 @@ export function useTranscriptionWorkflow(): TranscriptionWorkflow {
 
   const handleSegmentsUpdate = useCallback(
     async (updatedSegments: Segment[], subtitleContent: string, words?: Word[]) => {
-      setResponse((prev) =>
+      const publishSavedRevision = () => setResponse((prev) =>
         prev
           ? {
               ...prev,
@@ -290,6 +290,7 @@ export function useTranscriptionWorkflow(): TranscriptionWorkflow {
       );
 
       if (!videoId || !user?.uid) {
+        publishSavedRevision();
         return;
       }
 
@@ -308,6 +309,7 @@ export function useTranscriptionWorkflow(): TranscriptionWorkflow {
       if (!result.ok) {
         throw new Error(await readErrorMessage(result));
       }
+      publishSavedRevision();
     },
     [videoId, user?.uid],
   );

@@ -60,6 +60,7 @@ type BurnedVideo = {
 };
 
 type VideoToolbarProps = {
+  pendingEdits?: boolean;
   editorSettings: ReactNode;
   canBurn?: boolean;
   fontSize: number;
@@ -90,6 +91,7 @@ type VideoToolbarProps = {
 };
 
 export function VideoToolbar({
+  pendingEdits = false,
   editorSettings,
   canBurn = true,
   fontSize,
@@ -209,6 +211,7 @@ export function VideoToolbar({
           variant="outlined"
           startIcon={<DownloadRounded />}
           onClick={handleDownloadClick}
+          disabled={pendingEdits}
           size="small"
           sx={{ justifyContent: "flex-start", minWidth: "fit-content" }}
         >
@@ -281,6 +284,7 @@ export function VideoToolbar({
           variant="text"
           startIcon={<AddRounded />}
           onClick={handleOpenAddSubtitleDialog}
+          disabled={pendingEdits}
           size="small"
           sx={{ justifyContent: "flex-start", minWidth: "fit-content" }}
         >
@@ -306,6 +310,7 @@ export function VideoToolbar({
             variant="text"
             startIcon={<AutoFixHighRounded />}
             onClick={(e) => setAiEditAnchorEl(e.currentTarget)}
+            disabled={pendingEdits}
             size="small"
             sx={{ justifyContent: "flex-start", minWidth: "fit-content" }}
           >

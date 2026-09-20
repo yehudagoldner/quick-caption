@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Alert, Card, CardContent, Stack } from "@mui/material";
+import { Alert, Button, Card, CardContent, Stack } from "@mui/material";
 import type { ApiResponse, Segment } from "../types";
 import { useVideoPlayer } from "./VideoPlayer";
 import type { BurnOptions } from "./VideoToolbar";
@@ -44,6 +44,8 @@ export function TranscriptionResult({
   isEditable,
 }: TranscriptionResultProps) {
   const { preferences } = useEditorPreferences();
+  const [hasTimelineDrafts, setHasTimelineDrafts] = useState(false);
+  const [loopEnabled, setLoopEnabled] = useState(false);
   const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
   const [exportFormat, setExportFormat] = useState(response.subtitle?.format || ".srt");
   const downloadName = originalDownloadName.replace(/\.[^.]+$/, "") + exportFormat;
@@ -100,6 +102,11 @@ export function TranscriptionResult({
     handleUndoReflow,
     canUndoReflow,
     persistSegments,
+    handleSaveSegment,
+    handleUndo,
+    handleRedo,
+    canUndo,
+    canRedo,
   } = useTranscriptionState({
     responseSegments,
     responseWords: response.words,
@@ -178,7 +185,7 @@ export function TranscriptionResult({
   });
 
   return (
-    <Card elevation={3}>
+    <Card elevation={3} sx={{ overflow: "visible" }}>
       <CardContent>
         <Stack spacing={1.5}>
           <TranscriptionResultHeader
@@ -186,7 +193,7 @@ export function TranscriptionResult({
             downloadUrl={downloadUrl}
             downloadName={downloadName}
             warnings={response.warnings}
-            backDisabled={saveState === "saving" || isBurning}
+            backDisabled={saveState === "saving" || isBurning || hasTimelineDrafts}
             onBack={async () => {
               // Flush in-progress text edits before leaving the editor. Do not
               // navigate on save failure: the user must be able to retry.
@@ -197,11 +204,21 @@ export function TranscriptionResult({
               onBack();
             }}
           />
-          {saveState === "error" && <Alert severity="error">{saveError}</Alert>}
+          {saveState === "error" && <Alert severity="error" action={<Button onClick={() => persistSegments(editableSegments, editableWords)}>נסה לשמור שוב</Button>}>{saveError}</Alert>}
           {activeWordEnabled && !hasEstimatedTimingWarning && editableWords.some(word => word.timingSource === "estimated") && <Alert severity="info">לחלק מהמילים הושלם תזמון משוער. אפשר לדייק אותן בציר המילים של המקטע; הטקסט המתוקן נשמר במלואו.</Alert>}
 
           <TranscriptionMainContent
-            editorSettings={<EditorSettings disabled={!isEditable || saveState === "saving"} onApply={handleCharacterReflow} onUndo={handleUndoReflow} canUndo={canUndoReflow} exportFormat={exportFormat} onExportFormatChange={setExportFormat} />}
+            hasTimelineDrafts={hasTimelineDrafts}
+            timelineEditing={{ onSaveSegment: handleSaveSegment, onUndo: handleUndo, onRedo: handleRedo, canUndo, canRedo,
+              onDraftStateChange: setHasTimelineDrafts, loopEnabled,
+              onPlayFrom: time => { handleTimelineTimeChange(time); void videoPlayer?.play().catch(() => setBurnError("לא ניתן להתחיל ניגון.")); },
+              onLoopChange: enabled => {
+                setLoopEnabled(enabled);
+                const selected = editableSegments.find(s => s.id === selectedSegmentId);
+                if (enabled && selected) { handleTimelineTimeChange(selected.start); void videoPlayer?.play().catch(() => setLoopEnabled(false)); }
+              },
+            }}
+            editorSettings={<EditorSettings disabled={!isEditable || saveState === "saving" || hasTimelineDrafts} onApply={handleCharacterReflow} onUndo={handleUndoReflow} canUndo={canUndoReflow} exportFormat={exportFormat} onExportFormatChange={setExportFormat} />}
             mediaUrl={mediaUrl}
             activeSegmentText={activeSegment?.text ?? null}
             previewStyle={previewStyle}
@@ -227,12 +244,19 @@ export function TranscriptionResult({
             downloadUrl={downloadUrl}
             downloadName={downloadName}
             activeWordEnabled={activeWordEnabled}
-            onVideoTimeUpdate={handleVideoTimeUpdate}
+            onVideoTimeUpdate={time => {
+              const selected = loopEnabled && editableSegments.find(s => s.id === selectedSegmentId);
+              if (selected && videoPlayer && (time >= selected.end || time < selected.start)) {
+                const wasEnded = videoPlayer.ended;
+                handleTimelineTimeChange(selected.start);
+                if (wasEnded) void videoPlayer.play().catch(() => setLoopEnabled(false));
+              } else handleVideoTimeUpdate(time);
+            }}
             onVideoLoadedMetadata={handleVideoLoadedMetadata}
             onVideoResize={handleVideoResize}
             onTimelineSegmentsChange={handleTimelineSegmentsChange}
             onTimelineTimeChange={handleTimelineTimeChange}
-            onSegmentSelect={setSelectedSegmentId}
+            onSegmentSelect={id => { setSelectedSegmentId(id); setLoopEnabled(false); }}
             onSegmentTextChangeAndSave={handleSegmentTextChangeAndSave}
             onSegmentTextChange={handleSegmentTextChange}
             onSegmentBlur={handleSegmentBlur}

@@ -1,755 +1,216 @@
 import "react-virtualized/styles.css";
-import { Box, Button, Card, IconButton, Slider, Stack, TextField, Tooltip, Typography, ThemeProvider, createTheme, useTheme } from "@mui/material";
-import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
-import CheckRoundedIcon from "@mui/icons-material/CheckRounded";
-import SubtitlesRoundedIcon from "@mui/icons-material/SubtitlesRounded";
-import PlayArrowRoundedIcon from "@mui/icons-material/PlayArrowRounded";
-import PauseRoundedIcon from "@mui/icons-material/PauseRounded";
-import ZoomInRoundedIcon from "@mui/icons-material/ZoomInRounded";
-import ZoomOutRoundedIcon from "@mui/icons-material/ZoomOutRounded";
-import ContentCutRoundedIcon from "@mui/icons-material/ContentCutRounded";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  Timeline,
-  type TimelineAction,
-  type TimelineEffect,
-  type TimelineRow,
-  type TimelineState,
-} from "@xzdarcy/react-timeline-editor";
+import "./SubtitleTimeline.css";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Alert, Box, Button, Chip, IconButton, Slider, Stack, TextField, ThemeProvider, Tooltip, Typography, createTheme, useTheme } from "@mui/material";
+import { PlayArrowRounded, PauseRounded, UndoRounded, RedoRounded, RepeatRounded, ContentCutRounded, SaveOutlined, CloseRounded, RestartAltRounded } from "@mui/icons-material";
+import { Timeline, type TimelineRow, type TimelineState } from "@xzdarcy/react-timeline-editor";
 import type { Segment, Word } from "../types";
-import { WordTimeline } from "./WordTimeline";
 import { useEditorPreferences } from "../contexts/EditorPreferences";
 import { formatTimecode, snapToFrame } from "../utils/timecode";
+import { retimeCaption, validateCaptionRange, wordsForSegment, timelineZoomForWindow, timelineScrollForTime } from "../../timelineEditing.js";
+import { synchronizeWords } from "../../wordAlignment.js";
+import { WordTimeline } from "./WordTimeline";
+import { AudioWaveform } from "./AudioWaveform";
 
-const ROW_ID = "subtitle-row";
-
-function segmentKey(segment: Segment): string {
-  return String(segment.id ?? `${segment.start}-${segment.end}-${segment.text}`);
-}
-
+export type CaptionDraft = { segment: Segment; words: Word[] };
 export type SubtitleTimelineProps = {
-  segments: Segment[];
-  disabled?: boolean;
-  duration?: number | null;
-  viewportWidth?: number | null;
-  currentTime?: number | null;
-  onRequestTimeChange?: (time: number) => void;
-  onSegmentsChange: (segments: Segment[]) => void;
+  activeWordEnabled: boolean;
+  segments: Segment[]; words?: Word[]; disabled?: boolean; busy?: boolean;
+  duration?: number | null; currentTime?: number | null; mediaUrl: string | null;
   selectedSegmentId?: Segment["id"] | null;
-  onSegmentSelect?: (segmentId: Segment["id"] | null) => void;
-  onSegmentTextChange?: (segmentId: Segment["id"], text: string) => void;
-  onSplitSegment?: (segmentId: Segment["id"], splitTime: number) => Promise<void>;
-  // Video control props
-  isPlaying?: boolean;
-  onPlayPause?: () => void;
-  // Word editing props
-  words?: Word[];
-  activeWordEnabled?: boolean;
-  onWordsChange?: (words: Word[], segmentId?: Segment["id"], text?: string) => void;
+  onSegmentSelect: (id: Segment["id"] | null) => void;
+  onRequestTimeChange: (time: number) => void;
+  onSegmentsChange: (segments: Segment[]) => void | Promise<void>;
+  onSaveSegment: (segment: Segment, words: Word[]) => Promise<void>;
+  onSplitSegment: (id: Segment["id"], time: number, draft?: CaptionDraft) => Promise<void>;
+  isPlaying?: boolean; onPlayPause?: () => void; onPlayFrom: (time: number) => void;
+  loopEnabled: boolean; onLoopChange: (enabled: boolean) => void;
+  onUndo: () => void; onRedo: () => void; canUndo: boolean; canRedo: boolean;
+  onDraftStateChange: (dirty: boolean) => void;
 };
 
-export function SubtitleTimeline({
-  segments,
-  disabled,
-  duration,
-  viewportWidth,
-  currentTime,
-  onRequestTimeChange,
-  onSegmentsChange,
-  selectedSegmentId,
-  onSegmentSelect,
-  onSegmentTextChange,
-  onSplitSegment,
-  isPlaying = false,
-  onPlayPause,
-  words,
-  activeWordEnabled = false,
-  onWordsChange,
+export function SubtitleTimeline({ activeWordEnabled, segments, words = [], disabled, busy, duration, currentTime = 0, mediaUrl,
+  selectedSegmentId, onSegmentSelect, onRequestTimeChange, onSegmentsChange, onSaveSegment, onSplitSegment,
+  isPlaying, onPlayPause, onPlayFrom, loopEnabled, onLoopChange, onUndo, onRedo, canUndo, canRedo, onDraftStateChange,
 }: SubtitleTimelineProps) {
   const { preferences } = useEditorPreferences();
   const fps = preferences.fps;
-  const parentTheme = useTheme();
-  const timelineTheme = useMemo(() => createTheme(parentTheme, { direction: "ltr" }), [parentTheme]);
-  const editorData = useMemo<TimelineRow[]>(() => {
-    const actions: TimelineAction[] = segments.map((segment) => ({
-      id: segmentKey(segment),
-      start: segment.start,
-      end: segment.end,
-      effectId: segmentKey(segment),
-      flexible: !disabled,
-      movable: !disabled,
-    }));
-
-    return [
-      {
-        id: ROW_ID,
-        actions,
-      },
-    ];
-  }, [segments, disabled]);
-
-  const effects = useMemo<Record<string, TimelineEffect>>(() => {
-    return segments.reduce<Record<string, TimelineEffect>>((acc, segment) => {
-      const id = segmentKey(segment);
-      acc[id] = {
-        id,
-        name: segment.text,
-      };
-      return acc;
-    }, {});
-  }, [segments]);
-
-  const segmentLookup = useMemo(() => {
-    const map = new Map<string, Segment>();
-    segments.forEach((segment) => {
-      map.set(segmentKey(segment), segment);
-    });
-    return map;
-  }, [segments]);
-
-  const totalDuration = useMemo(() => {
-    const maxSegmentEnd = segments.reduce((max, segment) => Math.max(max, segment.end ?? 0), 0);
-    const candidate = duration ?? 0;
-    return Math.max(candidate, maxSegmentEnd, 1);
-  }, [segments, duration]);
-
-  const [zoom, setZoom] = useState(0);
-
-  const timelineRef = useRef<TimelineState | null>(null);
-  const isCursorDraggingRef = useRef(false);
-  const lastAppliedTimeRef = useRef<number | null>(null);
-  const scrollLeftRef = useRef(0);
-  const timelineContainerRef = useRef<HTMLDivElement | null>(null);
-  const [autoViewportWidth, setAutoViewportWidth] = useState<number | null>(null);
-
+  const theme = useTheme();
+  const ltrTheme = useMemo(() => createTheme(theme, { direction: "ltr" }), [theme]);
+  const total = duration && Number.isFinite(duration) ? duration : Math.max(1, ...segments.map(s => s.end));
+  const time = Math.max(0, Math.min(total, currentTime ?? 0));
+  const timeline = useRef<TimelineState | null>(null);
+  const container = useRef<HTMLDivElement | null>(null);
+  const scrollLeft = useRef(0);
+  const [width, setWidth] = useState(800);
+  // Null keeps the 30-second window automatic while metadata/width loads.
+  const [zoom, setZoom] = useState<number | null>(null);
+  useEffect(() => { setZoom(null); scrollLeft.current = 0; timeline.current?.setScrollLeft(0); }, [mediaUrl]);
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [drafts, setDrafts] = useState<Record<string, CaptionDraft>>({});
+  const locked = disabled || busy || saving;
+  const dirty = Object.keys(drafts).length > 0;
+  useEffect(() => { onDraftStateChange(dirty); }, [dirty, onDraftStateChange]);
   useEffect(() => {
-    if (typeof viewportWidth === "number") {
-      setAutoViewportWidth(null);
-      return;
-    }
-
-    const element = timelineContainerRef.current;
-    if (!element) {
-      setAutoViewportWidth(null);
-      return;
-    }
-
-    const updateWidth = () => {
-      const width = element.getBoundingClientRect().width;
-      if (!Number.isFinite(width) || width <= 0) {
-        return;
-      }
-      const rounded = Math.round(width);
-      setAutoViewportWidth((prev) => (prev === rounded ? prev : rounded));
-    };
-
-    updateWidth();
-
-    if (typeof ResizeObserver !== "undefined") {
-      const observer = new ResizeObserver(() => updateWidth());
-      observer.observe(element);
-      return () => observer.disconnect();
-    }
-
-    if (typeof window !== "undefined") {
-      window.addEventListener("resize", updateWidth);
-      return () => window.removeEventListener("resize", updateWidth);
-    }
-
-    return undefined;
-  }, [viewportWidth]);
-
-  const baseScaleCount = useMemo(() => Math.max(2, Math.ceil(totalDuration) + 1), [totalDuration]);
-  const baseScale = 1;
-
-  const effectiveViewportWidth = viewportWidth ?? autoViewportWidth ?? null;
-
-  const baseScaleWidth = useMemo(() => {
-    if (!effectiveViewportWidth) {
-      // Use a default that works well for most screen sizes
-      return 120;
-    }
-    const usableWidth = effectiveViewportWidth;
-    // Calculate minimum width to show entire timeline
-    const minWidthForFullView = Math.max(40, usableWidth / baseScaleCount);
-    return minWidthForFullView;
-  }, [effectiveViewportWidth, baseScaleCount]);
-
-  // Calculate minimum zoom level to show entire timeline
-  const minZoom = useMemo(() => {
-    if (!effectiveViewportWidth) return -50;
-    const containerWidth = effectiveViewportWidth * 0.9; // Account for 90% width
-    const requiredWidth = totalDuration * (baseScaleWidth ?? 120);
-    if (requiredWidth <= containerWidth) return -50;
-
-    const zoomFactor = containerWidth / requiredWidth;
-    return Math.max(-50, Math.log2(zoomFactor) * 50);
-  }, [effectiveViewportWidth, totalDuration, baseScaleWidth]);
-
-  // Update zoom to minimum when minZoom changes to ensure full view
+    if (!dirty) return;
+    const warn = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = ""; };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [dirty]);
   useEffect(() => {
-    if (zoom < minZoom) {
-      setZoom(minZoom);
-    }
-  }, [minZoom, zoom]);
-
-  const zoomFactor = useMemo(() => Math.pow(2, zoom / 50), [zoom]);
-  const scaleWidth = (baseScaleWidth ?? 120) * zoomFactor;
-  const scaleSplitCount = 4;
-
-  const ensureCursorVisible = useCallback(
-    (time: number) => {
-      if (!timelineRef.current || !effectiveViewportWidth) {
-        return;
-      }
-
-      const startLeft = 20;
-      const viewWidth = effectiveViewportWidth;
-      const pixelsPerUnit = scaleWidth / baseScale;
-      const positionPx = startLeft + time * pixelsPerUnit;
-
-      // Get actual current scroll position from timeline, fallback to tracked position
-      const actualScroll = scrollLeftRef.current;
-
-      // Always center the current time when it changes during video playback
-      let targetScroll = actualScroll;
-
-      // More aggressive scrolling: always center if not in the center 25% of viewport
-      const centerStart = actualScroll + 20;
-      const centerEnd = actualScroll + viewWidth - 40;
-
-      if (positionPx < centerStart || positionPx > centerEnd) {
-        // Center the current time in the viewport
-        targetScroll = Math.max(positionPx - viewWidth / 2, 0);
-
-        console.debug('🔄 Timeline auto-scroll:', {
-          time,
-          positionPx,
-          actualScroll,
-          targetScroll,
-          viewWidth,
-          centerStart,
-          centerEnd,
-          willScroll: Math.abs(targetScroll - actualScroll) > 5
-        });
-
-        scrollLeftRef.current = targetScroll;
-
-        // Try to set scroll position
-        if (timelineRef.current.setScrollLeft && typeof timelineRef.current.setScrollLeft === 'function') {
-          try {
-            timelineRef.current.setScrollLeft(targetScroll);
-            console.debug('✅ Timeline scroll applied successfully');
-          } catch (error) {
-            console.warn('❌ Failed to set timeline scroll position:', error);
-          }
-        } else {
-          console.warn('❌ Timeline setScrollLeft method not available');
-        }
-      } else {
-        console.debug('⏸️ Timeline scroll not needed - cursor in center area');
-      }
-    },
-    [baseScale, scaleWidth, effectiveViewportWidth],
-  );
-
-  const emitTimeChange = useCallback(
-    (time: number) => {
-      console.debug('⏰ Timeline emitTimeChange called:', { time, hasHandler: !!onRequestTimeChange });
-      if (onRequestTimeChange) {
-        const clampedTime = Math.min(totalDuration, Math.max(0, snapToFrame(time, fps)));
-        console.debug('⏰ Calling onRequestTimeChange with:', clampedTime);
-        onRequestTimeChange(clampedTime);
-      }
-    },
-    [onRequestTimeChange, fps, totalDuration],
-  );
-
-
-  const handleRowsChange = useCallback(
-    (rows: TimelineRow[]) => {
-      const row = rows.find((item) => item.id === ROW_ID);
-      if (!row) {
-        return;
-      }
-
-      const updatedSegments = row.actions
-        .map((action) => {
-          const original = segmentLookup.get(action.id);
-          if (!original) {
-            return null;
-          }
-
-          const length = Math.min(totalDuration, Math.max(1 / fps, snapToFrame(action.end - action.start, fps)));
-          const start = Math.min(Math.max(0, totalDuration - length), Math.max(0, snapToFrame(action.start, fps)));
-          return { ...original, start, end: Math.min(totalDuration, start + length) };
-        })
-        .filter((segment): segment is Segment => segment !== null && segment.end > segment.start)
-        .sort((a, b) => a.start - b.start);
-
-      if (updatedSegments.length !== segments.length) {
-        onSegmentsChange(updatedSegments);
-        return;
-      }
-
-      const changed = updatedSegments.some((segment, index) => {
-        const original = segments[index];
-        return original.start !== segment.start || original.end !== segment.end;
-      });
-
-      if (changed) {
-        onSegmentsChange(updatedSegments);
-      }
-    },
-    [segmentLookup, segments, onSegmentsChange, fps, totalDuration],
-  );
-
-  useEffect(() => {
-    if (!timelineRef.current) {
-      return;
-    }
-    if (typeof currentTime !== "number") {
-      return;
-    }
-    if (isCursorDraggingRef.current) {
-      return;
-    }
-    if (lastAppliedTimeRef.current !== null && Math.abs(lastAppliedTimeRef.current - currentTime) < 0.1) {
-      return;
-    }
-    lastAppliedTimeRef.current = currentTime;
-    timelineRef.current.setTime(currentTime);
-    // Always scroll to show current time when video time changes
-    ensureCursorVisible(currentTime);
-  }, [currentTime, ensureCursorVisible]);
-
-  const handleCursorDragStart = useCallback(
-    (time: number) => {
-      isCursorDraggingRef.current = true;
-      emitTimeChange(time);
-    },
-    [emitTimeChange],
-  );
-
-  const handleCursorDrag = useCallback(
-    (time: number) => {
-      emitTimeChange(time);
-      ensureCursorVisible(time);
-    },
-    [emitTimeChange, ensureCursorVisible],
-  );
-
-  const handleCursorDragEnd = useCallback(
-    (time: number) => {
-      emitTimeChange(time);
-      ensureCursorVisible(time);
-      isCursorDraggingRef.current = false;
-      lastAppliedTimeRef.current = time;
-    },
-    [emitTimeChange, ensureCursorVisible],
-  );
-
-  const handleTimeAreaClick = useCallback(
-    (time: number) => {
-      emitTimeChange(time);
-      ensureCursorVisible(time);
-      return true;
-    },
-    [emitTimeChange, ensureCursorVisible],
-  );
-
-  const handleTimedScroll = useCallback((params: { scrollLeft?: number }) => {
-    if (typeof params?.scrollLeft === "number") {
-      scrollLeftRef.current = params.scrollLeft;
-    }
+    if (!container.current) return;
+    const observer = new ResizeObserver(entries => setWidth(entries[0].contentRect.width));
+    observer.observe(container.current); return () => observer.disconnect();
   }, []);
-
-  const handleActionClick = useCallback(
-    (action: TimelineAction) => {
-      if (disabled || !onSegmentSelect) {
-        return;
-      }
-      const segment = segmentLookup.get(action.id);
-      if (segment) {
-        onSegmentSelect(segment.id);
-      }
-    },
-    [disabled, onSegmentSelect, segmentLookup],
-  );
-
-  const handleWordTimelineSave = useCallback(() => {
-    onSegmentSelect?.(null);
-  }, [onSegmentSelect]);
-
-  const handleWordTimelineClose = useCallback(() => {
-    onSegmentSelect?.(null);
-  }, [onSegmentSelect]);
-
-  const renderAction = useCallback(
-    (action: TimelineAction) => {
-      const segment = segmentLookup.get(action.id);
-      const rawText = segment?.text ?? effects[action.effectId]?.name ?? "כתובית";
-      const text = (rawText || "").trim() || "כתובית";
-      const displayText = text.length > 40 ? `${text.slice(0, 37)}…` : text;
-      const isSelected = segment && selectedSegmentId === segment.id;
-
-      console.debug('🎬 Rendering timeline segment:', {
-        actionId: action.id,
-        segmentId: segment?.id,
-        text: displayText,
-        isSelected,
-        selectedSegmentId,
-        start: action.start,
-        end: action.end
-      });
-
-      return (
-        <Stack
-          title="גררו את גוף המקטע להזזה, את הקצוות לקיצור או הארכה, ולחצו לעריכת הטקסט"
-          data-testid="subtitle-clip"
-          className="subtitle-timeline-action"
-          direction="row"
-          spacing={0.75}
-          alignItems="center"
-          onClick={() => handleActionClick(action)}
-          sx={{
-            position: "relative",
-            width: "100%",
-            height: "100%",
-            pointerEvents: disabled ? "none" : "auto",
-            color: "#fff",
-            cursor: disabled ? "default" : "grab",
-          }}
-        >
-          <Box
-            sx={{
-              position: "absolute",
-              inset: 0,
-              borderRadius: 1.5,
-              background: isSelected
-                ? "linear-gradient(90deg, rgba(33, 150, 243, 0.95), rgba(21, 101, 192, 0.95))"
-                : disabled
-                  ? "linear-gradient(90deg, rgba(255, 213, 79, 0.7), rgba(255, 152, 0, 0.7))"
-                  : "linear-gradient(90deg, rgba(255, 213, 79, 0.95), rgba(255, 152, 0, 0.95))",
-              boxShadow: isSelected ? "0 2px 8px rgba(33, 150, 243, 0.5)" : "0 2px 6px rgba(0, 0, 0, 0.4)",
-              transition: "all 0.2s ease-in-out",
-            }}
-          />
-          <SubtitlesRoundedIcon fontSize="small" sx={{ position: "relative", zIndex: 1 }} />
-          <Typography variant="caption" noWrap sx={{ position: "relative", zIndex: 1, fontWeight: 600, direction: `${preferences.direction} !important`, unicodeBidi: "plaintext" }}>
-            {displayText}
-          </Typography>
-        </Stack>
-      );
-    },
-    [effects, segmentLookup, selectedSegmentId, disabled, handleActionClick, preferences.direction],
-  );
-
-  const formatScaleLabel = useCallback((value: number) => {
-    if (!Number.isFinite(value)) {
-      return "";
+  const effectiveZoom = zoom ?? timelineZoomForWindow(total);
+  const pixelsPerSecond = Math.max(.01, (width - 40) / total) * 2 ** (effectiveZoom / 25);
+  const scale = Math.max(1, Math.ceil(100 / pixelsPerSecond));
+  const scaleWidth = pixelsPerSecond * scale;
+  useLayoutEffect(() => {
+    if (timeline.current?.getTime() !== time) timeline.current?.setTime(time);
+    const nextScroll = timelineScrollForTime(time, pixelsPerSecond, width, scrollLeft.current);
+    if (nextScroll !== scrollLeft.current) {
+      scrollLeft.current = nextScroll;
+      timeline.current?.setScrollLeft(scrollLeft.current);
     }
-    const seconds = Math.max(0, value * baseScale);
-    const totalMillis = Math.round(seconds * 1000);
-    const minutes = Math.floor(totalMillis / 60000);
-    const wholeSeconds = Math.floor((totalMillis % 60000) / 1000);
-    const millis = totalMillis % 1000;
-    const secondsPart = minutes > 0 ? String(wholeSeconds).padStart(2, "0") : String(wholeSeconds);
-    const decimalPart = millis ? `.${Math.round(millis / 100)}` : "";
-    return minutes > 0 ? `${minutes}:${secondsPart}${decimalPart}` : `${secondsPart}${decimalPart}`;
-  }, [baseScale]);
-
-  const selectedSegment = useMemo(
-    () => segments.find((seg) => seg.id === selectedSegmentId) ?? null,
-    [segments, selectedSegmentId],
-  );
-
-  const [editText, setEditText] = useState("");
-
+  }, [time, pixelsPerSecond, width]);
+  const seek = (value: number) => { onRequestTimeChange(Math.max(0, Math.min(total, snapToFrame(value, fps)))); return true; };
+  const rows = useMemo<TimelineRow[]>(() => [{ id: "captions", actions: segments.map(s => ({
+    id: String(s.id), effectId: String(s.id), start: s.start, end: s.end, movable: !locked && !dirty, flexible: !locked && !dirty,
+  })) }], [segments, locked, dirty]);
+  const effects = useMemo(() => Object.fromEntries(segments.map(s => [String(s.id), { id: String(s.id), name: s.text }])), [segments]);
+  const selected = segments.find(s => s.id === selectedSegmentId);
+  // Playback changes time each frame, not the track data. Keep the word array stable
+  // so the timeline does not rebuild its virtualized grid on every video frame.
+  const draft = useMemo(() => selected ? drafts[String(selected.id)] ?? {
+    segment: selected, words: wordsForSegment(words, selected),
+  } : null, [selected, drafts, words]);
+  const setDraft = (next: CaptionDraft) => {
+    setDrafts(previous => ({ ...previous, [String(next.segment.id)]: next }));
+  };
+  const clearDraft = (id: Segment["id"]) => setDrafts(previous => {
+    const next = { ...previous }; delete next[String(id)]; return next;
+  });
+  const save = async (split = false) => {
+    if (!draft || locked) return;
+    setSaving(true); setError(null);
+    try {
+      if (split) await onSplitSegment(draft.segment.id, time, draft);
+      else await onSaveSegment(draft.segment, draft.words);
+      clearDraft(draft.segment.id);
+      if (split) onSegmentSelect(null);
+    } catch (e) { setError((e as Error).message || "השמירה נכשלה; הטיוטה נשמרה בעורך."); }
+    finally { setSaving(false); }
+  };
   useEffect(() => {
-    if (selectedSegment) {
-      setEditText(selectedSegment.text);
-    }
-  }, [selectedSegment]);
+    const keys = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement;
+      if (target.closest('input,textarea,[contenteditable="true"],[role="dialog"]') || locked || dirty) return;
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "z") {
+        event.preventDefault(); if (event.shiftKey) { if (canRedo) onRedo(); } else if (canUndo) onUndo();
+      } else if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "y") {
+        event.preventDefault(); if (canRedo) onRedo();
+      }
+    };
+    window.addEventListener("keydown", keys); return () => window.removeEventListener("keydown", keys);
+  }, [locked, dirty, canUndo, canRedo, onUndo, onRedo]);
+  const canSplit = draft && draft.segment.text.trim().split(/\s+/).length > 1 && time > draft.segment.start && time < draft.segment.end;
 
-  const handleSaveEdit = useCallback(() => {
-    if (selectedSegment && onSegmentTextChange && editText !== selectedSegment.text) {
-      onSegmentTextChange(selectedSegment.id, editText);
-    }
-    onSegmentSelect?.(null);
-  }, [selectedSegment, onSegmentTextChange, editText, onSegmentSelect]);
-
-  const handleCancelEdit = useCallback(() => {
-    onSegmentSelect?.(null);
-  }, [onSegmentSelect]);
-
-  const handleSplitAtCursor = useCallback(async () => {
-    if (!selectedSegment || !onSplitSegment || typeof currentTime !== "number") return;
-
-    // Check if cursor is within the selected segment
-    if (currentTime <= selectedSegment.start || currentTime >= selectedSegment.end) {
-      console.warn("Cursor must be within the segment to split");
-      return;
-    }
-
-    await onSplitSegment(selectedSegment.id, currentTime);
-    onSegmentSelect?.(null);
-  }, [selectedSegment, onSplitSegment, currentTime, onSegmentSelect]);
-
-  // Check if split is possible (cursor is within segment bounds)
-  const canSplit = useMemo(() => {
-    if (!selectedSegment || typeof currentTime !== "number") return false;
-    if (selectedSegment.text.trim().split(/\s+/).length < 2) return false;
-    return currentTime > selectedSegment.start && currentTime < selectedSegment.end;
-  }, [selectedSegment, currentTime]);
-
-  const formatTimeDisplay = (time: number) => formatTimecode(time, fps);
-
-  return (
-    <Stack spacing={1.5} sx={{ mt: 2, flex: 1, width: "100%", minWidth: 0 }} className="subtitle-timeline">
-      <Typography variant="subtitle1" fontWeight={700}>ציר הזמן הראשי — כל ההקלטה</Typography>
-      <Typography variant="caption" color="text.secondary">גרירת גוף המקטע מזיזה אותו; גרירת הקצוות משנה את משכו. לחיצה פותחת עריכה של המקטע הנבחר.</Typography>
-      {/* Video Controls Row */}
-      <Stack direction="row" spacing={2} alignItems="center">
-        {/* Play/Pause Button */}
-        <IconButton
-          aria-label={isPlaying ? "השהה" : "נגן"}
-          onClick={onPlayPause}
-          disabled={!onPlayPause}
-          sx={{ bgcolor: "primary.main", color: "white", "&:hover": { bgcolor: "primary.dark" } }}
-        >
-          {isPlaying ? <PauseRoundedIcon /> : <PlayArrowRoundedIcon />}
-        </IconButton>
-
-        {/* Current Time */}
-        <Typography data-testid="playhead-timecode" dir="ltr" variant="body2" color="text.secondary" sx={{ minWidth: 100, fontVariantNumeric: "tabular-nums" }}>
-          {formatTimeDisplay(currentTime || 0)}
-        </Typography>
-
-        {/* Time Scrubber */}
-        <Box sx={{ flexGrow: 1 }} dir="ltr">
-          <ThemeProvider theme={timelineTheme}>
-          <Slider
-            min={0}
-            max={totalDuration}
-            aria-label="מיקום בהקלטה"
-            step={1 / fps}
-            value={currentTime || 0}
-            onChange={(_event, value) => {
-              emitTimeChange(Array.isArray(value) ? value[0] : value);
-            }}
-            size="small"
-            sx={{
-              "& .MuiSlider-thumb": {
-                bgcolor: "primary.main"
-              },
-              "& .MuiSlider-track": {
-                bgcolor: "primary.main"
-              }
-            }}
-          />
-          </ThemeProvider>
-        </Box>
-
-        {/* Total Duration */}
-        <Typography dir="ltr" variant="body2" color="text.secondary" sx={{ display: { xs: "none", sm: "block" }, minWidth: 100 }}>
-          {formatTimeDisplay(totalDuration)}
-        </Typography>
-      </Stack>
-
-      {/* Timeline with Vertical Zoom Control */}
-      <Stack direction="row" spacing={1} sx={{ position: "relative" }}>
-        {/* Main Timeline */}
-        <Box
-          sx={{
-            flex: 1,
-            minWidth: 0,
-            direction: "ltr",
-            "& *": {
-              direction: "ltr !important"
-            },
-            "& .timeline-editor": {
-              direction: "ltr !important"
-            },
-            "& .timeline-editor-time-area": {
-              direction: "ltr !important"
-            }
-          }}
-          ref={timelineContainerRef}
-        >
-          <Timeline
-            ref={timelineRef}
-            editorData={editorData}
-            effects={effects}
-            gridSnap={false}
-            dragLine
-            disableDrag={disabled}
-            scale={baseScale}
-            minScaleCount={baseScaleCount}
-            scaleWidth={scaleWidth}
-            scaleSplitCount={scaleSplitCount}
-            getScaleRender={(value) => <span>{formatScaleLabel(value)}</span>}
-            onChange={handleRowsChange}
-            onCursorDragStart={handleCursorDragStart}
-            onCursorDrag={handleCursorDrag}
-            onCursorDragEnd={handleCursorDragEnd}
-            onClickTimeArea={handleTimeAreaClick}
-            getActionRender={(action) => renderAction(action)}
-            onScroll={handleTimedScroll}
-            style={{ height: 150, width: "100%" }}
-          />
-        </Box>
-
-        {/* Vertical Zoom Control */}
-        <Stack
-          spacing={1}
-          alignItems="center"
-          sx={{
-            width: 40,
-            height: 150,
-            bgcolor: "background.paper",
-            border: 1,
-            borderColor: "divider",
-            borderRadius: 1,
-            py: 1,
-          }}
-        >
-          <IconButton size="small" onClick={() => setZoom(Math.min(100, zoom + 10))}>
-            <ZoomInRoundedIcon fontSize="small" />
-          </IconButton>
-
-          <Box sx={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <Slider
-              orientation="vertical"
-              min={minZoom}
-              max={100}
-              step={1}
-              value={Math.max(minZoom, zoom)}
-              onChange={(_event, value) => setZoom(Math.max(minZoom, Array.isArray(value) ? value[0] : value))}
-              size="small"
-              sx={{ height: 60 }}
-            />
-          </Box>
-
-          <IconButton size="small" onClick={() => setZoom(Math.max(minZoom, zoom - 10))}>
-            <ZoomOutRoundedIcon fontSize="small" />
-          </IconButton>
-        </Stack>
-      </Stack>
-
-      {selectedSegment && !disabled && (
-        <>
-          {activeWordEnabled && words && words.length > 0 && onWordsChange ? (
-            // Word-level editing mode
-            <WordTimeline
-              segment={selectedSegment}
-              words={words}
-              currentTime={currentTime ?? null}
-              onWordsChange={onWordsChange}
-              onSegmentTextChange={onSegmentTextChange}
-              onClose={handleWordTimelineClose}
-              onSave={handleWordTimelineSave}
-            />
-          ) : (
-            // Text editing mode
-            <Card
-              elevation={3}
-              sx={{
-                p: 2,
-                bgcolor: "primary.main",
-                color: "primary.contrastText",
-                borderRadius: 2,
-              }}
-            >
-              <Stack spacing={2}>
-                <Stack direction="row" justifyContent="space-between" alignItems="center">
-                  <Typography variant="subtitle1" fontWeight={600}>
-                    עריכת המקטע הנבחר
-                  </Typography>
-                  <IconButton size="small" onClick={handleCancelEdit} sx={{ color: "inherit" }}>
-                    <CloseRoundedIcon />
-                  </IconButton>
-                </Stack>
-                <TextField
-                  label="טקסט המקטע"
-                  inputProps={{ dir: preferences.direction }}
-                  multiline
-                  minRows={3}
-                  value={editText}
-                  onChange={(e) => setEditText(e.target.value)}
-                  fullWidth
-                  sx={{
-                    bgcolor: "background.paper",
-                    borderRadius: 1,
-                    "& .MuiInputBase-root": {
-                      color: "text.primary",
-                    },
-                  }}
-                />
-                <Stack direction="row" spacing={1} justifyContent="flex-end">
-                  <Tooltip title={canSplit ? "פצל כתובית במיקום הנוכחי" : "הזז את הסמן לתוך הכתובית כדי לפצל"}>
-                    <span>
-                      <Button
-                        variant="outlined"
-                        startIcon={<ContentCutRoundedIcon />}
-                        onClick={handleSplitAtCursor}
-                        disabled={!canSplit}
-                        sx={{
-                          color: "inherit",
-                          borderColor: "inherit",
-                          "&:hover": {
-                            borderColor: "inherit",
-                            bgcolor: "rgba(255, 255, 255, 0.1)",
-                          },
-                          "&.Mui-disabled": {
-                            color: "rgba(255, 255, 255, 0.4)",
-                            borderColor: "rgba(255, 255, 255, 0.3)",
-                          },
-                        }}
-                      >
-                        פצל
-                      </Button>
-                    </span>
-                  </Tooltip>
-                  <Button
-                    variant="outlined"
-                    onClick={handleCancelEdit}
-                    sx={{
-                      color: "inherit",
-                      borderColor: "inherit",
-                      "&:hover": {
-                        borderColor: "inherit",
-                        bgcolor: "rgba(255, 255, 255, 0.1)",
-                      },
-                    }}
-                  >
-                    ביטול
-                  </Button>
-                  <Button
-                    variant="contained"
-                    startIcon={<CheckRoundedIcon />}
-                    onClick={handleSaveEdit}
-                    sx={{
-                      bgcolor: "background.paper",
-                      color: "primary.main",
-                      "&:hover": {
-                        bgcolor: "rgba(255, 255, 255, 0.9)",
-                      },
-                    }}
-                  >
-                    שמור שינויים
-                  </Button>
-                </Stack>
-              </Stack>
-            </Card>
-          )}
-        </>
-      )}
+  return <Stack spacing={1.5} className="subtitle-timeline" sx={{ width: "100%", minWidth: 0 }}>
+    <Typography variant="subtitle1" fontWeight={700}>ציר הזמן הראשי — כל ההקלטה</Typography>
+    <Typography variant="caption">גררו גוף מקטע להזזה וקצה לשינוי משך. חפיפות וחיתוך מילים מתוזמנות נחסמים. לחצו על מקטע לעריכה.</Typography>
+    <Stack direction="row" useFlexGap flexWrap="wrap" gap={1} alignItems="center">
+      <Button startIcon={<UndoRounded />} onClick={onUndo} disabled={!canUndo || locked || dirty}>ביטול פעולה</Button>
+      <Button startIcon={<RedoRounded />} onClick={onRedo} disabled={!canRedo || locked || dirty}>ביצוע חוזר</Button>
     </Stack>
-  );
+    {dirty && <Alert severity="info">יש טיוטות שלא נשמרו. אפשר לעבור בין מקטעים ללא אובדן השינויים; שמרו או בטלו את הטיוטות לפני יציאה, ייצוא או ביטול פעולה.
+      <Stack direction="row" useFlexGap flexWrap="wrap" gap={1} sx={{ mt: 1 }}>{Object.values(drafts).map(d => <Chip key={d.segment.id} label={`טיוטה: ${d.segment.text.slice(0, 22)}`} onClick={() => onSegmentSelect(d.segment.id)} />)}</Stack>
+    </Alert>}
+    {error && <Alert severity="warning" onClose={() => setError(null)}>{error}</Alert>}
+    <Stack direction="row" alignItems="center" gap={1}>
+      <IconButton aria-label={isPlaying ? "השהה" : "נגן"} onClick={onPlayPause}>{isPlaying ? <PauseRounded /> : <PlayArrowRounded />}</IconButton>
+      <Button size="small" aria-label="פריים אחורה" onClick={() => seek(time - 1 / fps)}>−1F</Button>
+      <Typography variant="body2" dir="ltr" data-testid="playhead-timecode" sx={{ whiteSpace: "nowrap" }}>{formatTimecode(time, fps)}</Typography>
+      <Button size="small" aria-label="פריים קדימה" onClick={() => seek(time + 1 / fps)}>+1F</Button>
+    </Stack>
+    <ThemeProvider theme={ltrTheme}><Box dir="ltr" sx={{ px: 1 }}><Slider aria-label="מיקום בהקלטה" min={0} max={total} step={1 / fps} value={time} onChange={(_, value) => seek(value as number)} /></Box></ThemeProvider>
+    <AudioWaveform mediaUrl={mediaUrl} duration={total} currentTime={time} onSeek={seek} />
+    <Box data-testid="timeline-tracks" sx={{ minWidth: 0 }}>
+    <Stack data-testid="main-timeline-zoom" direction="row" gap={1} alignItems="center" sx={{ height: 40, px: 1, bgcolor: "action.hover", minWidth: 0 }}>
+      <Typography variant="caption" sx={{ whiteSpace: "nowrap" }}>זום ציר ראשי</Typography>
+      <ThemeProvider theme={ltrTheme}><Box dir="ltr" sx={{ flex: 1, minWidth: 40, maxWidth: 240, px: 1 }}>
+        <Slider size="small" aria-label="זום ציר ראשי" min={0} max={Math.max(200, Math.ceil(timelineZoomForWindow(total, 1)))} value={effectiveZoom}
+          aria-valuetext={`כ־${Math.round(total / 2 ** (effectiveZoom / 25))} שניות בתצוגה`} onChange={(_, value) => setZoom(value as number)} />
+      </Box></ThemeProvider>
+      <Button size="small" aria-label="תצוגת 30 שניות" aria-pressed={zoom === null} variant={zoom === null ? "contained" : "text"} onClick={() => setZoom(null)} sx={{ whiteSpace: "nowrap", minWidth: 0 }}>30 שנ׳</Button>
+      <Button size="small" aria-label="התאם את כל ההקלטה" aria-pressed={zoom === 0} onClick={() => { setZoom(0); scrollLeft.current = 0; timeline.current?.setScrollLeft(0); }} sx={{ whiteSpace: "nowrap", minWidth: 0 }}>הכול</Button>
+    </Stack>
+    <Box ref={container} data-testid="caption-track" sx={{ minWidth: 0, direction: "ltr", "& *": { direction: "ltr !important" } }}>
+      <Timeline ref={timeline} editorData={rows} effects={effects} disableDrag={locked || dirty} gridSnap={false} dragLine
+        scale={scale} scaleWidth={scaleWidth} scaleSplitCount={4} minScaleCount={Math.max(2, Math.ceil(total / scale) + 1)}
+        getScaleRender={value => <span>{formatTimecode(value, fps)}</span>}
+        onCursorDrag={seek} onCursorDragEnd={seek} onClickTimeArea={seek}
+        onScroll={p => { scrollLeft.current = p.scrollLeft; }}
+        onChange={nextRows => {
+          const next = nextRows[0].actions.map(action => {
+            const original = segments.find(s => String(s.id) === action.id)!;
+            // Do not quantize untouched boundaries or words.
+            if (action.start === original.start && action.end === original.end) return original;
+            const moving = Math.abs(action.end - action.start - (original.end - original.start)) < .000001;
+            const start = action.start === original.start ? original.start : snapToFrame(action.start, fps);
+            return { ...original, start, end: moving ? start + original.end - original.start : snapToFrame(action.end, fps) };
+          });
+          try {
+            for (const item of next) {
+              const original = segments.find(s => s.id === item.id)!;
+              if (original.start === item.start && original.end === item.end) continue;
+              const problem = validateCaptionRange(item, next, total);
+              if (problem) throw new Error(problem);
+              try { retimeCaption(original, item, words); }
+              catch (e) {
+                const hint = activeWordEnabled ? "" : ' הפעילו ״מילה אקטיבית״ כדי להציג את ציר המילים.';
+                throw new Error((e as Error).message + hint);
+              }
+            }
+            setError(null);
+            Promise.resolve(onSegmentsChange(next)).catch(e => setError(e.message));
+          } catch (e) { setError((e as Error).message); return false; }
+        }}
+        getActionRender={action => {
+          // The timeline library retains the previous row for one render after split/undo.
+          const segment = segments.find(s => String(s.id) === action.id);
+          if (!segment) return null;
+          return <Box className="subtitle-timeline-action" data-testid="subtitle-clip" role="button" tabIndex={0}
+            aria-label={`עריכת כתובית: ${segment.text}`} aria-pressed={selectedSegmentId === segment.id}
+            title={`${segment.text} · ${formatTimecode(segment.start, fps)} – ${formatTimecode(segment.end, fps)}. גררו להזזה או לחצו לעריכה.`}
+            onClick={() => { if (!locked) onSegmentSelect(segment.id); }}
+            onKeyDown={e => { if (!locked && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); onSegmentSelect(segment.id); } }}
+            sx={{ bgcolor: selectedSegmentId === segment.id ? "primary.main" : "#9b5700", color: "white", height: "100%", px: 1, display: "flex", alignItems: "center", borderRadius: 1, overflow: "hidden" }}>
+            <Typography noWrap variant="caption" sx={{ direction: `${preferences.direction} !important`, unicodeBidi: "plaintext" }}>{segment.text}</Typography>
+          </Box>;
+        }} style={{ height: 130, width: "100%" }} />
+    </Box>
+    {draft && !disabled && <Box data-testid="segment-inspector">
+        <WordTimeline enabled={activeWordEnabled} segment={draft.segment} words={draft.words} currentTime={time} disabled={locked} onSeek={seek}
+          toolbarEditor={<TextField variant="standard" fullWidth value={draft.segment.text} disabled={locked}
+          placeholder="טקסט המקטע" inputProps={{ dir: preferences.direction, "aria-label": "טקסט המקטע", title: draft.segment.text }}
+          InputProps={{ disableUnderline: true }} onChange={e => {
+            const segment = { ...draft.segment, text: e.target.value };
+            setDraft({ segment, words: synchronizeWords([segment], draft.words) });
+          }} />}
+          toolbarActions={<>
+            <Tooltip title="נגן מתחילת המקטע"><span><IconButton size="small" aria-label="נגן מכאן" onClick={() => onPlayFrom(draft.segment.start)} disabled={locked}><PlayArrowRounded /></IconButton></span></Tooltip>
+            <Tooltip title="נגן מקטע בלולאה"><IconButton size="small" aria-label="נגן מקטע בלולאה" aria-pressed={loopEnabled} color={loopEnabled ? "primary" : "default"} onClick={() => onLoopChange(!loopEnabled)}><RepeatRounded /></IconButton></Tooltip>
+            <Tooltip title="פצל בגבול המילה הקרוב לסמן"><span><IconButton size="small" aria-label="פצל" disabled={locked || !canSplit} onClick={() => save(true)}><ContentCutRounded /></IconButton></span></Tooltip>
+            <Tooltip title="ביטול טיוטת המקטע"><span><IconButton size="small" aria-label="ביטול טיוטה" disabled={locked || !drafts[String(draft.segment.id)]} onClick={() => clearDraft(draft.segment.id)}><RestartAltRounded /></IconButton></span></Tooltip>
+          </>}
+          toolbarPrimary={<Tooltip title={drafts[String(draft.segment.id)] ? "שמור שינויים • יש טיוטה" : "אין שינויים לשמירה"}><span><IconButton size="small" aria-label="שמור שינויים" color="primary"
+            sx={{ bgcolor: drafts[String(draft.segment.id)] ? "primary.main" : undefined, color: drafts[String(draft.segment.id)] ? "primary.contrastText" : undefined, "&:hover": { bgcolor: "primary.dark", color: "primary.contrastText" } }}
+            disabled={locked || !drafts[String(draft.segment.id)] || !draft.segment.text.trim()} onClick={() => save()}><SaveOutlined /></IconButton></span></Tooltip>}
+          toolbarClose={<Tooltip title="סגור עורך — הטיוטה נשמרת עד לשמירה או ביטול"><span><IconButton size="small" aria-label="סגור עורך" onClick={() => onSegmentSelect(null)} disabled={saving}><CloseRounded /></IconButton></span></Tooltip>}
+          onWordsChange={nextWords => setDraft({ segment: { ...draft.segment, text: nextWords.map(w => w.word).join(" ") }, words: nextWords })} />
+    </Box>}
+    </Box>
+  </Stack>;
 }
-
-
-
-
-

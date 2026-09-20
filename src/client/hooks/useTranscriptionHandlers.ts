@@ -5,6 +5,7 @@ import type { BurnOptions } from "../components/VideoToolbar";
 import { findSegment } from "../utils/transcriptionUtils";
 import { serializeSubtitles } from "../utils/subtitleExport";
 import { useEditorPreferences } from "../contexts/EditorPreferences";
+import { retimeCaption, validateCaptionRange } from "../../timelineEditing.js";
 
 type BurnResult = {
   blob: Blob;
@@ -111,7 +112,7 @@ export function useTranscriptionHandlers({
     const clamped = Math.max(0, duration ? Math.min(time, duration) : time);
     console.debug('🔥 Video player exists, clamped time:', clamped, 'duration:', duration);
 
-    if (Math.abs(videoPlayer.currentTime - clamped) > 0.01) {
+    if (Math.abs(videoPlayer.currentTime - clamped) > 0.000001) {
       videoPlayer.currentTime = clamped;
       console.debug('🔥 Updated video currentTime to:', clamped);
     }
@@ -126,16 +127,17 @@ export function useTranscriptionHandlers({
   const handleTimelineSegmentsChange = useCallback(
     async (nextSegments: Segment[]) => {
       const newSegments = nextSegments.map((segment) => ({ ...segment }));
-      const words = editableWords.map(word => {
-        const source = editableSegments.find(s => word.start >= s.start - .001 && word.start < s.end && word.end <= s.end + .001);
-        const target = source && newSegments.find(s => s.id === source.id);
-        if (!source || !target || source.end <= source.start || (source.start === target.start && source.end === target.end)) return word;
-        const scale = (target.end - target.start) / (source.end - source.start);
-        return { ...word, start: target.start + (word.start - source.start) * scale, end: target.start + (word.end - source.start) * scale };
-      });
+      let words = editableWords;
+      for (const target of newSegments) {
+        const source = editableSegments.find(s => s.id === target.id);
+        if (!source || (source.start === target.start && source.end === target.end)) continue;
+        const error = validateCaptionRange(target, newSegments, videoPlayer?.duration || Infinity);
+        if (error) throw new Error(error);
+        words = retimeCaption(source, target, words);
+      }
       await persistSegments(newSegments, words);
     },
-    [persistSegments, editableSegments, editableWords],
+    [persistSegments, editableSegments, editableWords, videoPlayer],
   );
 
   const handleFontSizeChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {

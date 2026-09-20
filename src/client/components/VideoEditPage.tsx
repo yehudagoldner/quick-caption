@@ -151,6 +151,8 @@ export function VideoEditPage({ user, videoToken, onSaveSegments, onNewUpload }:
   };
 
   const handleSaveSegments = async (segments: Segment[], subtitleContent: string, words?: any[]) => {
+    // Only publish an acknowledged revision; the editor owns optimistic drafts.
+    await onSaveSegments(segments, subtitleContent, words);
     setResponse(prev =>
       prev ? {
         ...prev,
@@ -160,8 +162,6 @@ export function VideoEditPage({ user, videoToken, onSaveSegments, onNewUpload }:
         text: segments.map(segment => segment.text).join("\n"),
       } : prev
     );
-
-    await onSaveSegments(segments, subtitleContent, words);
   };
 
   if (loading) {

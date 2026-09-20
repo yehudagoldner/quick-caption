@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Segment, Word } from "../types";
 import { segmentsToSrt, cleanSegmentText, fixSegmentOverlaps } from "../utils/transcriptionUtils";
 import { reflowSubtitleCharacters } from "../../subtitleSegmentation.js";
 import { synchronizeWords } from "../../wordAlignment.js";
+import { EditHistory, snapshot, validateCaptionRange, wordsForSegment } from "../../timelineEditing.js";
 
 type BurnedVideo = {
   url: string;
@@ -32,6 +33,12 @@ export function useTranscriptionState({
   const [wordTimingData, setEditableWords] = useState<Word[]>(responseWords ?? []);
   // Repair legacy/missing timing data on load and keep live text edits in sync.
   const editableWords = useMemo(() => synchronizeWords(editableSegments, wordTimingData), [editableSegments, wordTimingData]);
+  const history = useRef(new EditHistory());
+  const [initialRevision] = useState(() => snapshot(responseSegments, synchronizeWords(responseSegments, responseWords)));
+  const revision = useRef(initialRevision);
+  const pendingSaves = useRef(0);
+  const saveQueue = useRef<Promise<void>>(Promise.resolve());
+  const [historyVersion, setHistoryVersion] = useState(0);
   const [activeSegmentId, setActiveSegmentId] = useState<Segment["id"] | null>(null);
   const [fontSize, setFontSize] = useState(60);
   const [fontColor, setFontColor] = useState("#ffffff");
@@ -65,10 +72,13 @@ export function useTranscriptionState({
         text: cleanSegmentText(segment.text),
       }))
     );
+    if (pendingSaves.current) return;
     setEditableSegments(cleaned);
+    revision.current = snapshot(cleaned, synchronizeWords(cleaned, responseWords));
   }, [responseSegments]);
 
   useEffect(() => {
+    if (pendingSaves.current) return;
     setEditableWords(responseWords ?? []);
   }, [responseWords]);
 
@@ -76,6 +86,8 @@ export function useTranscriptionState({
     setActiveSegmentId(null);
     setCurrentTime(0);
     setReflowUndo(null);
+    history.current = new EditHistory();
+    setHistoryVersion(v => v + 1);
   }, [mediaUrl, videoId]);
 
   useEffect(() => {
@@ -87,7 +99,7 @@ export function useTranscriptionState({
   }, [burnedVideo]);
 
   const persistSegments = useCallback(
-    async (nextSegments: Segment[], nextWords?: Word[], options?: { throwOnError?: boolean }) => {
+    async (nextSegments: Segment[], nextWords?: Word[], options?: { throwOnError?: boolean; history?: boolean }) => {
       console.log('💾 persistSegments called:', {
         segmentsCount: nextSegments.length,
         hasWords: !!nextWords,
@@ -96,6 +108,12 @@ export function useTranscriptionState({
       });
       setEditableSegments(nextSegments);
       const synchronizedWords = synchronizeWords(nextSegments, nextWords ?? editableWords);
+      const previousRevision = revision.current;
+      const previousHistory = { past: [...history.current.past], future: [...history.current.future] };
+      const nextRevision = snapshot(nextSegments, synchronizedWords);
+      if (options?.history !== false) history.current.push(revision.current, nextRevision);
+      revision.current = nextRevision;
+      setHistoryVersion(v => v + 1);
       setEditableWords(synchronizedWords);
       console.log('💾 persistSegments - editableSegments state updated');
 
@@ -106,21 +124,53 @@ export function useTranscriptionState({
 
       setSaveState("saving");
       setSaveError(null);
+      pendingSaves.current++;
+      const queued = saveQueue.current.catch(() => {}).then(async () => {
+        await onSaveSegments(nextSegments, segmentsToSrt(nextSegments), synchronizedWords);
+      });
+      saveQueue.current = queued;
       try {
-        const subtitleContent = segmentsToSrt(nextSegments);
-        // Text and its word map are one revision; always persist them together.
-        await onSaveSegments(nextSegments, subtitleContent, synchronizedWords);
-        setSaveState("success");
-        setTimeout(() => setSaveState("idle"), 2000);
+        await queued;
+        if (pendingSaves.current === 1) setSaveState("success");
       } catch (error) {
         console.error(error);
+        // Explicit-save editors retain their own draft. Roll back the preview
+        // and history on failure so Cancel cannot leave an unsaved revision behind.
+        if (options?.throwOnError && revision.current === nextRevision && pendingSaves.current === 1) {
+          revision.current = previousRevision;
+          setEditableSegments(previousRevision.segments);
+          setEditableWords(previousRevision.words);
+          history.current.past = previousHistory.past;
+          history.current.future = previousHistory.future;
+          setHistoryVersion(v => v + 1);
+        }
         setSaveState("error");
         setSaveError("שמירת השינויים נכשלה. נסו שוב.");
         if (options?.throwOnError) throw error;
+      } finally {
+        pendingSaves.current--;
       }
     },
     [isEditable, videoId, onSaveSegments, editableWords],
   );
+
+  const handleUndo = async () => {
+    const next = history.current.undo(revision.current);
+    if (next) await persistSegments(next.segments, next.words, { history: false });
+  };
+  const handleRedo = async () => {
+    const next = history.current.redo(revision.current);
+    if (next) await persistSegments(next.segments, next.words, { history: false });
+  };
+  const handleSaveSegment = async (segment: Segment, words: Word[]) => {
+    const error = validateCaptionRange(segment, editableSegments, videoDuration ?? Infinity);
+    if (error) throw new Error(error);
+    const previous = editableSegments.find(s => s.id === segment.id);
+    if (!previous) throw new Error("המקטע אינו זמין עוד.");
+    const owned = new Set(wordsForSegment(editableWords, previous));
+    await persistSegments(editableSegments.map(s => s.id === segment.id ? segment : s),
+      [...editableWords.filter(w => !owned.has(w)), ...words], { throwOnError: true });
+  };
 
   const handleSegmentTextChange = useCallback(
     (segmentId: Segment["id"], value: string) => {
@@ -311,13 +361,15 @@ export function useTranscriptionState({
   );
 
   const handleSplitSegment = useCallback(
-    async (segmentId: Segment["id"], splitTime: number) => {
+    async (segmentId: Segment["id"], splitTime: number, draft?: { segment: Segment; words: Word[] }) => {
       const index = editableSegments.findIndex(s => s.id === segmentId);
       if (index < 0) return;
-      const segment = editableSegments[index];
+      const segment = draft?.segment ?? editableSegments[index];
+      const error = validateCaptionRange(segment, editableSegments, videoDuration ?? Infinity);
+      if (error) throw new Error(error);
       const tokens = segment.text.trim().split(/\s+/).filter(Boolean);
       if (tokens.length < 2 || splitTime <= segment.start || splitTime >= segment.end) return;
-      const timed = editableWords.filter(w => w.start >= segment.start - .001 && w.start < segment.end && w.end <= segment.end + .001);
+      const timed = draft?.words ?? wordsForSegment(editableWords, segment);
       const aligned = timed.length === tokens.length && timed.every((w, i) => w.word.trim() === tokens[i]);
       let boundary = Math.min(tokens.length - 1, Math.max(1, Math.round(tokens.length * (splitTime - segment.start) / (segment.end - segment.start))));
       if (aligned) {
@@ -332,9 +384,11 @@ export function useTranscriptionState({
         { ...segment, id: `split-${stamp}-a`, end: aligned ? timed[boundary - 1].end : fallbackTime, text: tokens.slice(0, boundary).join(" ") },
         { ...segment, id: `split-${stamp}-b`, start: aligned ? timed[boundary].start : fallbackTime, text: tokens.slice(boundary).join(" ") },
       ];
-      await persistSegments([...editableSegments.slice(0, index), ...next, ...editableSegments.slice(index + 1)]);
+      const outside = editableWords.filter(w => w.segmentId !== segmentId);
+      const splitWords = timed.map((word, i) => ({ ...word, segmentId: next[i < boundary ? 0 : 1].id }));
+      await persistSegments([...editableSegments.slice(0, index), ...next, ...editableSegments.slice(index + 1)], [...outside, ...splitWords], { throwOnError: true });
     },
-    [editableSegments, editableWords, persistSegments],
+    [editableSegments, editableWords, persistSegments, videoDuration],
   );
 
   // An undo is valid only immediately after this reflow: never overwrite a
@@ -353,9 +407,8 @@ export function useTranscriptionState({
     try {
       await persistSegments(reflowUndo.segments, reflowUndo.words, { throwOnError: true });
     } catch (error) {
-      // Optimistic state is already restored; retain a retryable undo if its
-      // persistence failed rather than silently reporting a completed undo.
-      setReflowUndo({ ...reflowUndo, after: JSON.stringify([reflowUndo.segments, reflowUndo.words]) });
+      // Persistence rolled back: retain the original undo for another attempt.
+      setReflowUndo(reflowUndo);
       throw error;
     }
     setReflowUndo(null);
@@ -413,5 +466,10 @@ export function useTranscriptionState({
     handleUndoReflow,
     canUndoReflow,
     persistSegments,
+    handleSaveSegment,
+    handleUndo,
+    handleRedo,
+    canUndo: historyVersion >= 0 && history.current.past.length > 0,
+    canRedo: historyVersion >= 0 && history.current.future.length > 0,
   };
 }

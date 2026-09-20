@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { Box, Divider, FormControlLabel, Stack, Switch, Typography } from "@mui/material";
 import type { Segment, Word } from "../types";
-import { SubtitleTimeline } from "./SubtitleTimeline";
+import { SubtitleTimeline, type SubtitleTimelineProps, type CaptionDraft } from "./SubtitleTimeline";
 import { VideoPlayer } from "./VideoPlayer";
 import { SubtitleEditor } from "./SubtitleEditor";
 import { VideoToolbar } from "./VideoToolbar";
@@ -14,6 +14,8 @@ type BurnedVideo = {
 };
 
 type TranscriptionMainContentProps = {
+  timelineEditing: Pick<SubtitleTimelineProps, "onSaveSegment" | "onUndo" | "onRedo" | "canUndo" | "canRedo" | "onPlayFrom" | "loopEnabled" | "onLoopChange" | "onDraftStateChange">;
+  hasTimelineDrafts: boolean;
   editorSettings: ReactNode;
   mediaUrl: string | null;
   activeSegmentText: string | null;
@@ -57,7 +59,7 @@ type TranscriptionMainContentProps = {
   onBurnVideo: () => void;
   onAddSubtitle: (text: string, startTime: number, endTime: number) => void;
   onDeleteSegment: (segmentId: Segment["id"]) => Promise<void>;
-  onSplitSegment: (segmentId: Segment["id"], splitTime: number) => Promise<void>;
+  onSplitSegment: (segmentId: Segment["id"], splitTime: number, draft?: CaptionDraft) => Promise<void>;
   onToggleActiveWord: () => void;
   onWordsChange?: (words: Word[], segmentId?: Segment["id"], text?: string) => void;
   onResegment?: (maxWords: number, customInstructions?: string) => Promise<void>;
@@ -68,6 +70,8 @@ type TranscriptionMainContentProps = {
 };
 
 export function TranscriptionMainContent({
+  timelineEditing,
+  hasTimelineDrafts,
   editorSettings,
   mediaUrl,
   activeSegmentText,
@@ -102,7 +106,6 @@ export function TranscriptionMainContent({
   onTimelineSegmentsChange,
   onTimelineTimeChange,
   onSegmentSelect,
-  onSegmentTextChangeAndSave,
   onSegmentTextChange,
   onSegmentBlur,
   onFontSizeChange,
@@ -115,7 +118,6 @@ export function TranscriptionMainContent({
   onDeleteSegment,
   onSplitSegment,
   onToggleActiveWord,
-  onWordsChange,
   onResegment,
   onAIEdit,
 }: TranscriptionMainContentProps) {
@@ -128,6 +130,7 @@ export function TranscriptionMainContent({
         <Stack className="preview-wrapper" spacing={2} sx={{ flex: 1, minWidth: 0, width: "100%" }}>
           <Stack direction="column" spacing={1.5} alignItems="center" justifyContent="center" sx={{ width: "100%", minWidth: 0 }}>
             <VideoToolbar
+              pendingEdits={hasTimelineDrafts || saveState === "saving"}
               editorSettings={<>
                 {editorSettings}
                 <Box sx={{ p: 2 }}>
@@ -163,8 +166,10 @@ export function TranscriptionMainContent({
               onAIEdit={onAIEdit}
             />
 
-            <Box sx={{ minWidth: 0, width: "100%", flex: 1 }}>
+          </Stack>
+            <Box sx={{ minWidth: 0, width: "100%", position: { xs: selectedSegmentId !== null ? "sticky" : "static", sm: "static" }, top: 8, zIndex: 5, bgcolor: "background.paper", borderRadius: 2 }}>
               <VideoPlayer
+                compact={selectedSegmentId !== null}
                 mediaUrl={mediaUrl}
                 activeSegmentText={showSubtitles ? activeSegmentText : null}
                 activeSegmentId={activeSegmentId}
@@ -177,26 +182,25 @@ export function TranscriptionMainContent({
                 onResize={onVideoResize}
               />
             </Box>
-          </Stack>
 
           {editableSegments.length > 0 && (
             <SubtitleTimeline
+              activeWordEnabled={activeWordEnabled}
+              {...timelineEditing}
+              mediaUrl={mediaUrl}
+              busy={saveState === "saving"}
               segments={editableSegments}
               disabled={!isEditable}
               duration={videoDuration}
-              viewportWidth={null}
               currentTime={currentTime}
               onRequestTimeChange={onTimelineTimeChange}
               onSegmentsChange={onTimelineSegmentsChange}
               selectedSegmentId={selectedSegmentId}
               onSegmentSelect={onSegmentSelect}
-              onSegmentTextChange={onSegmentTextChangeAndSave}
               onSplitSegment={onSplitSegment}
               isPlaying={isPlaying}
               onPlayPause={onPlayPause}
               words={words}
-              activeWordEnabled={activeWordEnabled}
-              onWordsChange={onWordsChange}
             />
           )}
         </Stack>
@@ -208,7 +212,7 @@ export function TranscriptionMainContent({
             <Stack spacing={2} sx={{ width: { xs: "100%", lg: 310 }, flexShrink: 0, minWidth: 0 }}>
               <SubtitleEditor
                 segments={editableSegments}
-                isEditable={isEditable}
+                isEditable={isEditable && !hasTimelineDrafts && saveState !== "saving"}
                 saveState={saveState}
                 saveError={saveError}
                 activeSegmentId={activeSegmentId}

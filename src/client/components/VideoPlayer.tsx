@@ -4,6 +4,7 @@ import type { Segment, Word } from "../types";
 import { useActiveWord } from "../hooks/useActiveWord";
 
 type VideoPlayerProps = {
+  compact?: boolean;
   mediaUrl: string | null;
   activeSegmentText: string | null;
   activeSegmentId: Segment["id"] | null;
@@ -16,7 +17,7 @@ type VideoPlayerProps = {
   onResize?: (dimensions: { width: number; height: number }) => void;
 };
 
-export function VideoPlayer({ mediaUrl, activeSegmentText, activeSegmentId, previewStyle, words, currentTime, activeWordEnabled, onTimeUpdate, onLoadedMetadata, onResize }: VideoPlayerProps) {
+export function VideoPlayer({ compact, mediaUrl, activeSegmentText, activeSegmentId, previewStyle, words, currentTime, activeWordEnabled, onTimeUpdate, onLoadedMetadata, onResize }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [dimensions, setDimensions] = useState({ width: 16, height: 9 });
   const [isAudio, setIsAudio] = useState(false);
@@ -87,10 +88,11 @@ export function VideoPlayer({ mediaUrl, activeSegmentText, activeSegmentId, prev
     {isAudio && <Typography variant="subtitle2">אודיו בלבד — תצוגה מקדימה של הכתוביות</Typography>}
     {error && <Alert severity="error">לא ניתן לנגן את המדיה. בדקו שהקובץ זמין ובפורמט שנתמך בדפדפן.</Alert>}
     <Box data-testid="media-stage" sx={{ position: "relative", bgcolor: "common.black", color: "white", borderRadius: 2, overflow: "hidden", mx: "auto",
-      width: isAudio ? "100%" : `min(100%, ${Math.min(640, 500 * ratio)}px, calc(48dvh * ${ratio}))`,
+      width: isAudio ? "100%" : { xs: `min(100%, ${Math.min(640, 500 * ratio)}px, calc(${compact ? 22 : 48}dvh * ${ratio}))`, sm: `min(100%, ${Math.min(640, 500 * ratio)}px, calc(48dvh * ${ratio}))` },
       aspectRatio: isAudio ? undefined : `${dimensions.width} / ${dimensions.height}`, minHeight: isAudio ? 180 : undefined }}>
       {mediaUrl ? <>
         <Box component="video" ref={videoRef} controls playsInline preload="metadata" src={mediaUrl}
+          onSeeking={e => onTimeUpdate?.(e.currentTarget.currentTime)}
           onTimeUpdate={e => onTimeUpdate?.(e.currentTarget.currentTime)} onError={() => setError(true)}
           sx={{ width: "100%", height: isAudio ? 54 : "100%", display: "block", objectFit: "contain", ...(isAudio ? { position: "absolute", bottom: 0 } : {}) }} />
         {activeSegmentText && <Box data-testid="subtitle-overlay" sx={{ ...previewStyle, ...(isAudio ? { fontSize: 24, bottom: 75, width: "90%" } : {}) }}>

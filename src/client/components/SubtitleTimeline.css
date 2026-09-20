@@ -27,3 +27,42 @@
   letter-spacing: 0.2px;
   font-weight: 600;
 }
+
+.subtitle-timeline [class*="action-left-stretch"],
+.subtitle-timeline [class*="action-right-stretch"] {
+  background: rgba(255, 255, 255, .15);
+  border-inline: 2px solid rgba(255, 255, 255, .65);
+}
+.subtitle-timeline [role="button"]:focus-visible {
+  outline: 3px solid #90caf9;
+  outline-offset: -3px;
+}
+.timeline-edit-toolbar {
+  box-sizing: border-box;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 4px;
+  padding: 0 6px;
+  background: #f7f9fc;
+  border: 1px solid #dce3ed;
+}
+.timeline-edit-toolbar .MuiInputBase-root { height: 32px; font-size: 14px; background: white; border-radius: 4px; }
+.timeline-edit-toolbar .MuiInputBase-input { padding: 5px 8px; }
+.timeline-edit-toolbar .MuiInputBase-root:focus-within { outline: 2px solid #1976d2; outline-offset: -2px; }
+.timeline-edit-actions { display: flex; align-items: center; flex-shrink: 0; gap: 2px; }
+.timeline-edit-overflow { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; width: 300px; }
+.timeline-edit-overflow .MuiIconButton-root { border-radius: 6px; width: 100%; min-height: 40px; gap: 6px; justify-content: flex-start; }
+.timeline-edit-overflow .MuiIconButton-root::after { content: attr(aria-label); font-size: 12px; text-align: start; }
+.timeline-edit-overflow .timeline-toolbar-divider { grid-column: 1 / -1; width: 100%; height: 1px; margin: 2px 0; }
+.timeline-toolbar-divider { height: 20px; width: 1px; background: #dce3ed; margin-inline: 4px; }
+.subtitle-timeline .timeline-edit-toolbar .MuiIconButton-root { width: 32px; height: 32px; min-height: 32px; padding: 5px; }
+.timeline-edit-toolbar .MuiIconButton-root .MuiSvgIcon-root { font-size: 20px; }
+@media (max-width: 600px), (pointer: coarse) {
+  .subtitle-timeline [class*="action-left-stretch"],
+  .subtitle-timeline [class*="action-right-stretch"] { width: 18px !important; }
+  .subtitle-timeline .MuiButton-root, .subtitle-timeline .MuiIconButton-root { min-height: 44px; }
+  .subtitle-timeline .subtitle-timeline-action, .subtitle-timeline .word-timeline-action { padding-inline: 18px; }
+  .subtitle-timeline input, .subtitle-timeline textarea, .subtitle-timeline button, .subtitle-timeline [role="button"] { scroll-margin-top: 240px; }
+}

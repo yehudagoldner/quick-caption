@@ -18,6 +18,7 @@ function Harness() {
   const [response, setResponse] = useState<ApiResponse | null>(null);
   const [saveCount, setSaveCount] = useState(0);
   const [editorKey, setEditorKey] = useState(0);
+  const [failSaves, setFailSaves] = useState(false);
   useEffect(() => {
     if (!file) return;
     const value = URL.createObjectURL(file); setUrl(value);
@@ -26,6 +27,20 @@ function Harness() {
   return <Box sx={{ p: { xs: 1, md: 3 } }}>
     <Alert severity="info">בדיקת עורך מקומית — הכתוביות הן נתוני בדיקה, אינן תמלול של הקובץ. אין כתיבה לחשבון.</Alert>
     <Typography data-testid="save-count">שמירות בדיקה: {saveCount}</Typography>
+    {!response && <Button onClick={() => {
+      // Silent PCM fixture generated locally: exercise real native media seeking
+      // across multiple 30-second windows, without downloads or server writes.
+      const rate = 8000, seconds = 90, bytes = rate * seconds * 2;
+      const buffer = new ArrayBuffer(44 + bytes), view = new DataView(buffer);
+      const ascii = (offset: number, value: string) => [...value].forEach((char, i) => view.setUint8(offset + i, char.charCodeAt(0)));
+      ascii(0, "RIFF"); view.setUint32(4, 36 + bytes, true); ascii(8, "WAVE"); ascii(12, "fmt ");
+      view.setUint32(16, 16, true); view.setUint16(20, 1, true); view.setUint16(22, 1, true);
+      view.setUint32(24, rate, true); view.setUint32(28, rate * 2, true); view.setUint16(32, 2, true); view.setUint16(34, 16, true);
+      ascii(36, "data"); view.setUint32(40, bytes, true);
+      setFile(new File([buffer], "timeline-90s.wav", { type: "audio/wav" }));
+      const segments = Array.from({ length: 30 }, (_, i) => ({ id: i + 1, start: i * 3, end: (i + 1) * 3, text: `מקטע בדיקה ${i + 1}` }));
+      setResponse({ segments, words: [], text: segments.map(s => s.text).join(" "), subtitle: { format, content: serializeSubtitles(segments, format) } });
+    }}>בדיקת ציר ארוך — 90 שניות</Button>}
     {!response && <Button onClick={async () => {
       const result = await fetch("/tests/fixtures/portrait-short.mp4");
       if (!result.ok) return;
@@ -49,11 +64,14 @@ function Harness() {
       setResponse({ segments, words, text: segments.map(s => s.text).join(" "), subtitle: { format, content: serializeSubtitles(segments, format) } });
     }}>בדיקת מילה אקטיבית אחרי תיקוני מודל</Button>}
     {response ? <>
+      <Button onClick={() => setFailSaves(value => !value)}>{failSaves ? "בטל כשל שמירה לבדיקה" : "הפעל כשל שמירה לבדיקה"}</Button>
+      <details><summary>נתוני בדיקה שמורים</summary><pre data-testid="saved-test-data">{JSON.stringify({ segments: response.segments, words: response.words }, null, 2)}</pre></details>
       <Button onClick={() => setResponse(null)}>בדיקת קובץ נוסף</Button>
       <Button onClick={() => { setResponse(JSON.parse(JSON.stringify(response))); setEditorKey(n => n + 1); }}>טעינה מחדש של נתוני הבדיקה</Button>
       <Button onClick={() => setResponse(previous => previous && ({ ...previous, warnings: previous.warnings?.length ? [] : ["לחלק מהמילים שהשתנו או שלא קיבלו תזמון מהמודל הותאם תזמון משוער. אפשר לדייק אותו בציר המילים.", "אזהרת בדיקה אחרת נשארת גלויה."] }))}>החלפת אזהרות שרת לבדיקה</Button>
       <TranscriptionResult key={editorKey} response={response} mediaUrl={url} subtitleFormatLabel={format} downloadUrl={null} downloadName={`editor-check${format}`} videoId={1} isEditable onBack={() => { setResponse(null); setFile(null); }}
         onSaveSegments={async (segments: Segment[], _content: string, words?: Word[]) => {
+          if (failSaves) throw new Error("כשל שמירה יזום לבדיקה בלבד");
           setResponse(previous => previous && ({ ...previous, segments, words: words ?? previous.words }));
           setSaveCount(n => n + 1);
         }}
