@@ -41,6 +41,7 @@ import {
   RepeatRounded,
   SettingsRounded,
   ShareRounded,
+  UndoRounded,
   SubtitlesRounded,
 } from "@mui/icons-material";
 import type { Segment, Word } from "../types";
@@ -100,6 +101,8 @@ export type MobileCaptionEditorProps = {
   onBurnVideo: () => void;
   onAddSubtitle: (text: string, startTime: number, endTime: number) => void;
   onSplitSegment: (segmentId: Segment["id"], splitTime: number, draft?: CaptionDraft) => Promise<void>;
+  onUndoSplit: () => Promise<void>;
+  canUndoSplit: boolean;
   onToggleActiveWord: () => void;
   onAIEdit?: (instructions: string) => Promise<void>;
   isPlaying?: boolean;
@@ -151,6 +154,8 @@ export function MobileCaptionEditor({
   onBurnVideo,
   onAddSubtitle,
   onSplitSegment,
+  onUndoSplit,
+  canUndoSplit,
   onToggleActiveWord,
   onAIEdit,
   isPlaying,
@@ -567,6 +572,7 @@ export function MobileCaptionEditor({
               <Button variant="contained" onClick={() => void persistCaption(selected, draftText, captionWords)} disabled={!isEditable || saving || saveState === "saving" || !draftText.trim() || draftText.trim() === selected.text.trim()}>{saving || saveState === "saving" ? "שומר…" : draftText.trim() === selected.text.trim() ? "נשמר" : "שמור"}</Button>
               <Button variant="outlined" startIcon={<RepeatRounded />} aria-pressed={timelineEditing.loopEnabled} onClick={() => timelineEditing.onLoopChange(!timelineEditing.loopEnabled)}>נגן בלולאה</Button>
               <Button variant="outlined" startIcon={<ContentCutRounded />} disabled={!isEditable || saveState === "saving" || draftText.trim().split(/\s+/).length < 2 || currentTime <= selected.start || currentTime >= selected.end} onClick={() => { void persistCaption(selected, draftText, captionWords).then(() => onSplitSegment(selected.id, currentTime)); }}>פצל</Button>
+              {canUndoSplit && <Button variant="outlined" startIcon={<UndoRounded />} disabled={!isEditable || saveState === "saving"} onClick={() => void onUndoSplit()}>בטל פיצול</Button>}
             </Stack>
             </Stack>}
             {!selected && <Typography color="text.secondary" sx={{ flexShrink: 0 }}>אין מקטעים לעריכה.</Typography>}

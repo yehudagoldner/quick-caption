@@ -62,6 +62,8 @@ type TranscriptionMainContentProps = {
   onAddSubtitle: (text: string, startTime: number, endTime: number) => void;
   onDeleteSegment: (segmentId: Segment["id"]) => Promise<void>;
   onSplitSegment: (segmentId: Segment["id"], splitTime: number, draft?: CaptionDraft) => Promise<void>;
+  onUndoSplit: () => Promise<void>;
+  canUndoSplit: boolean;
   onToggleActiveWord: () => void;
   onWordsChange?: (words: Word[], segmentId?: Segment["id"], text?: string) => void;
   onResegment?: (maxWords: number, customInstructions?: string) => Promise<void>;
@@ -119,6 +121,8 @@ export function TranscriptionMainContent({
   onAddSubtitle,
   onDeleteSegment,
   onSplitSegment,
+  onUndoSplit,
+  canUndoSplit,
   onToggleActiveWord,
   onResegment,
   onAIEdit,
@@ -181,6 +185,8 @@ export function TranscriptionMainContent({
         onBurnVideo={onBurnVideo}
         onAddSubtitle={onAddSubtitle}
         onSplitSegment={onSplitSegment}
+        onUndoSplit={onUndoSplit}
+        canUndoSplit={canUndoSplit}
         onToggleActiveWord={onToggleActiveWord}
         onAIEdit={onAIEdit}
         isPlaying={isPlaying}

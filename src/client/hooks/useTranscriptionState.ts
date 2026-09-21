@@ -56,6 +56,14 @@ export function useTranscriptionState({
   const [saveError, setSaveError] = useState<string | null>(null);
   const [selectedSegmentId, setSelectedSegmentId] = useState<Segment["id"] | null>(null);
   const [reflowUndo, setReflowUndo] = useState<{ segments: Segment[]; words: Word[]; after: string } | null>(null);
+  const [splitUndo, setSplitUndo] = useState<{
+    segment: Segment;
+    words: Word[];
+    leftId: Segment["id"];
+    rightId: Segment["id"];
+    left: Pick<Segment, "start" | "end" | "text">;
+    right: Pick<Segment, "start" | "end" | "text">;
+  } | null>(null);
   const [activeWordEnabled, setActiveWordEnabled] = useState(() => {
     try {
       const stored = localStorage.getItem("activeWordEnabled");
@@ -86,6 +94,7 @@ export function useTranscriptionState({
     setActiveSegmentId(null);
     setCurrentTime(0);
     setReflowUndo(null);
+    setSplitUndo(null);
     history.current = new EditHistory();
     setHistoryVersion(v => v + 1);
   }, [mediaUrl, videoId]);
@@ -386,6 +395,15 @@ export function useTranscriptionState({
         { ...segment, id: `split-${stamp}-b`, start: cut, text: tokens.slice(boundary).join(" ") },
       ];
       const kept = splitTime >= cut ? next[1] : next[0];
+      const undo = {
+        segment: { ...segment },
+        words: wordsForSegment(editableWords, segment).map(word => ({ ...word, segmentId })),
+        leftId: next[0].id,
+        rightId: next[1].id,
+        left: { start: next[0].start, end: next[0].end, text: next[0].text },
+        right: { start: next[1].start, end: next[1].end, text: next[1].text },
+      };
+      setSplitUndo(undo);
       setSelectedSegmentId(kept.id);
       setActiveSegmentId(kept.id);
       const outside = editableWords.filter(w => w.segmentId !== segmentId);
@@ -393,6 +411,7 @@ export function useTranscriptionState({
       try {
         await persistSegments([...editableSegments.slice(0, index), ...next, ...editableSegments.slice(index + 1)], [...outside, ...splitWords], { throwOnError: true });
       } catch (error) {
+        setSplitUndo(null);
         setSelectedSegmentId(segmentId);
         setActiveSegmentId(segmentId);
         throw error;
@@ -400,6 +419,32 @@ export function useTranscriptionState({
     },
     [editableSegments, editableWords, persistSegments, videoDuration],
   );
+
+  const sameCaption = (segment: Segment | undefined, saved: Pick<Segment, "start" | "end" | "text">) =>
+    !!segment && segment.start === saved.start && segment.end === saved.end && segment.text === saved.text;
+  const splitLeftIndex = splitUndo ? editableSegments.findIndex(segment => segment.id === splitUndo.leftId) : -1;
+  const canUndoSplit = !!splitUndo
+    && sameCaption(editableSegments[splitLeftIndex], splitUndo.left)
+    && editableSegments[splitLeftIndex + 1]?.id === splitUndo.rightId
+    && sameCaption(editableSegments[splitLeftIndex + 1], splitUndo.right);
+  const handleUndoSplit = async () => {
+    if (!splitUndo || !canUndoSplit) return;
+    const index = editableSegments.findIndex(segment => segment.id === splitUndo.leftId);
+    const halfIds = new Set([String(splitUndo.leftId), String(splitUndo.rightId)]);
+    const restored = [...editableSegments.slice(0, index), splitUndo.segment, ...editableSegments.slice(index + 2)];
+    const words = [...editableWords.filter(word => !halfIds.has(String(word.segmentId))), ...splitUndo.words];
+    setSelectedSegmentId(splitUndo.segment.id);
+    setActiveSegmentId(splitUndo.segment.id);
+    setSplitUndo(null);
+    try {
+      await persistSegments(restored, words, { throwOnError: true });
+    } catch (error) {
+      setSplitUndo(splitUndo);
+      setSelectedSegmentId(splitUndo.leftId);
+      setActiveSegmentId(splitUndo.leftId);
+      throw error;
+    }
+  };
 
   // An undo is valid only immediately after this reflow: never overwrite a
   // subsequent manual edit, clip move, deletion, or word timing adjustment.
@@ -468,6 +513,8 @@ export function useTranscriptionState({
     handleAddSubtitle,
     handleDeleteSegment,
     handleSplitSegment,
+    handleUndoSplit,
+    canUndoSplit,
     handleToggleActiveWord,
     handleWordsChange,
     handleResegment,

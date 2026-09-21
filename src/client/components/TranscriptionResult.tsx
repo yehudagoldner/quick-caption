@@ -95,6 +95,8 @@ export function TranscriptionResult({
     handleAddSubtitle,
     handleDeleteSegment,
     handleSplitSegment,
+    handleUndoSplit,
+    canUndoSplit,
     handleToggleActiveWord,
     handleWordsChange,
     handleResegment,
@@ -273,6 +275,8 @@ export function TranscriptionResult({
             onAddSubtitle={handleAddSubtitle}
             onDeleteSegment={handleDeleteSegment}
             onSplitSegment={handleSplitSegment}
+            onUndoSplit={handleUndoSplit}
+            canUndoSplit={canUndoSplit}
             onToggleActiveWord={handleToggleActiveWord}
             onWordsChange={handleWordsChange}
             onResegment={handleResegment}
