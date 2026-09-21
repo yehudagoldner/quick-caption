@@ -36,9 +36,11 @@ import {
   ContentCutRounded,
   DownloadRounded,
   EditOutlined,
+  MenuRounded,
   MovieFilterRounded,
   RepeatRounded,
   SettingsRounded,
+  ShareRounded,
   SubtitlesRounded,
 } from "@mui/icons-material";
 import type { Segment, Word } from "../types";
@@ -175,17 +177,36 @@ export function MobileCaptionEditor({
   const captionScrollTimer = useRef(0);
   const captionScrollFromCode = useRef(false);
   const captionScrollFromUser = useRef(false);
+  const draftTextRef = useRef("");
+  const savedTextRef = useRef("");
+  const saveFlight = useRef<string | null>(null);
+  const lastPersisted = useRef<string | null>(null);
+  const saveQueued = useRef<{ segment: Segment; text: string; words: Word[] } | null>(null);
 
   const duration = videoDuration && Number.isFinite(videoDuration) ? videoDuration : Math.max(1, ...editableSegments.map(s => s.end), 1);
   const selectedIndex = editableSegments.findIndex(s => s.id === selectedSegmentId);
   const selected = selectedIndex >= 0 ? editableSegments[selectedIndex] : null;
   const captionWords = useMemo(() => selected ? wordsForSegment(words, selected) : [], [words, selected]);
   const activeWord = useActiveWord({ words: captionWords, currentTime, enabled: activeWordEnabled });
-  const locked = !isEditable || saveState === "saving" || saving;
+  draftTextRef.current = draftText;
 
   useEffect(() => {
-    if (selected) setDraftText(selected.text);
-  }, [selected?.id, selected?.text]);
+    if (!selected) {
+      setDraftText("");
+      savedTextRef.current = "";
+      return;
+    }
+    setDraftText(selected.text);
+    savedTextRef.current = selected.text;
+  }, [selected?.id]);
+
+  useEffect(() => {
+    if (!selected) return;
+    setDraftText(current => current.trim() === savedTextRef.current ? selected.text : current);
+    savedTextRef.current = selected.text;
+    const savedKey = `${selected.id}:${selected.text.trim()}`;
+    if (lastPersisted.current?.startsWith(`${selected.id}:`) && lastPersisted.current !== savedKey) lastPersisted.current = savedKey;
+  }, [selected?.text]);
 
   useEffect(() => {
     const html = document.documentElement;
@@ -224,16 +245,52 @@ export function MobileCaptionEditor({
     setMode(next);
   };
 
-  const saveCaption = async () => {
-    if (!selected || !draftText.trim()) return;
+  const persistCaption = async (segment: Segment, text: string, segmentWords: Word[]) => {
+    const nextText = text.trim();
+    if (!segment || !nextText || nextText === segment.text.trim() || !isEditable) return;
+    const flightKey = `${segment.id}:${nextText}`;
+    if (saveFlight.current === flightKey || lastPersisted.current === flightKey) return;
+    if (saveFlight.current) {
+      saveQueued.current = { segment, text: nextText, words: segmentWords };
+      return;
+    }
+    saveFlight.current = flightKey;
     setSaving(true);
     try {
-      const segment = { ...selected, text: draftText };
-      await timelineEditing.onSaveSegment(segment, synchronizeWords([segment], captionWords));
+      await timelineEditing.onSaveSegment({ ...segment, text: nextText }, synchronizeWords([{ ...segment, text: nextText }], segmentWords));
+      lastPersisted.current = flightKey;
+    } catch {
+      // The editor already shows the save error and keeps the draft.
     } finally {
+      saveFlight.current = null;
       setSaving(false);
+      const queued = saveQueued.current;
+      saveQueued.current = null;
+      if (queued && `${queued.segment.id}:${queued.text}` !== flightKey) void persistCaption(queued.segment, queued.text, queued.words);
     }
   };
+
+  useEffect(() => {
+    if (mode !== "edit" || !selected || !isEditable) return;
+    const segment = selected;
+    const text = draftText;
+    const segmentWords = captionWords;
+    if (!text.trim() || text.trim() === segment.text.trim()) return;
+    const timer = window.setTimeout(() => {
+      void persistCaption(segment, text, segmentWords);
+    }, 1000);
+    return () => window.clearTimeout(timer);
+  }, [draftText, selected?.id, selected?.text, mode, isEditable]);
+
+  useEffect(() => {
+    const segment = selected;
+    const segmentWords = captionWords;
+    return () => {
+      const text = draftTextRef.current;
+      if (!segment || !text.trim() || text.trim() === segment.text.trim()) return;
+      void persistCaption(segment, text, segmentWords);
+    };
+  }, [selected?.id]);
 
   const focusedSegment = editableSegments.find(segment => currentTime >= segment.start && currentTime < segment.end)
     ?? editableSegments.find(segment => segment.id === (selectedSegmentId ?? activeSegmentId))
@@ -301,6 +358,26 @@ export function MobileCaptionEditor({
     </Box>
   );
 
+  const canExport = Boolean(downloadUrl) && !hasTimelineDrafts;
+
+  const shareCaptions = async () => {
+    if (!downloadUrl || hasTimelineDrafts) return;
+    try {
+      const result = await fetch(downloadUrl);
+      const blob = await result.blob();
+      const file = new File([blob], downloadName || "subtitles.srt", { type: blob.type || "text/plain" });
+      if (navigator.share && navigator.canShare?.({ files: [file] })) {
+        await navigator.share({ files: [file], title: downloadName || "כתוביות" });
+        return;
+      }
+      if (navigator.share) {
+        await navigator.share({ title: downloadName || "כתוביות" });
+      }
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") return;
+    }
+  };
+
   return (
     <Box data-testid="mobile-caption-editor" sx={{
       position: "fixed",
@@ -320,7 +397,9 @@ export function MobileCaptionEditor({
       <Stack direction="row" alignItems="center" sx={{ flexShrink: 0, px: 0.5, py: 0.25, minHeight: 44, borderBottom: 1, borderColor: "#e8edf3", bgcolor: "#ffffff" }}>
         <IconButton size="small" aria-label="חזרה לצפייה" onClick={() => setMode("watch")}><ChevronRightRounded /></IconButton>
         <Typography sx={{ flex: 1, fontWeight: 500, fontSize: 15 }}>עורך כתוביות</Typography>
-        <Button onClick={() => setMoreOpen(true)} disabled={hasTimelineDrafts}>הורדה</Button>
+        <IconButton size="small" aria-label="שיתוף" disabled={!canExport} onClick={() => { void shareCaptions(); }}><ShareRounded /></IconButton>
+        <IconButton size="small" aria-label="הורדה" disabled={!canExport} {...(canExport ? { component: "a" as const, href: downloadUrl ?? undefined, download: downloadName } : {})}><DownloadRounded /></IconButton>
+        <IconButton size="small" aria-label="תפריט" onClick={() => setMoreOpen(true)}><MenuRounded /></IconButton>
       </Stack>
 
       {burnError && <Alert severity="error" sx={{ flexShrink: 0, mx: 1.5, mt: 1 }}>{burnError}</Alert>}
@@ -445,14 +524,14 @@ export function MobileCaptionEditor({
           </Stack>
         )}
 
-        {mode === "edit" && selected && (
+        {mode === "edit" && (
           <Stack spacing={1} sx={{ minWidth: 0, width: "100%", flex: 1, minHeight: 0, height: "100%", overflow: "hidden" }}>
             {playerSlot("edit")}
-            <Stack spacing={1} sx={{ flexShrink: 0, minHeight: 0, maxHeight: "48%", overflow: "auto" }}>
+            {selected && <Stack spacing={1} sx={{ flexShrink: 0, minHeight: 0, maxHeight: "48%", overflow: "auto" }}>
             <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ flexShrink: 0 }}>
-              <IconButton aria-label="המקטע הקודם" disabled={selectedIndex <= 0} onClick={() => onSegmentSelect(editableSegments[selectedIndex - 1].id)}><ChevronRightRounded /></IconButton>
+              <IconButton aria-label="המקטע הקודם" disabled={selectedIndex <= 0} onClick={() => onSegmentSelect(editableSegments[selectedIndex - 1].id)}><ChevronLeftRounded /></IconButton>
               <Typography variant="body2" color="text.secondary">מקטע {selectedIndex + 1} מתוך {editableSegments.length}</Typography>
-              <IconButton aria-label="המקטע הבא" disabled={selectedIndex >= editableSegments.length - 1} onClick={() => onSegmentSelect(editableSegments[selectedIndex + 1].id)}><ChevronLeftRounded /></IconButton>
+              <IconButton aria-label="המקטע הבא" disabled={selectedIndex >= editableSegments.length - 1} onClick={() => onSegmentSelect(editableSegments[selectedIndex + 1].id)}><ChevronRightRounded /></IconButton>
             </Stack>
             <TextField
               label="טקסט המקטע"
@@ -461,7 +540,8 @@ export function MobileCaptionEditor({
               maxRows={3}
               fullWidth
               value={draftText}
-              disabled={locked}
+              disabled={!isEditable}
+              onBlur={() => { if (selected) void persistCaption(selected, draftText, captionWords); }}
               onChange={event => setDraftText(event.target.value)}
               inputProps={{ dir: preferences.direction, "aria-label": "טקסט המקטע" }}
               sx={{ maxWidth: "100%" }}
@@ -484,18 +564,12 @@ export function MobileCaptionEditor({
               </Stack>
             )}
             <Stack direction="row" useFlexGap flexWrap="wrap" gap={1}>
-              <Button variant="contained" onClick={() => void saveCaption()} disabled={locked || !draftText.trim() || draftText === selected.text}>{saving ? "שומר…" : "שמור"}</Button>
+              <Button variant="contained" onClick={() => void persistCaption(selected, draftText, captionWords)} disabled={!isEditable || saving || saveState === "saving" || !draftText.trim() || draftText.trim() === selected.text.trim()}>{saving || saveState === "saving" ? "שומר…" : draftText.trim() === selected.text.trim() ? "נשמר" : "שמור"}</Button>
               <Button variant="outlined" startIcon={<RepeatRounded />} aria-pressed={timelineEditing.loopEnabled} onClick={() => timelineEditing.onLoopChange(!timelineEditing.loopEnabled)}>נגן בלולאה</Button>
-              <Button variant="outlined" startIcon={<ContentCutRounded />} disabled={locked || draftText.trim().split(/\s+/).length < 2 || currentTime <= selected.start || currentTime >= selected.end} onClick={() => void onSplitSegment(selected.id, currentTime)}>פצל</Button>
+              <Button variant="outlined" startIcon={<ContentCutRounded />} disabled={!isEditable || saveState === "saving" || draftText.trim().split(/\s+/).length < 2 || currentTime <= selected.start || currentTime >= selected.end} onClick={() => { void persistCaption(selected, draftText, captionWords).then(() => onSplitSegment(selected.id, currentTime)); }}>פצל</Button>
             </Stack>
-            </Stack>
-          </Stack>
-        )}
-
-        {mode === "edit" && !selected && (
-          <Stack spacing={1} alignItems="center" sx={{ flex: 1, minHeight: 0 }}>
-            {playerSlot("watch")}
-            <Typography color="text.secondary" sx={{ flexShrink: 0 }}>אין מקטעים לעריכה.</Typography>
+            </Stack>}
+            {!selected && <Typography color="text.secondary" sx={{ flexShrink: 0 }}>אין מקטעים לעריכה.</Typography>}
           </Stack>
         )}
 

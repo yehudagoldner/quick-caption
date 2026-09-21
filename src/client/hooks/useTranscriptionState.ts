@@ -379,14 +379,24 @@ export function useTranscriptionState({
         }
       }
       const fallbackTime = segment.start + (segment.end - segment.start) * boundary / tokens.length;
+      const cut = aligned ? timed[boundary].start : fallbackTime;
       const stamp = Date.now();
       const next = [
-        { ...segment, id: `split-${stamp}-a`, end: aligned ? timed[boundary - 1].end : fallbackTime, text: tokens.slice(0, boundary).join(" ") },
-        { ...segment, id: `split-${stamp}-b`, start: aligned ? timed[boundary].start : fallbackTime, text: tokens.slice(boundary).join(" ") },
+        { ...segment, id: `split-${stamp}-a`, end: cut, text: tokens.slice(0, boundary).join(" ") },
+        { ...segment, id: `split-${stamp}-b`, start: cut, text: tokens.slice(boundary).join(" ") },
       ];
+      const kept = splitTime >= cut ? next[1] : next[0];
+      setSelectedSegmentId(kept.id);
+      setActiveSegmentId(kept.id);
       const outside = editableWords.filter(w => w.segmentId !== segmentId);
       const splitWords = timed.map((word, i) => ({ ...word, segmentId: next[i < boundary ? 0 : 1].id }));
-      await persistSegments([...editableSegments.slice(0, index), ...next, ...editableSegments.slice(index + 1)], [...outside, ...splitWords], { throwOnError: true });
+      try {
+        await persistSegments([...editableSegments.slice(0, index), ...next, ...editableSegments.slice(index + 1)], [...outside, ...splitWords], { throwOnError: true });
+      } catch (error) {
+        setSelectedSegmentId(segmentId);
+        setActiveSegmentId(segmentId);
+        throw error;
+      }
     },
     [editableSegments, editableWords, persistSegments, videoDuration],
   );
