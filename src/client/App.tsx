@@ -180,7 +180,7 @@ function App() {
           onBuyCredits={handleBuyCredits}
         />
 
-        <Container maxWidth={false} sx={{ py: { xs: 4, md: 6 }, mt: { xs: 12, md: 10 } }}>
+        <Container maxWidth={false} sx={{ py: { xs: 2, md: 6 }, px: { xs: 1.5, md: 3 }, mt: { xs: 10, md: 10 } }}>
           {currentScreen === "home" && workflow.error && (
             <Alert severity="error" sx={{ mb: 3 }}>
               {workflow.error}

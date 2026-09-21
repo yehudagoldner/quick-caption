@@ -5,6 +5,8 @@ import { SubtitleTimeline, type SubtitleTimelineProps, type CaptionDraft } from 
 import { VideoPlayer } from "./VideoPlayer";
 import { SubtitleEditor } from "./SubtitleEditor";
 import { VideoToolbar } from "./VideoToolbar";
+import { MobileCaptionEditor } from "./MobileCaptionEditor";
+import { useNarrowViewport } from "../hooks/useNarrowViewport";
 
 type SaveState = "idle" | "saving" | "success" | "error";
 
@@ -64,9 +66,10 @@ type TranscriptionMainContentProps = {
   onWordsChange?: (words: Word[], segmentId?: Segment["id"], text?: string) => void;
   onResegment?: (maxWords: number, customInstructions?: string) => Promise<void>;
   onAIEdit?: (instructions: string) => Promise<void>;
-  // Video control props
   isPlaying?: boolean;
   onPlayPause?: () => void;
+  onBack?: () => void;
+  backDisabled?: boolean;
 };
 
 export function TranscriptionMainContent({
@@ -97,7 +100,6 @@ export function TranscriptionMainContent({
   downloadName,
   activeWordEnabled,
   videoDimensions,
-  // Video control props
   isPlaying,
   onPlayPause,
   onVideoTimeUpdate,
@@ -120,9 +122,74 @@ export function TranscriptionMainContent({
   onToggleActiveWord,
   onResegment,
   onAIEdit,
+  onBack,
+  backDisabled,
 }: TranscriptionMainContentProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [showSubtitles, setShowSubtitles] = useState(true);
+  const isNarrow = useNarrowViewport();
+  const editorSettingsBlock = <>
+    {editorSettings}
+    <Box sx={{ p: 2 }}>
+      <FormControlLabel control={<Switch checked={showSubtitles} onChange={(_, checked) => setShowSubtitles(checked)} />} label="הצג כתוביות בתצוגה המקדימה" />
+      <Typography variant="caption" display="block" color="text.secondary">כתוביות שכבר צרובות בקובץ הן חלק מהתמונה ואינן ניתנות להסתרה כאן.</Typography>
+    </Box>
+  </>;
+
+  if (isNarrow) {
+    return (
+      <MobileCaptionEditor
+        timelineEditing={timelineEditing}
+        editorSettings={editorSettingsBlock}
+        mediaUrl={mediaUrl}
+        activeSegmentText={activeSegmentText}
+        previewStyle={previewStyle}
+        editableSegments={editableSegments}
+        words={words}
+        isEditable={isEditable}
+        videoDuration={videoDuration}
+        currentTime={currentTime}
+        selectedSegmentId={selectedSegmentId}
+        activeSegmentId={activeSegmentId}
+        fontSize={fontSize}
+        fontColor={fontColor}
+        outlineColor={outlineColor}
+        offsetYPercent={offsetYPercent}
+        marginPercent={marginPercent}
+        isBurning={isBurning}
+        burnError={burnError}
+        burnedVideo={burnedVideo}
+        saveState={saveState}
+        downloadUrl={downloadUrl}
+        downloadName={downloadName}
+        activeWordEnabled={activeWordEnabled}
+        hasTimelineDrafts={hasTimelineDrafts}
+        canBurn={Boolean(videoDimensions?.width)}
+        showSubtitles={showSubtitles}
+        onShowSubtitlesChange={setShowSubtitles}
+        onVideoTimeUpdate={onVideoTimeUpdate}
+        onVideoLoadedMetadata={onVideoLoadedMetadata}
+        onVideoResize={onVideoResize}
+        onTimelineSegmentsChange={onTimelineSegmentsChange}
+        onTimelineTimeChange={onTimelineTimeChange}
+        onSegmentSelect={onSegmentSelect}
+        onFontSizeChange={onFontSizeChange}
+        onFontColorChange={onFontColorChange}
+        onOutlineColorChange={onOutlineColorChange}
+        onOffsetYChange={onOffsetYChange}
+        onMarginChange={onMarginChange}
+        onBurnVideo={onBurnVideo}
+        onAddSubtitle={onAddSubtitle}
+        onSplitSegment={onSplitSegment}
+        onToggleActiveWord={onToggleActiveWord}
+        onAIEdit={onAIEdit}
+        isPlaying={isPlaying}
+        onPlayPause={onPlayPause}
+        onBack={onBack}
+        backDisabled={backDisabled}
+      />
+    );
+  }
 
   return (
     <>
@@ -131,13 +198,7 @@ export function TranscriptionMainContent({
           <Stack direction="column" spacing={1.5} alignItems="center" justifyContent="center" sx={{ width: "100%", minWidth: 0 }}>
             <VideoToolbar
               pendingEdits={hasTimelineDrafts || saveState === "saving"}
-              editorSettings={<>
-                {editorSettings}
-                <Box sx={{ p: 2 }}>
-                  <FormControlLabel control={<Switch checked={showSubtitles} onChange={(_, checked) => setShowSubtitles(checked)} />} label="הצג כתוביות בתצוגה המקדימה" />
-                  <Typography variant="caption" display="block" color="text.secondary">כתוביות שכבר צרובות בקובץ הן חלק מהתמונה ואינן ניתנות להסתרה כאן.</Typography>
-                </Box>
-              </>}
+              editorSettings={editorSettingsBlock}
               fontSize={fontSize}
               fontColor={fontColor}
               outlineColor={outlineColor}

@@ -15,6 +15,7 @@ import {
 import { VideoLibraryRounded, HomeRounded, AccountBalanceWalletRounded, UploadFileOutlined } from "@mui/icons-material";
 import type { AuthUser } from "../hooks/useTranscriptionWorkflow";
 import { useAuth } from "../contexts/AuthContext";
+import { useNarrowViewport } from "../hooks/useNarrowViewport";
 
 type HeaderPage = "home" | "videos" | "transcription";
 
@@ -46,14 +47,15 @@ export function AppHeader({
   onBuyCredits,
 }: AppHeaderProps) {
   const { isDevBypass } = useAuth();
+  const narrow = useNarrowViewport();
   const creditsColor = credits === null ? "default" : credits < 20 ? "error" : credits < 50 ? "warning" : "success";
 
   return (
     <AppBar position="fixed" color="default" elevation={0} sx={{ borderBottom: 1, borderColor: "divider" }}>
-      <Toolbar>
+      <Toolbar variant={narrow ? "dense" : "regular"} sx={narrow ? { minHeight: 48, px: 1 } : undefined}>
         <Box sx={{ flexGrow: 1, display: "flex", alignItems: "center", gap: 2 }}>
-          <Box component="img" src="/quickcaption-logo.svg" alt="QuickCaption" sx={{ height: 32 }} />
-          {isDevBypass && (
+          <Box component="img" src="/quickcaption-logo.svg" alt="QuickCaption" sx={{ height: narrow ? 24 : 32 }} />
+          {isDevBypass && !narrow && (
             <Chip size="small" color="warning" variant="outlined" label="משתמש דמה מקומי" />
           )}
           {user && (
@@ -94,7 +96,7 @@ export function AppHeader({
                   label={`${credits} קרדיטים`}
                   color={creditsColor}
                   size="small"
-                  sx={{ ml: 2, fontWeight: "bold" }}
+                  sx={{ ml: narrow ? 0.5 : 2, fontWeight: "bold" }}
                 />
               </Tooltip>
             )}

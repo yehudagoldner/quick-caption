@@ -5,6 +5,9 @@ import { useActiveWord } from "../hooks/useActiveWord";
 
 type VideoPlayerProps = {
   compact?: boolean;
+  size?: "full" | "mid" | "mini";
+  fill?: boolean;
+  hideMeta?: boolean;
   mediaUrl: string | null;
   activeSegmentText: string | null;
   activeSegmentId: Segment["id"] | null;
@@ -17,7 +20,9 @@ type VideoPlayerProps = {
   onResize?: (dimensions: { width: number; height: number }) => void;
 };
 
-export function VideoPlayer({ compact, mediaUrl, activeSegmentText, activeSegmentId, previewStyle, words, currentTime, activeWordEnabled, onTimeUpdate, onLoadedMetadata, onResize }: VideoPlayerProps) {
+const SIZE_DVH = { full: 48, mid: 28, mini: 16 } as const;
+
+export function VideoPlayer({ compact, size, fill, hideMeta, mediaUrl, activeSegmentText, activeSegmentId, previewStyle, words, currentTime, activeWordEnabled, onTimeUpdate, onLoadedMetadata, onResize }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [dimensions, setDimensions] = useState({ width: 16, height: 9 });
   const [isAudio, setIsAudio] = useState(false);
@@ -84,12 +89,30 @@ export function VideoPlayer({ compact, mediaUrl, activeSegmentText, activeSegmen
   }, [mediaUrl, onLoadedMetadata, onResize]);
 
   const ratio = dimensions.width / dimensions.height;
-  return <Stack spacing={1} alignItems="center" sx={{ width: "100%", minWidth: 0 }}>
-    {isAudio && <Typography variant="subtitle2">אודיו בלבד — תצוגה מקדימה של הכתוביות</Typography>}
-    {error && <Alert severity="error">לא ניתן לנגן את המדיה. בדקו שהקובץ זמין ובפורמט שנתמך בדפדפן.</Alert>}
-    <Box data-testid="media-stage" sx={{ position: "relative", bgcolor: "common.black", color: "white", borderRadius: 2, overflow: "hidden", mx: "auto",
-      width: isAudio ? "100%" : { xs: `min(100%, ${Math.min(640, 500 * ratio)}px, calc(${compact ? 22 : 48}dvh * ${ratio}))`, sm: `min(100%, ${Math.min(640, 500 * ratio)}px, calc(48dvh * ${ratio}))` },
-      aspectRatio: isAudio ? undefined : `${dimensions.width} / ${dimensions.height}`, minHeight: isAudio ? 180 : undefined }}>
+  const heightDvh = size ? SIZE_DVH[size] : compact ? 22 : 48;
+  const stageSize = fill
+    ? {
+        width: isAudio ? "100%" : `min(100cqw, calc(100cqh * ${ratio}))`,
+        height: isAudio ? "100%" : `min(100cqh, calc(100cqw / ${ratio}))`,
+        maxWidth: "100%",
+        maxHeight: "100%",
+      }
+    : {
+        width: isAudio ? "100%" : { xs: `min(100%, ${Math.min(640, 500 * ratio)}px, calc(${heightDvh}dvh * ${ratio}))`, sm: `min(100%, ${Math.min(640, 500 * ratio)}px, calc(${size ? SIZE_DVH[size] : 48}dvh * ${ratio}))` },
+      };
+  return <Stack spacing={fill ? 0 : 1} alignItems="center" justifyContent="center" sx={{
+    position: "relative",
+    width: "100%",
+    minWidth: 0,
+    minHeight: 0,
+    height: fill ? "100%" : undefined,
+    ...(fill ? { containerType: "size" } : {}),
+  }}>
+    {isAudio && !hideMeta && <Typography variant="subtitle2">אודיו בלבד — תצוגה מקדימה של הכתוביות</Typography>}
+    {error && <Alert severity="error" sx={fill ? { position: "absolute", zIndex: 2, mx: 1 } : undefined}>לא ניתן לנגן את המדיה. בדקו שהקובץ זמין ובפורמט שנתמך בדפדפן.</Alert>}
+    <Box data-testid="media-stage" sx={{ position: "relative", bgcolor: "common.black", color: "white", borderRadius: 2, overflow: "hidden", mx: "auto", flexShrink: 0,
+      ...stageSize,
+      aspectRatio: isAudio || fill ? undefined : `${dimensions.width} / ${dimensions.height}`, minHeight: isAudio && !fill ? 180 : undefined }}>
       {mediaUrl ? <>
         <Box component="video" ref={videoRef} controls playsInline preload="metadata" src={mediaUrl}
           onSeeking={e => onTimeUpdate?.(e.currentTarget.currentTime)}
@@ -103,7 +126,7 @@ export function VideoPlayer({ compact, mediaUrl, activeSegmentText, activeSegmen
         </Box>}
       </> : <Typography sx={{ p: 3 }}>אין תצוגה זמינה לקובץ הנוכחי.</Typography>}
     </Box>
-    {!isAudio && <Typography variant="caption" color="text.secondary" dir="ltr">{dimensions.width} × {dimensions.height} · {ratio === 1 ? "וידאו מרובע" : ratio < 1 ? "וידאו אנכי" : "וידאו אופקי"}</Typography>}
+    {!isAudio && !hideMeta && <Typography variant="caption" color="text.secondary" dir="ltr">{dimensions.width} × {dimensions.height} · {ratio === 1 ? "וידאו מרובע" : ratio < 1 ? "וידאו אנכי" : "וידאו אופקי"}</Typography>}
   </Stack>;
 }
 

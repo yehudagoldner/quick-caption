@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Container, Alert, CircularProgress, Box, Typography } from "@mui/material";
 import { PreviewStepSection } from "./PreviewStepSection";
+import { useNarrowViewport } from "../hooks/useNarrowViewport";
 import type { AuthUser } from "../hooks/useTranscriptionWorkflow";
 import type { ApiResponse, Segment } from "../types";
 import type { BurnOptions } from "./TranscriptionResult";
@@ -16,6 +17,7 @@ const RAW_API_BASE = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.
 const API_BASE_URL = RAW_API_BASE.replace(/\/?$/, "");
 
 export function VideoEditPage({ user, videoToken, onSaveSegments, onNewUpload }: VideoEditPageProps) {
+  const narrow = useNarrowViewport();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [response, setResponse] = useState<ApiResponse | null>(null);
@@ -211,10 +213,12 @@ export function VideoEditPage({ user, videoToken, onSaveSegments, onNewUpload }:
 
   return (
     <Container maxWidth={false} disableGutters>
-      <Box sx={{ py: 1 }}>
-        <Typography variant="h4" gutterBottom sx={{ fontWeight: 600, textAlign: "center" }}>
-          עריכת כתוביות
-        </Typography>
+      <Box sx={{ py: narrow ? 0 : 1 }}>
+        {!narrow && (
+          <Typography variant="h4" gutterBottom sx={{ fontWeight: 600, textAlign: "center" }}>
+            עריכת כתוביות
+          </Typography>
+        )}
 
         <PreviewStepSection
           active={true}

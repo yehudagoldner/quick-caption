@@ -9,6 +9,7 @@ import { useTranscriptionState } from "../hooks/useTranscriptionState";
 import { usePreviewStyle } from "../hooks/usePreviewStyle";
 import { useTranscriptionHandlers } from "../hooks/useTranscriptionHandlers";
 import { useVideoControls } from "../hooks/useVideoControls";
+import { useNarrowViewport } from "../hooks/useNarrowViewport";
 import { EditorSettings } from "./EditorSettings";
 import { serializeSubtitles } from "../utils/subtitleExport";
 import { useEditorPreferences } from "../contexts/EditorPreferences";
@@ -140,6 +141,15 @@ export function TranscriptionResult({
   const hasEstimatedTimingWarning = response.warnings?.some(warning => warning.includes("תזמון משוער")) ?? false;
 
   const { isPlaying, handlePlayPause } = useVideoControls(videoPlayer);
+  const narrow = useNarrowViewport();
+
+  const handleLeaveEditor = async () => {
+    if (isEditable && (saveState === "error" || JSON.stringify(editableSegments) !== JSON.stringify(savedSegments) || JSON.stringify(editableWords) !== JSON.stringify(savedWords))) {
+      try { await persistSegments(editableSegments, editableWords, { throwOnError: true }); }
+      catch { return; }
+    }
+    onBack();
+  };
 
   const {
     handleVideoTimeUpdate,
@@ -185,27 +195,21 @@ export function TranscriptionResult({
   });
 
   return (
-    <Card elevation={3} sx={{ overflow: "visible" }}>
-      <CardContent>
-        <Stack spacing={1.5}>
+    <Card elevation={narrow ? 0 : 3} sx={{ overflow: "visible", ...(narrow ? { bgcolor: "transparent", boxShadow: "none" } : {}) }}>
+      <CardContent sx={narrow ? { p: 0, "&:last-child": { pb: 0 } } : undefined}>
+        <Stack spacing={narrow ? 0 : 1.5}>
+          {!narrow && (
           <TranscriptionResultHeader
             subtitleFormatLabel={subtitleFormatLabel}
             downloadUrl={downloadUrl}
             downloadName={downloadName}
             warnings={response.warnings}
             backDisabled={saveState === "saving" || isBurning || hasTimelineDrafts}
-            onBack={async () => {
-              // Flush in-progress text edits before leaving the editor. Do not
-              // navigate on save failure: the user must be able to retry.
-              if (isEditable && (saveState === "error" || JSON.stringify(editableSegments) !== JSON.stringify(savedSegments) || JSON.stringify(editableWords) !== JSON.stringify(savedWords))) {
-                try { await persistSegments(editableSegments, editableWords, { throwOnError: true }); }
-                catch { return; }
-              }
-              onBack();
-            }}
+            onBack={handleLeaveEditor}
           />
+          )}
           {saveState === "error" && <Alert severity="error" action={<Button onClick={() => persistSegments(editableSegments, editableWords)}>נסה לשמור שוב</Button>}>{saveError}</Alert>}
-          {activeWordEnabled && !hasEstimatedTimingWarning && editableWords.some(word => word.timingSource === "estimated") && <Alert severity="info">לחלק מהמילים הושלם תזמון משוער. אפשר לדייק אותן בציר המילים של המקטע; הטקסט המתוקן נשמר במלואו.</Alert>}
+          {!narrow && activeWordEnabled && !hasEstimatedTimingWarning && editableWords.some(word => word.timingSource === "estimated") && <Alert severity="info">לחלק מהמילים הושלם תזמון משוער. אפשר לדייק אותן בציר המילים של המקטע; הטקסט המתוקן נשמר במלואו.</Alert>}
 
           <TranscriptionMainContent
             hasTimelineDrafts={hasTimelineDrafts}
@@ -275,6 +279,8 @@ export function TranscriptionResult({
             onAIEdit={handleAIEdit}
             isPlaying={isPlaying}
             onPlayPause={handlePlayPause}
+            onBack={handleLeaveEditor}
+            backDisabled={saveState === "saving" || isBurning || hasTimelineDrafts}
           />
 
         </Stack>
