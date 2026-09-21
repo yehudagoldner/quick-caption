@@ -1,4 +1,5 @@
 ﻿import mysql from "mysql2/promise";
+import "./src/loadAppEnv.js";
 
 const pool = mysql.createPool({
   host: process.env.DB_HOST,
@@ -164,7 +165,14 @@ export async function getUserVideos({ userUid, limit = 50, offset = 0 }) {
   const safeOffset = Math.max(0, Number(offset) || 0);
 
   const [rows] = await pool.execute(
-    `SELECT id, original_filename, status, media_type, format, duration_seconds, size_bytes, created_at, updated_at
+    `SELECT id, original_filename, status, media_type, format, size_bytes, created_at, updated_at,
+            (subtitle_json IS NOT NULL) AS has_subtitles,
+            CASE
+              WHEN duration_seconds IS NOT NULL THEN duration_seconds
+              WHEN subtitle_json IS NOT NULL AND JSON_LENGTH(subtitle_json) > 0 THEN
+                ROUND(JSON_UNQUOTE(JSON_EXTRACT(subtitle_json, CONCAT('$[', JSON_LENGTH(subtitle_json) - 1, '].end'))))
+              ELSE NULL
+            END AS duration_seconds
      FROM videos
      WHERE user_uid = ?
      ORDER BY created_at DESC
@@ -273,6 +281,58 @@ export async function addCredits(userUid, amount) {
   }
 
   return await getUserCredits(userUid);
+}
+
+export async function ensureDevDummyUser({ uid, email, displayName }) {
+  const lastLoginAt = new Date().toISOString().slice(0, 19).replace("T", " ");
+
+  await pool.execute(
+    `INSERT INTO users (uid, email, display_name, is_email_verified, provider_id, last_login_at, credits)
+     VALUES (?, ?, ?, 1, 'dev-bypass', ?, 1000)
+     ON DUPLICATE KEY UPDATE
+       email = VALUES(email),
+       display_name = VALUES(display_name),
+       last_login_at = VALUES(last_login_at)`,
+    [uid, email, displayName, lastLoginAt],
+  );
+
+  const [rows] = await pool.execute(
+    `SELECT COUNT(*) AS n FROM videos WHERE user_uid = ?`,
+    [uid],
+  );
+  const existing = Number(rows?.[0]?.n ?? 0);
+  if (existing > 0) {
+    return;
+  }
+
+  const sampleSegments = JSON.stringify([
+    { id: 1, start: 0, end: 3.2, text: "שלום, זה פרויקט דמה לבדיקות." },
+    { id: 2, start: 3.2, end: 8.5, text: "אפשר לייצא כתוביות ולחזור לעריכה." },
+  ]);
+
+  await saveVideo({
+    userUid: uid,
+    originalFilename: "דוגמה-בדיקה.mp4",
+    storedPath: null,
+    status: "completed",
+    mediaType: "video",
+    format: ".srt",
+    durationSeconds: 125,
+    sizeBytes: 2_400_000,
+    subtitleJson: sampleSegments,
+  });
+
+  await saveVideo({
+    userUid: uid,
+    originalFilename: "דוגמה-נכשלה.mp4",
+    storedPath: null,
+    status: "failed",
+    mediaType: "video",
+    format: ".srt",
+    durationSeconds: 40,
+    sizeBytes: 800_000,
+    subtitleJson: null,
+  });
 }
 
 export default pool;

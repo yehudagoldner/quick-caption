@@ -7,16 +7,14 @@ import crypto from "crypto";
 import { promises as fsp } from "fs";
 import { createServer } from "http";
 import { Server as SocketIOServer } from "socket.io";
-import dotenv from "dotenv";
 
+import "./src/loadAppEnv.js";
 import { transcribeMedia, normalizeSubtitleFormat, transcribeWithWordTimestamps, getMediaDuration, resegmentWithGPT, intelligentSplitSegment, aiEditSubtitles } from "./src/transcription.js";
 import { createBurnSubtitlesRouter } from "./routes/burnSubtitles.js";
 import paypalRouter from "./routes/paypal.js";
-import { ensureSchema, upsertUser, saveVideo, updateVideoSubtitles, getUserVideos, getVideoById, getUserCredits, deductCredits } from "./db.js";
+import { ensureSchema, upsertUser, saveVideo, updateVideoSubtitles, getUserVideos, getVideoById, getUserCredits, deductCredits, ensureDevDummyUser } from "./db.js";
 import { estimateTranscriptionCredits, creditsToDollars, calculateTotalWorkflowCredits } from "./src/creditCalculator.js";
-
-
-dotenv.config();
+import { getDevAuthUid, isDevAuthBypassEnabled } from "./src/devAuth.js";
 
 const app = express();
 const port = Number(process.env.PORT ?? 3000);
@@ -34,6 +32,14 @@ const videosStorageDir = path.join(process.cwd(), "stored-videos");
 await fsp.mkdir(uploadDir, { recursive: true });
 await fsp.mkdir(videosStorageDir, { recursive: true });
 await ensureSchema();
+if (isDevAuthBypassEnabled()) {
+  await ensureDevDummyUser({
+    uid: getDevAuthUid(),
+    email: "dev@localhost",
+    displayName: "משתמש דמה",
+  });
+  console.log("Dev auth bypass enabled for local dummy user");
+}
 
 const upload = multer({
   dest: uploadDir,
@@ -554,7 +560,7 @@ app.post("/api/transcribe", upload.single("media"), async (req, res) => {
           mediaType: req.file?.mimetype?.startsWith('audio/') ? 'audio' : 'video',
           mimeType: req.file?.mimetype ?? null,
           format,
-          durationSeconds: null,
+          durationSeconds: Number.isFinite(durationSeconds) ? Math.round(durationSeconds) : null,
           sizeBytes: req.file?.size ?? null,
           transcriptionId: null,
           subtitleJson: result.segments ? JSON.stringify(result.segments) : null,
@@ -605,7 +611,7 @@ app.post("/api/transcribe", upload.single("media"), async (req, res) => {
           mediaType: req.file?.mimetype?.startsWith('audio/') ? 'audio' : 'video',
           mimeType: req.file?.mimetype ?? null,
           format,
-          durationSeconds: null,
+          durationSeconds: Number.isFinite(durationSeconds) ? Math.round(durationSeconds) : null,
           sizeBytes: req.file?.size ?? null,
           transcriptionId: null,
           subtitleJson: null,

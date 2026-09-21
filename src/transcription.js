@@ -3,11 +3,9 @@ import { promises as fsp } from "fs";
 import { spawn } from "child_process";
 import path from "path";
 import OpenAI from "openai";
-import dotenv from "dotenv";
+import "./loadAppEnv.js";
 import { limitSubtitleCharacters } from "./subtitleSegmentation.js";
 import { synchronizeWords, mergeCorrectedSegments, subtitleTokens } from "./wordAlignment.js";
-
-dotenv.config();
 
 const AUDIO_EXTENSIONS = new Set([".mp3", ".wav", ".m4a", ".aac", ".ogg", ".flac", ".opus"]);
 const SUBTITLE_FORMATS = new Set([".txt", ".srt", ".vtt"]);

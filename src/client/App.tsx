@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Alert, Box, Container, CssBaseline, ThemeProvider, createTheme } from "@mui/material";
+import { Alert, Box, CircularProgress, Container, CssBaseline, Stack, ThemeProvider, createTheme } from "@mui/material";
 import { AppHeader } from "./components/AppHeader";
 import { PromotionalHome } from "./components/PromotionalHome";
 import { TranscriptionPage } from "./components/TranscriptionPage";
@@ -164,13 +164,19 @@ function App() {
           user={workflow.user}
           authLoading={workflow.authLoading}
           profileAnchorEl={workflow.profileAnchorEl}
-          currentPage={currentScreen === "videos" ? "videos" : "home"}
+          currentPage={
+            currentScreen === "transcription"
+              ? "transcription"
+              : currentScreen === "videos" || currentScreen === "edit"
+                ? "videos"
+                : "home"
+          }
           credits={credits}
           onProfileClick={workflow.onProfileClick}
           onProfileClose={workflow.onProfileClose}
           onSignIn={workflow.onSignIn}
           onSignOut={workflow.onSignOut}
-          onNavigate={(page) => navigateToScreen(page === "videos" ? "videos" : "home")}
+          onNavigate={(page) => navigateToScreen(page)}
           onBuyCredits={handleBuyCredits}
         />
 
@@ -181,12 +187,24 @@ function App() {
             </Alert>
           )}
 
-          {currentScreen === "home" && (
+          {currentScreen === "home" && workflow.authLoading && (
+            <Stack alignItems="center" py={8}>
+              <CircularProgress />
+            </Stack>
+          )}
+
+          {currentScreen === "home" && !workflow.authLoading && !workflow.user && (
             <PromotionalHome
-              user={workflow.user}
               authLoading={workflow.authLoading}
-              onTryNow={() => navigateToScreen("transcription")}
               onSignIn={workflow.onSignIn}
+            />
+          )}
+
+          {currentScreen === "home" && !workflow.authLoading && workflow.user && (
+            <VideosPage
+              variant="workspace"
+              onEditVideo={handleEditVideo}
+              onNewVideo={() => navigateToScreen("transcription")}
             />
           )}
 
@@ -197,7 +215,11 @@ function App() {
           )}
 
           {currentScreen === "videos" && (
-            <VideosPage onEditVideo={handleEditVideo} />
+            <VideosPage
+              variant="history"
+              onEditVideo={handleEditVideo}
+              onNewVideo={() => navigateToScreen("transcription")}
+            />
           )}
 
           {currentScreen === "buy-credits" && (

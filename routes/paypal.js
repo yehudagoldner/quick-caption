@@ -1,11 +1,7 @@
 import express from "express";
 import fetch from "node-fetch";
-import dotenv from "dotenv";
+import "../src/loadAppEnv.js";
 import { addCredits, getUserCredits } from "../db.js";
-
-// Ensure environment variables from .env are available even though this router
-// is imported before server.js runs dotenv.config()
-dotenv.config();
 
 const router = express.Router();
 

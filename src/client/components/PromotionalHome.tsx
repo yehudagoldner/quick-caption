@@ -1,15 +1,12 @@
 import { Box, Button, Container, Typography, Stack, Card, CardContent, Paper } from "@mui/material";
-import { PlayArrow, Subtitles, Language, Download, Login } from "@mui/icons-material";
-import type { AuthUser } from "../hooks/useTranscriptionWorkflow";
+import { Subtitles, Language, Download, Login } from "@mui/icons-material";
 
 interface PromotionalHomeProps {
-  user: AuthUser;
   authLoading: boolean;
-  onTryNow: () => void;
   onSignIn: () => Promise<void>;
 }
 
-export function PromotionalHome({ user, authLoading, onTryNow, onSignIn }: PromotionalHomeProps) {
+export function PromotionalHome({ authLoading, onSignIn }: PromotionalHomeProps) {
   return (
     <Container maxWidth="lg">
       <Box sx={{ py: { xs: 8, md: 12 }, textAlign: "center" }}>
@@ -41,56 +38,37 @@ export function PromotionalHome({ user, authLoading, onTryNow, onSignIn }: Promo
               טכנולוגיית AI מתקדמת עם עריכה פשוטה ויעילה.
             </Typography>
 
-            {user ? (
+            <Paper
+              elevation={2}
+              sx={{
+                p: 4,
+                mt: 4,
+                bgcolor: "background.paper",
+                border: "1px solid",
+                borderColor: "divider"
+              }}
+            >
+              <Typography variant="h6" gutterBottom color="text.primary">
+                התחברו כדי להמשיך
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+                נדרשת הרשמה פשוטה כדי לשמור ולנהל את הסרטונים שלכם
+              </Typography>
               <Button
                 variant="contained"
-                size="large"
-                onClick={onTryNow}
-                startIcon={<PlayArrow />}
+                onClick={onSignIn}
+                disabled={authLoading}
+                startIcon={<Login />}
                 sx={{
-                  fontSize: "1.25rem",
-                  py: 2,
-                  px: 6,
-                  borderRadius: 3,
-                  mt: 4,
-                  minWidth: 200
+                  fontSize: "1.1rem",
+                  py: 1.5,
+                  px: 4,
+                  borderRadius: 3
                 }}
               >
-                נסו עכשיו
+                {authLoading ? "מתחבר..." : "התחברות"}
               </Button>
-            ) : (
-              <Paper
-                elevation={2}
-                sx={{
-                  p: 4,
-                  mt: 4,
-                  bgcolor: "background.paper",
-                  border: "1px solid",
-                  borderColor: "divider"
-                }}
-              >
-                <Typography variant="h6" gutterBottom color="text.primary">
-                  התחברו כדי להתחיל
-                </Typography>
-                <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-                  נדרשת הרשמה פשוטה כדי לשמור ולנהל את הסרטונים שלכם
-                </Typography>
-                <Button
-                  variant="contained"
-                  onClick={onSignIn}
-                  disabled={authLoading}
-                  startIcon={<Login />}
-                  sx={{
-                    fontSize: "1.1rem",
-                    py: 1.5,
-                    px: 4,
-                    borderRadius: 3
-                  }}
-                >
-                  {authLoading ? "מתחבר..." : "התחברות"}
-                </Button>
-              </Paper>
-            )}
+            </Paper>
           </Stack>
 
           <Stack spacing={4} sx={{ mt: 8 }}>
@@ -141,31 +119,29 @@ export function PromotionalHome({ user, authLoading, onTryNow, onSignIn }: Promo
             </Stack>
           </Stack>
 
-          {!user && (
-            <Box sx={{ mt: 8, py: 6, bgcolor: "grey.50", borderRadius: 4 }}>
-              <Typography variant="h5" gutterBottom sx={{ fontWeight: 600 }}>
-                מוכנים להתחיל?
-              </Typography>
-              <Typography variant="body1" color="text.secondary" sx={{ mb: 4 }}>
-                העלו את הסרטון שלכם וקבלו כתוביות מושלמות תוך דקות ספורות
-              </Typography>
-              <Button
-                variant="contained"
-                size="large"
-                onClick={onSignIn}
-                disabled={authLoading}
-                startIcon={<Login />}
-                sx={{
-                  fontSize: "1.1rem",
-                  py: 1.5,
-                  px: 5,
-                  borderRadius: 3
-                }}
-              >
-                {authLoading ? "מתחבר..." : "התחילו עכשיו - בחינם"}
-              </Button>
-            </Box>
-          )}
+          <Box sx={{ mt: 8, py: 6, bgcolor: "grey.50", borderRadius: 4 }}>
+            <Typography variant="h5" gutterBottom sx={{ fontWeight: 600 }}>
+              מוכנים להתחיל?
+            </Typography>
+            <Typography variant="body1" color="text.secondary" sx={{ mb: 4 }}>
+              העלו את הסרטון שלכם וקבלו כתוביות מושלמות תוך דקות ספורות
+            </Typography>
+            <Button
+              variant="contained"
+              size="large"
+              onClick={onSignIn}
+              disabled={authLoading}
+              startIcon={<Login />}
+              sx={{
+                fontSize: "1.1rem",
+                py: 1.5,
+                px: 5,
+                borderRadius: 3
+              }}
+            >
+              {authLoading ? "מתחבר..." : "התחילו עכשיו - בחינם"}
+            </Button>
+          </Box>
         </Stack>
       </Box>
     </Container>

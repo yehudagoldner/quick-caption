@@ -12,20 +12,23 @@ import {
   Toolbar,
   Tooltip,
 } from "@mui/material";
-import { VideoLibraryRounded, HomeRounded, AccountBalanceWalletRounded } from "@mui/icons-material";
+import { VideoLibraryRounded, HomeRounded, AccountBalanceWalletRounded, UploadFileOutlined } from "@mui/icons-material";
 import type { AuthUser } from "../hooks/useTranscriptionWorkflow";
+import { useAuth } from "../contexts/AuthContext";
+
+type HeaderPage = "home" | "videos" | "transcription";
 
 type AppHeaderProps = {
   user: AuthUser;
   authLoading: boolean;
   profileAnchorEl: HTMLElement | null;
-  currentPage: "home" | "videos";
+  currentPage: HeaderPage;
   credits: number | null;
   onProfileClick: (event: MouseEvent<HTMLElement>) => void;
   onProfileClose: () => void;
   onSignIn: () => Promise<void>;
   onSignOut: () => Promise<void>;
-  onNavigate: (page: "home" | "videos") => void;
+  onNavigate: (page: HeaderPage) => void;
   onBuyCredits: () => void;
 };
 
@@ -42,6 +45,7 @@ export function AppHeader({
   onNavigate,
   onBuyCredits,
 }: AppHeaderProps) {
+  const { isDevBypass } = useAuth();
   const creditsColor = credits === null ? "default" : credits < 20 ? "error" : credits < 50 ? "warning" : "success";
 
   return (
@@ -49,6 +53,9 @@ export function AppHeader({
       <Toolbar>
         <Box sx={{ flexGrow: 1, display: "flex", alignItems: "center", gap: 2 }}>
           <Box component="img" src="/quickcaption-logo.svg" alt="QuickCaption" sx={{ height: 32 }} />
+          {isDevBypass && (
+            <Chip size="small" color="warning" variant="outlined" label="משתמש דמה מקומי" />
+          )}
           {user && (
             <Box sx={{ display: { xs: "none", md: "flex" }, gap: 1 }}>
               <Button
@@ -65,7 +72,15 @@ export function AppHeader({
                 onClick={() => onNavigate("videos")}
                 size="small"
               >
-                הווידאו שלי
+                היסטוריית סרטונים
+              </Button>
+              <Button
+                startIcon={<UploadFileOutlined />}
+                variant={currentPage === "transcription" ? "contained" : "outlined"}
+                onClick={() => onNavigate("transcription")}
+                size="small"
+              >
+                סרטון חדש
               </Button>
             </Box>
           )}
@@ -109,7 +124,11 @@ export function AppHeader({
                 </MenuItem>
                 <MenuItem onClick={() => { onProfileClose(); onNavigate("videos"); }}>
                   <VideoLibraryRounded sx={{ ml: 1 }} />
-                  הווידאו שלי
+                  היסטוריית סרטונים
+                </MenuItem>
+                <MenuItem onClick={() => { onProfileClose(); onNavigate("transcription"); }}>
+                  <UploadFileOutlined sx={{ ml: 1 }} />
+                  סרטון חדש
                 </MenuItem>
               </Box>
 

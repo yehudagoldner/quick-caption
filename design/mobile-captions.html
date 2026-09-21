@@ -1,0 +1,528 @@
+<div id="captions-mobile-white" dir="rtl">
+  <p class="vis-sr-only">תצוגת עורך הכתוביות במובייל בערכת הצבעים הלבנה של האפליקציה. ארבעה מצבים: צפייה, עריכת טקסט, תזמון ועיצוב.</p>
+  <div class="qc-phone">
+    <div class="qc-statusbar">
+      <span>17:01</span>
+      <span>QuickCaption</span>
+    </div>
+    <header class="qc-top">
+      <button type="button" class="qc-iconbtn" data-mode="watch" aria-label="חזרה לצפייה">
+        <i data-lucide="chevron-right" aria-hidden="true"></i>
+      </button>
+      <p class="qc-title">בדיקת כתוביות</p>
+      <button type="button" class="qc-textbtn">הורדה</button>
+    </header>
+
+    <div class="qc-stage" data-screen="watch">
+      <div class="qc-video qc-video-full" aria-label="תצוגת הווידאו">
+        <span class="qc-caption">כן, כן <mark>עכשיו</mark> בדיקה!</span>
+        <button type="button" class="qc-play" aria-label="ניגון">
+          <i data-lucide="play" aria-hidden="true"></i>
+        </button>
+      </div>
+      <div class="qc-transport">
+        <span>00:00:02</span>
+        <div class="qc-laser" aria-hidden="true">
+          <b style="inset-inline-start:4%;width:18%"></b>
+          <b class="is-on" style="inset-inline-start:26%;width:28%"></b>
+          <b style="inset-inline-start:62%;width:22%"></b>
+          <i style="inset-inline-start:38%"></i>
+        </div>
+      </div>
+    </div>
+
+    <div class="qc-stage" data-screen="edit" hidden>
+      <div class="qc-video qc-video-mini" aria-label="תצוגת הווידאו">
+        <span class="qc-caption">כן, כן <mark>עכשיו</mark> בדיקה!</span>
+      </div>
+      <div class="qc-segbar">
+        <button type="button" aria-label="המקטע הקודם"><i data-lucide="chevron-right" aria-hidden="true"></i></button>
+        <p>מקטע 1 מתוך 3</p>
+        <button type="button" aria-label="המקטע הבא"><i data-lucide="chevron-left" aria-hidden="true"></i></button>
+      </div>
+      <label class="qc-field">
+        <span>טקסט המקטע</span>
+        <textarea id="qc-caption-input" rows="2">כן, כן עכשיו בדיקה!</textarea>
+      </label>
+      <p class="qc-times"><span>00:00:00.00</span><span>00:00:02.10</span></p>
+      <div class="qc-words" aria-label="מילים במקטע">
+        <button type="button">כן</button>
+        <button type="button">כן</button>
+        <button type="button" class="is-on">עכשיו</button>
+        <button type="button">בדיקה!</button>
+      </div>
+      <div class="qc-edit-actions">
+        <button type="button" class="qc-primary">שמור</button>
+        <button type="button">נגן בלולאה</button>
+        <button type="button">פצל</button>
+      </div>
+    </div>
+
+    <div class="qc-stage" data-screen="timing" hidden>
+      <div class="qc-video qc-video-mid" aria-label="תצוגת הווידאו">
+        <span class="qc-caption">כן, כן <mark>עכשיו</mark> בדיקה!</span>
+      </div>
+      <div class="qc-transport qc-transport-row">
+        <button type="button" aria-label="ניגון"><i data-lucide="play" aria-hidden="true"></i></button>
+        <button type="button">−1F</button>
+        <span>00:00:02.10</span>
+        <button type="button">+1F</button>
+      </div>
+      <div class="qc-timeline" aria-label="ציר הזמן הראשי">
+        <div class="qc-clip">כן, כן עכשיו בדיקה!</div>
+        <div class="qc-clip is-dim">מילה שנוספה נשארת כאן</div>
+        <div class="qc-clip is-dim">שלום עולם</div>
+      </div>
+    </div>
+
+    <div class="qc-stage" data-screen="style" hidden>
+      <div class="qc-video qc-video-mid" aria-label="תצוגת הווידאו">
+        <span class="qc-caption">כן, כן <mark>עכשיו</mark> בדיקה!</span>
+      </div>
+      <div class="qc-sheet">
+        <div class="qc-sheet-h">
+          <p>עיצוב כתוביות</p>
+          <button type="button" class="qc-iconbtn" data-mode="watch" aria-label="סגירת עיצוב">
+            <i data-lucide="check" aria-hidden="true"></i>
+          </button>
+        </div>
+        <label class="qc-slider">פונט
+          <input type="range" min="18" max="48" value="28" aria-label="גודל פונט">
+        </label>
+        <div class="qc-colors">
+          <span>צבעים</span>
+          <button type="button" class="qc-swatch" style="background:#ffffff" aria-label="צבע טקסט לבן"></button>
+          <button type="button" class="qc-swatch is-on" style="background:#000000" aria-label="קו מתאר שחור"></button>
+          <button type="button" class="qc-swatch" style="background:#1976d2" aria-label="מילה אקטיבית כחולה"></button>
+        </div>
+        <label class="qc-slider">מיקום
+          <input type="range" min="0" max="100" value="12" aria-label="מיקום אנכי">
+        </label>
+        <label class="qc-slider">שוליים
+          <input type="range" min="0" max="20" value="4" aria-label="שוליים">
+        </label>
+        <label class="qc-switch">מילה אקטיבית
+          <input type="checkbox" checked>
+        </label>
+      </div>
+    </div>
+
+    <nav class="qc-dock" aria-label="מצבי עריכה">
+      <button type="button" data-mode="timing">
+        <i data-lucide="clock" aria-hidden="true"></i>
+        תזמון
+      </button>
+      <button type="button" data-mode="style">
+        <i data-lucide="settings" aria-hidden="true"></i>
+        עיצוב
+      </button>
+      <button type="button" data-mode="edit">
+        <i data-lucide="pencil" aria-hidden="true"></i>
+        עריכה
+      </button>
+      <button type="button" data-open="more">
+        <i data-lucide="plus" aria-hidden="true"></i>
+        עוד
+      </button>
+    </nav>
+
+    <div class="qc-more" data-sheet="more" hidden>
+      <div class="qc-sheet">
+        <div class="qc-sheet-h">
+          <p>עוד פעולות</p>
+          <button type="button" class="qc-iconbtn" data-close="more" aria-label="סגירה">
+            <i data-lucide="x" aria-hidden="true"></i>
+          </button>
+        </div>
+        <button type="button" class="qc-row"><i data-lucide="download" aria-hidden="true"></i> הורד קובץ כתוביות</button>
+        <button type="button" class="qc-row"><i data-lucide="image" aria-hidden="true"></i> הורד סרטון עם כתוביות</button>
+        <button type="button" class="qc-row"><i data-lucide="plus" aria-hidden="true"></i> הוסף כתובית</button>
+        <button type="button" class="qc-row"><i data-lucide="star" aria-hidden="true"></i> עריכה עם AI</button>
+        <button type="button" class="qc-row"><i data-lucide="settings" aria-hidden="true"></i> הגדרות כתוביות</button>
+      </div>
+    </div>
+  </div>
+</div>
+<style>
+  #captions-mobile-white {
+    color-scheme: light;
+    font-family: Rubik, Assistant, "Segoe UI", sans-serif;
+    color: #1f2933;
+  }
+  #captions-mobile-white .qc-phone {
+    position: relative;
+    width: min(390px, 100%);
+    margin-inline: auto;
+    background: #ffffff;
+    border: 1px solid #e0e4ea;
+    border-radius: 28px;
+    overflow: hidden;
+  }
+  #captions-mobile-white .qc-statusbar,
+  #captions-mobile-white .qc-top,
+  #captions-mobile-white .qc-segbar,
+  #captions-mobile-white .qc-sheet-h,
+  #captions-mobile-white .qc-dock,
+  #captions-mobile-white .qc-transport-row,
+  #captions-mobile-white .qc-edit-actions,
+  #captions-mobile-white .qc-colors {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  #captions-mobile-white .qc-statusbar {
+    justify-content: space-between;
+    padding: 8px 18px 0;
+    font-size: 12px;
+    color: #5b6776;
+    background: #ffffff;
+  }
+  #captions-mobile-white .qc-top {
+    justify-content: space-between;
+    padding: 8px 10px 10px;
+    background: #ffffff;
+    border-bottom: 1px solid #e8edf3;
+  }
+  #captions-mobile-white .qc-title {
+    margin: 0;
+    font-size: 15px;
+    font-weight: 500;
+  }
+  #captions-mobile-white .qc-iconbtn,
+  #captions-mobile-white .qc-textbtn,
+  #captions-mobile-white .qc-dock button,
+  #captions-mobile-white .qc-segbar button,
+  #captions-mobile-white .qc-transport-row button,
+  #captions-mobile-white .qc-edit-actions button,
+  #captions-mobile-white .qc-row,
+  #captions-mobile-white .qc-words button,
+  #captions-mobile-white .qc-play {
+    appearance: none;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+  }
+  #captions-mobile-white .qc-iconbtn,
+  #captions-mobile-white .qc-play,
+  #captions-mobile-white .qc-segbar button,
+  #captions-mobile-white .qc-transport-row button {
+    width: 40px;
+    height: 40px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 16px;
+    background: #ffffff;
+  }
+  #captions-mobile-white .qc-textbtn,
+  #captions-mobile-white .qc-primary {
+    color: #1976d2;
+    font-weight: 500;
+    padding: 8px 10px;
+  }
+  #captions-mobile-white .qc-stage {
+    padding: 12px;
+    background: #ffffff;
+  }
+  #captions-mobile-white .qc-video {
+    position: relative;
+    margin-inline: auto;
+    background: #1a2330;
+    border-radius: 16px;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    overflow: hidden;
+  }
+  #captions-mobile-white .qc-video-full {
+    width: min(220px, 64%);
+    aspect-ratio: 9 / 16;
+  }
+  #captions-mobile-white .qc-video-mid {
+    width: min(180px, 56%);
+    aspect-ratio: 9 / 16;
+    max-height: 220px;
+  }
+  #captions-mobile-white .qc-video-mini {
+    width: min(120px, 38%);
+    aspect-ratio: 9 / 16;
+    max-height: 140px;
+  }
+  #captions-mobile-white .qc-caption {
+    position: relative;
+    z-index: 1;
+    margin: 0 10px 28px;
+    color: #ffffff;
+    text-align: center;
+    font-weight: 700;
+    font-size: 15px;
+    line-height: 1.35;
+    text-shadow: 0 0 4px #000, 0 0 2px #000;
+  }
+  #captions-mobile-white .qc-caption mark {
+    color: #90caf9;
+    background: transparent;
+  }
+  #captions-mobile-white .qc-play {
+    position: absolute;
+    inset: auto 50% 8px auto;
+    translate: 50% 0;
+    background: #1976d2;
+    color: #ffffff;
+  }
+  #captions-mobile-white .qc-transport {
+    margin-top: 10px;
+    text-align: center;
+    font-size: 12px;
+    color: #5b6776;
+  }
+  #captions-mobile-white .qc-transport-row {
+    justify-content: center;
+    margin-top: 8px;
+  }
+  #captions-mobile-white .qc-transport-row button {
+    border: 1px solid #e0e4ea;
+  }
+  #captions-mobile-white .qc-laser {
+    position: relative;
+    height: 10px;
+    margin: 10px 4px 0;
+    background: #e8edf3;
+    border-radius: 999px;
+  }
+  #captions-mobile-white .qc-laser b {
+    position: absolute;
+    top: 2px;
+    height: 6px;
+    border-radius: 999px;
+    background: #9b5700;
+  }
+  #captions-mobile-white .qc-laser b.is-on {
+    background: #1976d2;
+  }
+  #captions-mobile-white .qc-laser i {
+    position: absolute;
+    top: -3px;
+    width: 2px;
+    height: 16px;
+    background: #1976d2;
+    border-radius: 2px;
+  }
+  #captions-mobile-white .qc-segbar {
+    justify-content: space-between;
+    margin: 8px 0 4px;
+  }
+  #captions-mobile-white .qc-segbar p,
+  #captions-mobile-white .qc-times,
+  #captions-mobile-white .qc-sheet-h p,
+  #captions-mobile-white .qc-field span {
+    margin: 0;
+    font-size: 13px;
+    color: #5b6776;
+  }
+  #captions-mobile-white .qc-field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin: 8px 0;
+  }
+  #captions-mobile-white .qc-field textarea {
+    width: 100%;
+    box-sizing: border-box;
+    border: 1px solid #1976d2;
+    border-radius: 16px;
+    padding: 12px;
+    font: inherit;
+    font-size: 18px;
+    line-height: 1.45;
+    resize: none;
+    background: #ffffff;
+    color: #1f2933;
+  }
+  #captions-mobile-white .qc-times {
+    display: flex;
+    justify-content: space-between;
+  }
+  #captions-mobile-white .qc-words {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin: 10px 0;
+  }
+  #captions-mobile-white .qc-words button {
+    padding: 6px 10px;
+    border-radius: 999px;
+    background: #9b5700;
+    color: #ffffff;
+    font-size: 13px;
+  }
+  #captions-mobile-white .qc-words button.is-on {
+    background: #1976d2;
+    color: #ffffff;
+  }
+  #captions-mobile-white .qc-edit-actions {
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+  #captions-mobile-white .qc-edit-actions button {
+    padding: 8px 12px;
+    border-radius: 16px;
+    background: #ffffff;
+    border: 1px solid #e0e4ea;
+    color: #1976d2;
+  }
+  #captions-mobile-white .qc-edit-actions .qc-primary {
+    background: #1976d2;
+    color: #ffffff;
+    border-color: #1976d2;
+  }
+  #captions-mobile-white .qc-timeline {
+    display: flex;
+    gap: 8px;
+    overflow: hidden;
+    margin-top: 12px;
+    padding: 10px;
+    background: #111827;
+    border-radius: 16px;
+  }
+  #captions-mobile-white .qc-clip {
+    flex: 0 0 58%;
+    background: #1976d2;
+    color: #ffffff;
+    border-radius: 8px;
+    padding: 18px 10px;
+    font-size: 13px;
+    white-space: nowrap;
+    overflow: hidden;
+  }
+  #captions-mobile-white .qc-clip.is-dim {
+    flex-basis: 42%;
+    background: #9b5700;
+    color: #ffffff;
+  }
+  #captions-mobile-white .qc-sheet {
+    margin-top: 8px;
+    padding: 12px;
+    background: #ffffff;
+    border: 1px solid #e0e4ea;
+    border-radius: 16px;
+  }
+  #captions-mobile-white .qc-sheet-h {
+    justify-content: space-between;
+    margin-bottom: 8px;
+  }
+  #captions-mobile-white .qc-sheet-h p {
+    font-size: 15px;
+    font-weight: 500;
+    color: #1f2933;
+  }
+  #captions-mobile-white .qc-slider,
+  #captions-mobile-white .qc-switch {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin: 10px 0;
+    font-size: 14px;
+  }
+  #captions-mobile-white .qc-slider input {
+    width: 55%;
+  }
+  #captions-mobile-white .qc-swatch {
+    width: 28px;
+    height: 28px;
+    border-radius: 999px;
+    border: 2px solid #e0e4ea;
+    padding: 0;
+  }
+  #captions-mobile-white .qc-swatch.is-on {
+    border-color: #1976d2;
+  }
+  #captions-mobile-white .qc-dock {
+    justify-content: space-around;
+    padding: 8px 6px 14px;
+    background: #ffffff;
+    border-top: 1px solid #e8edf3;
+  }
+  #captions-mobile-white .qc-dock button {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    font-size: 12px;
+    color: #5b6776;
+    min-height: 48px;
+    padding: 6px 0;
+    background: #ffffff;
+  }
+  #captions-mobile-white .qc-dock button.is-on {
+    color: #1976d2;
+  }
+  #captions-mobile-white .qc-more {
+    position: absolute;
+    inset: auto 0 0 0;
+    padding: 12px;
+    background: rgb(255 255 255 / 0.72);
+  }
+  #captions-mobile-white .qc-more .qc-sheet {
+    margin: 0;
+    background: #ffffff;
+  }
+  #captions-mobile-white .qc-row {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 8px;
+    text-align: start;
+    border-radius: 12px;
+    background: #ffffff;
+    color: #1f2933;
+  }
+  #captions-mobile-white .qc-phone i[data-lucide] {
+    width: 18px;
+    height: 18px;
+  }
+  @media (max-width: 360px) {
+    #captions-mobile-white .qc-video-full { width: min(200px, 70%); }
+  }
+</style>
+<script>
+(() => {
+  const root = document.getElementById("captions-mobile-white");
+  if (!root) return;
+  const stages = root.querySelectorAll(".qc-stage");
+  const dockBtns = root.querySelectorAll(".qc-dock [data-mode]");
+  const more = root.querySelector("[data-sheet='more']");
+  const dock = root.querySelector(".qc-dock");
+
+  const setMode = (mode) => {
+    stages.forEach((stage) => {
+      stage.hidden = stage.getAttribute("data-screen") !== mode;
+    });
+    dockBtns.forEach((btn) => {
+      btn.classList.toggle("is-on", btn.getAttribute("data-mode") === mode && mode !== "watch");
+    });
+    if (more) more.hidden = true;
+    if (dock) dock.hidden = mode === "style";
+  };
+
+  root.querySelectorAll("[data-mode]").forEach((btn) => {
+    btn.addEventListener("click", () => setMode(btn.getAttribute("data-mode")));
+  });
+  root.querySelectorAll("[data-open='more']").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      if (!more) return;
+      more.hidden = false;
+    });
+  });
+  root.querySelectorAll("[data-close='more']").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      if (more) more.hidden = true;
+    });
+  });
+})();
+</script>

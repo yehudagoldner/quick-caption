@@ -1,11 +1,12 @@
 ﻿import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { GoogleAuthProvider, onAuthStateChanged, signInWithPopup, signOut } from "firebase/auth";
 import type { User } from "firebase/auth";
-import { auth } from "../firebase";
+import { createDevAuthUser, isDevAuthBypass } from "../devAuth";
 
 type AuthContextValue = {
   user: User | null;
   loading: boolean;
+  isDevBypass: boolean;
   signIn: () => Promise<void>;
   signOut: () => Promise<void>;
 };
@@ -34,24 +35,45 @@ async function syncUser(user: User) {
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [user, setUser] = useState<User | null>(isDevAuthBypass ? createDevAuthUser() : null);
+  const [loading, setLoading] = useState(!isDevAuthBypass);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
-      setUser(firebaseUser);
+    if (isDevAuthBypass) {
+      setUser(createDevAuthUser());
       setLoading(false);
-      if (firebaseUser) {
-        void syncUser(firebaseUser);
-      }
+      return;
+    }
+
+    let cancelled = false;
+    let unsubscribe = () => {};
+
+    void import("../firebase").then(({ auth }) => {
+      if (cancelled) return;
+      unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
+        setUser(firebaseUser);
+        setLoading(false);
+        if (firebaseUser) {
+          void syncUser(firebaseUser);
+        }
+      });
     });
 
-    return () => unsubscribe();
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
   }, []);
 
   const handleSignIn = async () => {
+    if (isDevAuthBypass) {
+      setUser(createDevAuthUser());
+      return;
+    }
+
     setLoading(true);
     try {
+      const { auth } = await import("../firebase");
       const provider = new GoogleAuthProvider();
       provider.setCustomParameters({ prompt: "select_account" });
       const credential = await signInWithPopup(auth, provider);
@@ -62,11 +84,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const handleSignOut = async () => {
+    if (isDevAuthBypass) {
+      setUser(null);
+      return;
+    }
+    const { auth } = await import("../firebase");
     await signOut(auth);
   };
 
   const value = useMemo<AuthContextValue>(
-    () => ({ user, loading, signIn: handleSignIn, signOut: handleSignOut }),
+    () => ({ user, loading, isDevBypass: isDevAuthBypass, signIn: handleSignIn, signOut: handleSignOut }),
     [user, loading],
   );
 
@@ -80,4 +107,3 @@ export function useAuth() {
   }
   return context;
 }
-

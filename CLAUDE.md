@@ -90,3 +90,11 @@ Frontend environment (optional):
 - **Socket.io**: Backend emits to specific socket ID (`io.to(socketId).emit(...)`) received from client in request body
 - **File Cleanup**: All temp files (uploads, converted audio, burned videos) are cleaned up in `finally` blocks or response callbacks
 - **Error Handling**: Transcription errors in secondary stages (high-accuracy, correction) are logged as warnings but don't fail the request
+
+## Secrets
+
+Never read or print secret values from `.env`, `.env.*`, or the environment — not even
+masked, truncated, or hashed. Diagnose credential problems with derived facts only
+(is it set, length, which scope it came from, equality booleans). Run
+`node scripts/env-doctor.mjs`, which is written to never emit a value. See
+`.cursor/rules/secrets-handling.mdc`.

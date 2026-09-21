@@ -1,4 +1,5 @@
 .env
+.env*.local
 node_modules/
 *.mp3
 *.mp4
@@ -7,4 +8,8 @@ node_modules/
 package-lock.json
 *.vtt
 dist/
-package-lock.json
+tmp/
+repros/
+*.webm
+playwright-report/
+test-results/
