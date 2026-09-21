@@ -1,5 +1,5 @@
 import type { ChangeEvent } from "react";
-import { useCallback } from "react";
+import { useCallback, useRef } from "react";
 import type { ApiResponse, Segment, Word } from "../types";
 import type { BurnOptions } from "../components/VideoToolbar";
 import { findSegment } from "../utils/transcriptionUtils";
@@ -163,10 +163,28 @@ export function useTranscriptionHandlers({
     setMarginPercent(Array.isArray(value) ? value[0] : value);
   }, [setMarginPercent]);
 
-  const handleBurnVideo = useCallback(async () => {
+  const burnedSignature = useRef<string | null>(null);
+  const burnSignature = () => JSON.stringify({
+    segments: editableSegments.map(segment => [segment.id, segment.start, segment.end, segment.text]),
+    words: editableWords.map(word => [word.word, word.start, word.end, word.segmentId]),
+    activeWordEnabled,
+    direction: preferences.direction,
+    fontSize,
+    fontColor,
+    outlineColor,
+    offsetYPercent,
+    marginPercent,
+    width: videoDimensions?.width ?? null,
+    height: videoDimensions?.height ?? null,
+  });
+  const handleBurnVideo = useCallback(async (options?: { download?: boolean; reuse?: boolean }) => {
     if (!response.subtitle?.content) {
       setBurnError("לא נמצאו כתוביות מתאימות לצריבה.");
-      return;
+      return null;
+    }
+    const signature = burnSignature();
+    if (options?.reuse && burnedVideo && burnedSignature.current === signature) {
+      return burnedVideo;
     }
 
     setIsBurning(true);
@@ -192,15 +210,20 @@ export function useTranscriptionHandlers({
       const url = URL.createObjectURL(result.blob);
       const baseName = downloadName.replace(/\.[^.]+$/, "") || "video";
       const filename = result.filename ?? `${baseName}-burned.mp4`;
-      setBurnedVideo({ url, name: filename });
+      const next = { url, name: filename };
+      burnedSignature.current = signature;
+      setBurnedVideo(next);
 
-      // Auto-download the burned video
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = filename;
-      link.click();
+      if (options?.download !== false) {
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = filename;
+        link.click();
+      }
+      return next;
     } catch (error) {
       setBurnError(error instanceof Error ? error.message : "אירעה שגיאה בזמן יצירת הווידאו.");
+      return null;
     } finally {
       setIsBurning(false);
     }

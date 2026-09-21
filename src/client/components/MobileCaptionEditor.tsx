@@ -98,7 +98,7 @@ export type MobileCaptionEditorProps = {
   onOutlineColorChange: (event: ChangeEvent<HTMLInputElement>) => void;
   onOffsetYChange: (event: Event, value: number | number[]) => void;
   onMarginChange: (event: Event, value: number | number[]) => void;
-  onBurnVideo: () => void;
+  onBurnVideo: (options?: { download?: boolean; reuse?: boolean }) => Promise<{ url: string; name: string } | null | void>;
   onAddSubtitle: (text: string, startTime: number, endTime: number) => void;
   onSplitSegment: (segmentId: Segment["id"], splitTime: number, draft?: CaptionDraft) => Promise<void>;
   onUndoSplit: () => Promise<void>;
@@ -166,6 +166,8 @@ export function MobileCaptionEditor({
   const { preferences } = useEditorPreferences();
   const [mode, setMode] = useState<MobileMode>("watch");
   const [moreOpen, setMoreOpen] = useState(false);
+  const [sharing, setSharing] = useState(false);
+  const [readyToShare, setReadyToShare] = useState<{ url: string; name: string } | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
   const [aiOpen, setAiOpen] = useState(false);
@@ -364,20 +366,49 @@ export function MobileCaptionEditor({
   );
 
   const canExport = Boolean(downloadUrl) && !hasTimelineDrafts;
+  const canShareVideo = canBurn && Boolean(mediaUrl) && !hasTimelineDrafts && !isBurning && !sharing;
 
-  const shareCaptions = async () => {
-    if (!downloadUrl || hasTimelineDrafts) return;
+  const shareBurnedFile = async (file: { url: string; name: string }) => {
+    const blob = await fetch(file.url).then(result => result.blob());
+    const name = file.name || "video-with-captions.mp4";
+    const video = new File([blob], name, { type: name.endsWith(".mp4") ? "video/mp4" : blob.type || "video/mp4" });
+    if (navigator.share && navigator.canShare?.({ files: [video] })) {
+      await navigator.share({ files: [video], title: "סרטון עם כתוביות" });
+      return true;
+    }
+    return false;
+  };
+
+  const shareVideo = async () => {
+    if (!canBurn || !mediaUrl || hasTimelineDrafts || isBurning || sharing) return;
+    setSharing(true);
     try {
-      const result = await fetch(downloadUrl);
-      const blob = await result.blob();
-      const file = new File([blob], downloadName || "subtitles.srt", { type: blob.type || "text/plain" });
-      if (navigator.share && navigator.canShare?.({ files: [file] })) {
-        await navigator.share({ files: [file], title: downloadName || "כתוביות" });
+      const burned = await onBurnVideo({ download: false, reuse: true });
+      if (!burned) return;
+      try {
+        const shared = await shareBurnedFile(burned);
+        if (!shared) setReadyToShare(burned);
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        setReadyToShare(burned);
+      }
+    } finally {
+      setSharing(false);
+    }
+  };
+
+  const shareReadyVideo = async () => {
+    if (!readyToShare) return;
+    try {
+      const shared = await shareBurnedFile(readyToShare);
+      if (shared) {
+        setReadyToShare(null);
         return;
       }
-      if (navigator.share) {
-        await navigator.share({ title: downloadName || "כתוביות" });
-      }
+      const link = document.createElement("a");
+      link.href = readyToShare.url;
+      link.download = readyToShare.name;
+      link.click();
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") return;
     }
@@ -399,10 +430,12 @@ export function MobileCaptionEditor({
       zIndex: 2,
       pb: "env(safe-area-inset-bottom, 0px)",
     }}>
-      <Stack direction="row" alignItems="center" sx={{ flexShrink: 0, px: 0.5, py: 0.25, minHeight: 44, borderBottom: 1, borderColor: "#e8edf3", bgcolor: "#ffffff" }}>
+      <Stack direction="row" alignItems="center" sx={{ flexShrink: 0, px: 0.5, py: 0.25, minHeight: 56, borderBottom: 1, borderColor: "#e8edf3", bgcolor: "#ffffff" }}>
         <IconButton size="small" aria-label="חזרה לצפייה" onClick={() => setMode("watch")}><ChevronRightRounded /></IconButton>
         <Typography sx={{ flex: 1, fontWeight: 500, fontSize: 15 }}>עורך כתוביות</Typography>
-        <IconButton size="small" aria-label="שיתוף" disabled={!canExport} onClick={() => { void shareCaptions(); }}><ShareRounded /></IconButton>
+        <IconButton aria-label="שיתוף סרטון עם כתוביות" disabled={!canShareVideo} onClick={() => { void shareVideo(); }} sx={{ width: 48, height: 48, bgcolor: "primary.main", color: "#fff", "&:hover": { bgcolor: "primary.dark" }, "&.Mui-disabled": { bgcolor: "action.disabledBackground", color: "action.disabled" } }}>
+          {isBurning || sharing ? <CircularProgress size={26} sx={{ color: "inherit" }} /> : <ShareRounded sx={{ fontSize: 30 }} />}
+        </IconButton>
         <IconButton size="small" aria-label="הורדה" disabled={!canExport} {...(canExport ? { component: "a" as const, href: downloadUrl ?? undefined, download: downloadName } : {})}><DownloadRounded /></IconButton>
         <IconButton size="small" aria-label="תפריט" onClick={() => setMoreOpen(true)}><MenuRounded /></IconButton>
       </Stack>
@@ -658,6 +691,10 @@ export function MobileCaptionEditor({
           <IconButton aria-label="סגירה" onClick={() => setMoreOpen(false)}><CloseRounded /></IconButton>
         </Stack>
         <List>
+          <ListItemButton disabled={!canShareVideo} onClick={() => { setMoreOpen(false); void shareVideo(); }}>
+            <ListItemIcon><ShareRounded /></ListItemIcon>
+            <ListItemText primary="שתף סרטון עם כתוביות" secondary={canBurn ? "וואטסאפ, מסנג'ר, הודעות ועוד" : "צריבה זמינה לקובץ וידאו בלבד"} />
+          </ListItemButton>
           <ListItemButton component="a" href={downloadUrl ?? undefined} download={downloadName} disabled={!downloadUrl || hasTimelineDrafts} onClick={() => setMoreOpen(false)}>
             <ListItemIcon><SubtitlesRounded /></ListItemIcon>
             <ListItemText primary="הורד קובץ כתוביות" />
@@ -694,6 +731,17 @@ export function MobileCaptionEditor({
           )}
         </List>
       </Drawer>
+
+      <Dialog open={Boolean(readyToShare)} onClose={() => setReadyToShare(null)} fullWidth>
+        <DialogTitle>הסרטון מוכן לשיתוף</DialogTitle>
+        <DialogContent>
+          <Typography>אפשר לשלוח אותו לוואטסאפ, למסנג'ר, להודעות ולשאר האפליקציות בטלפון.</Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setReadyToShare(null)}>סגור</Button>
+          <Button variant="contained" size="large" startIcon={<ShareRounded />} onClick={() => void shareReadyVideo()}>שתף</Button>
+        </DialogActions>
+      </Dialog>
 
       <Dialog open={settingsOpen} onClose={() => setSettingsOpen(false)} fullWidth>
         <DialogTitle>הגדרות כתוביות</DialogTitle>
