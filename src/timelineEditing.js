@@ -3,6 +3,59 @@ export function timelineZoomForWindow(duration, seconds = 30) {
   return 25 * Math.log2(Math.max(1, duration / seconds));
 }
 
+// Phone timing: keep a typical caption wide enough to grab, and never open the whole recording.
+export function mobileTimelineWindowSeconds(segments, viewportWidth, duration) {
+  const width = Math.max(1, Number(viewportWidth) || 1);
+  const total = Math.max(0.5, Number.isFinite(duration) ? duration : 0.5);
+  const durations = (segments ?? []).map(segment => segment.end - segment.start).filter(length => length >= 0.15).sort((a, b) => a - b);
+  const typical = durations.length ? durations[Math.floor((durations.length - 1) / 2)] : 2;
+  const fitted = width * typical / 160;
+  return Math.min(total, Math.min(8, Math.max(3, fitted)));
+}
+
+function snapFrame(seconds, fps) {
+  const rate = fps > 0 ? fps : 30;
+  return Math.round(seconds * rate) / rate;
+}
+
+// Shift or trim one caption without touching a neighbour or a timed word.
+export function placeCaption(segment, segments, words, duration, deltaSeconds, mode, fps = 30) {
+  const ordered = [...segments].sort((a, b) => a.start - b.start || a.end - b.end);
+  const index = ordered.findIndex(item => item.id === segment.id);
+  const prevEnd = index > 0 ? ordered[index - 1].end : 0;
+  const nextStart = index >= 0 && index < ordered.length - 1 ? ordered[index + 1].start : duration;
+  const limit = Math.min(duration, nextStart);
+  const minDur = 1 / (fps > 0 ? fps : 30);
+  const own = wordsForSegment(words ?? [], segment);
+  const wordStart = own.length ? Math.min(...own.map(word => word.start)) : null;
+  const wordEnd = own.length ? Math.max(...own.map(word => word.end)) : null;
+  if (mode === "move") {
+    const length = segment.end - segment.start;
+    let start = snapFrame(segment.start + deltaSeconds, fps);
+    let end = start + length;
+    if (start < prevEnd) { end += prevEnd - start; start = prevEnd; }
+    if (end > limit) { start -= end - limit; end = limit; }
+    if (start < prevEnd - .000001 || end > limit + .000001 || end - start < length - .000001) {
+      return { start: segment.start, end: segment.end };
+    }
+    return { start, end };
+  }
+  if (mode === "start") {
+    let start = snapFrame(segment.start + deltaSeconds, fps);
+    start = Math.max(prevEnd, start);
+    start = Math.min(start, segment.end - minDur);
+    if (wordStart != null) start = Math.min(start, wordStart);
+    if (!(start < segment.end)) return { start: segment.start, end: segment.end };
+    return { start, end: segment.end };
+  }
+  let end = snapFrame(segment.end + deltaSeconds, fps);
+  end = Math.min(limit, end);
+  end = Math.max(end, segment.start + minDur);
+  if (wordEnd != null) end = Math.max(end, wordEnd);
+  if (!(end > segment.start) || end > limit + .000001) return { start: segment.start, end: segment.end };
+  return { start: segment.start, end };
+}
+
 // Reveal the playhead without moving the page vertically or changing zoom.
 export function timelineScrollForTime(time, pixelsPerSecond, width, scrollLeft) {
   const pixel = 20 + time * pixelsPerSecond;

@@ -51,7 +51,8 @@ import { formatTimecode } from "../utils/timecode";
 import { useEditorPreferences } from "../contexts/EditorPreferences";
 import { useActiveWord } from "../hooks/useActiveWord";
 import { VideoPlayer } from "./VideoPlayer";
-import { SubtitleTimeline, type CaptionDraft, type SubtitleTimelineProps } from "./SubtitleTimeline";
+import { type CaptionDraft, type SubtitleTimelineProps } from "./SubtitleTimeline";
+import { MobileTimingTimeline } from "./MobileTimingTimeline";
 
 type SaveState = "idle" | "saving" | "success" | "error";
 type MobileMode = "watch" | "edit" | "timing" | "style";
@@ -613,28 +614,29 @@ export function MobileCaptionEditor({
         )}
 
         {mode === "timing" && (
-          <Stack spacing={1} sx={{ flex: 1, minHeight: 0, height: "100%" }}>
-            {playerSlot("compact")}
-            <Box sx={{ flex: 1, minHeight: 0, overflow: "auto" }}>
-              <SubtitleTimeline
-                layout="timing"
-                activeWordEnabled={activeWordEnabled}
-                {...timelineEditing}
-                mediaUrl={mediaUrl}
-                busy={saveState === "saving"}
-                segments={editableSegments}
-                disabled={!isEditable}
-                duration={videoDuration}
-                currentTime={currentTime}
-                onRequestTimeChange={onTimelineTimeChange}
-                onSegmentsChange={onTimelineSegmentsChange}
-                selectedSegmentId={selectedSegmentId}
-                onSegmentSelect={onSegmentSelect}
-                onSplitSegment={onSplitSegment}
-                isPlaying={isPlaying}
-                onPlayPause={onPlayPause}
-                words={words}
-              />
+          <Stack spacing={0.5} sx={{ flex: 1, minHeight: 0, height: "100%" }}>
+            <Box sx={{ flex: "7 1 0", minWidth: 0, minHeight: 0, width: "100%", display: "flex", overflow: "hidden" }}>
+              {player}
+            </Box>
+            <Box sx={{ flex: "3 1 0", minWidth: 0, minHeight: 0, width: "100%", display: "flex", overflow: "hidden" }}>
+            <MobileTimingTimeline
+              mediaUrl={mediaUrl}
+              segments={editableSegments}
+              words={words}
+              disabled={!isEditable}
+              duration={videoDuration}
+              currentTime={currentTime}
+              onRequestTimeChange={onTimelineTimeChange}
+              onSegmentsChange={onTimelineSegmentsChange}
+              selectedSegmentId={selectedSegmentId}
+              onSegmentSelect={onSegmentSelect}
+              isPlaying={isPlaying}
+              onPlayPause={onPlayPause}
+              onUndo={timelineEditing.onUndo}
+              onRedo={timelineEditing.onRedo}
+              canUndo={timelineEditing.canUndo}
+              canRedo={timelineEditing.canRedo}
+            />
             </Box>
           </Stack>
         )}

@@ -1,5 +1,7 @@
 import type { Segment, Word } from "./client/types";
 export function timelineZoomForWindow(duration: number, seconds?: number): number;
+export function mobileTimelineWindowSeconds(segments: Segment[], viewportWidth: number, duration: number): number;
+export function placeCaption(segment: Segment, segments: Segment[], words: Word[], duration: number, deltaSeconds: number, mode: "move" | "start" | "end", fps?: number): { start: number; end: number };
 export function timelineScrollForTime(time: number, pixelsPerSecond: number, width: number, scrollLeft: number): number;
 export type EditSnapshot = { segments: Segment[]; words: Word[] };
 export function validateCaptionRange(segment: Segment, segments: Segment[], duration: number): string | null;

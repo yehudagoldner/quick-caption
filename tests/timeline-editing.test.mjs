@@ -1,11 +1,33 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { EditHistory, snapshot, retimeCaption, validateCaptionRange, validateWordRange, timelineZoomForWindow, timelineScrollForTime } from '../src/timelineEditing.js';
+import { EditHistory, snapshot, retimeCaption, validateCaptionRange, validateWordRange, timelineZoomForWindow, timelineScrollForTime, mobileTimelineWindowSeconds, placeCaption } from '../src/timelineEditing.js';
 test('automatic zoom fits 30 seconds, or the whole shorter recording', () => {
   for (const duration of [6, 30, 90, 3600, 14400]) {
     const zoom = timelineZoomForWindow(duration);
     assert.ok(Math.abs(duration / 2 ** (zoom / 25) - Math.min(30, duration)) < .000001);
   }
+});
+test('mobile timing opens an editable window instead of the whole recording', () => {
+  const segments = Array.from({ length: 30 }, (_, i) => ({ id: i + 1, start: i * 3, end: (i + 1) * 3, text: 'א' }));
+  const seconds = mobileTimelineWindowSeconds(segments, 360, 90);
+  assert.ok(seconds >= 3 && seconds <= 8);
+  assert.ok(seconds < 30);
+  const captionPx = 3 / seconds * 360;
+  assert.ok(captionPx >= 150 && captionPx <= 170);
+  assert.equal(mobileTimelineWindowSeconds([{ id: 1, start: 0, end: 2, text: 'א' }], 360, 2), 2);
+});
+test('placing a caption keeps neighbours and timed words', () => {
+  const segments = [a, b];
+  const moved = placeCaption(a, segments, words, 6, .5, 'move', 30);
+  assert.equal(moved.end - moved.start, a.end - a.start);
+  assert.ok(moved.end <= b.start);
+  const blocked = placeCaption(a, segments, words, 6, 5, 'move', 30);
+  assert.ok(blocked.end <= b.start + 1e-9);
+  assert.equal(blocked.end - blocked.start, a.end - a.start);
+  const intoWord = placeCaption(a, segments, words, 6, 1.2, 'start', 30);
+  assert.ok(intoWord.start <= words[0].start + 1e-6);
+  const endTrim = placeCaption(a, segments, words, 6, -.4, 'end', 30);
+  assert.ok(endTrim.end >= words[1].end - 1e-6);
 });
 test('seeking in either direction reveals the playhead without changing zoom', () => {
   const width = 940, pixelsPerSecond = 30;
