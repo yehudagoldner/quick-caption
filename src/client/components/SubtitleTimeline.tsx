@@ -49,6 +49,7 @@ export function SubtitleTimeline({ activeWordEnabled, segments, words = [], disa
   useEffect(() => { setZoom(null); scrollLeft.current = 0; timeline.current?.setScrollLeft(0); }, [mediaUrl]);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [autoSaving, setAutoSaving] = useState(false);
   const [drafts, setDrafts] = useState<Record<string, CaptionDraft>>({});
   const [expandedSegmentId, setExpandedSegmentId] = useState<Segment["id"] | null>(null);
   useEffect(() => { setExpandedSegmentId(null); }, [mediaUrl]);
@@ -109,17 +110,71 @@ export function SubtitleTimeline({ activeWordEnabled, segments, words = [], disa
   const clearDraft = (id: Segment["id"]) => setDrafts(previous => {
     const next = { ...previous }; delete next[String(id)]; return next;
   });
+  const draftsRef = useRef(drafts);
+  const segmentsRef = useRef(segments);
+  const wordsRef = useRef(words);
+  const saveSegmentRef = useRef(onSaveSegment);
+  const gateRef = useRef({ disabled: !!disabled, busy: !!busy });
+  const flight = useRef(false);
+  draftsRef.current = drafts;
+  segmentsRef.current = segments;
+  wordsRef.current = words;
+  saveSegmentRef.current = onSaveSegment;
+  gateRef.current = { disabled: !!disabled, busy: !!busy };
+  const draftSignature = (item: CaptionDraft) => JSON.stringify([
+    item.segment.text, item.segment.start, item.segment.end,
+    item.words.map(word => [word.word, word.start, word.end, word.segmentId]),
+  ]);
+  const commitDraft = async (item: CaptionDraft) => {
+    const source = segmentsRef.current.find(segment => segment.id === item.segment.id);
+    if (!source || !item.segment.text.trim()) return;
+    const stamp = draftSignature(item);
+    const persisted = draftSignature({ segment: source, words: wordsForSegment(wordsRef.current, source) });
+    if (persisted === stamp) {
+      setDrafts(previous => {
+        const current = previous[String(item.segment.id)];
+        if (!current || draftSignature(current) !== stamp) return previous;
+        const next = { ...previous }; delete next[String(item.segment.id)]; return next;
+      });
+      return;
+    }
+    await saveSegmentRef.current(item.segment, item.words);
+    setDrafts(previous => {
+      const current = previous[String(item.segment.id)];
+      if (!current || draftSignature(current) !== stamp) return previous;
+      const next = { ...previous }; delete next[String(item.segment.id)]; return next;
+    });
+  };
+  const commitRef = useRef(commitDraft);
+  commitRef.current = commitDraft;
+  useEffect(() => {
+    const tick = async () => {
+      if (flight.current || gateRef.current.disabled || gateRef.current.busy) return;
+      const pending = Object.values(draftsRef.current).filter(item => item.segment.text.trim());
+      if (!pending.length) return;
+      flight.current = true;
+      setAutoSaving(true);
+      try {
+        for (const item of pending) await commitRef.current(item);
+        setError(null);
+      } catch (e) { setError((e as Error).message || "השמירה נכשלה; הטיוטה נשמרה בעורך."); }
+      finally { flight.current = false; setAutoSaving(false); }
+    };
+    const timer = window.setInterval(() => { void tick(); }, 3000);
+    return () => window.clearInterval(timer);
+  }, [mediaUrl]);
   const save = async (split = false) => {
-    if (!draft || locked || !draft.segment.text.trim()) return false;
+    if (!draft || locked || flight.current || !draft.segment.text.trim()) return false;
+    flight.current = true;
     setSaving(true); setError(null);
     try {
       if (split) await onSplitSegment(draft.segment.id, time, draft);
-      else await onSaveSegment(draft.segment, draft.words);
-      clearDraft(draft.segment.id);
+      else await commitDraft(draft);
+      if (split) clearDraft(draft.segment.id);
       if (split) onSegmentSelect(null);
       return true;
     } catch (e) { setError((e as Error).message || "השמירה נכשלה; הטיוטה נשמרה בעורך."); return false; }
-    finally { setSaving(false); }
+    finally { flight.current = false; setSaving(false); }
   };
   useEffect(() => {
     const keys = (event: KeyboardEvent) => {
@@ -145,7 +200,7 @@ export function SubtitleTimeline({ activeWordEnabled, segments, words = [], disa
       <Button startIcon={<RedoRounded />} onClick={onRedo} disabled={!canRedo || locked || dirty}>ביצוע חוזר</Button>
     </Stack>
     </>}
-    {dirty && <Alert severity="info">יש טיוטות שלא נשמרו. אפשר לעבור בין מקטעים ללא אובדן השינויים; שמרו או בטלו את הטיוטות לפני יציאה, ייצוא או ביטול פעולה.
+    {dirty && <Alert severity="info">{autoSaving ? "שומר את השינוי…" : "השינוי יישמר אוטומטית תוך כמה שניות."} אפשר לעבור בין מקטעים בלי לאבד אותו.
       <Stack direction="row" useFlexGap flexWrap="wrap" gap={1} sx={{ mt: 1 }}>{Object.values(drafts).map(d => <Chip key={d.segment.id} label={`טיוטה: ${d.segment.text.slice(0, 22)}`} onClick={() => onSegmentSelect(d.segment.id)} />)}</Stack>
     </Alert>}
     {error && !expanded && <Alert severity="warning" onClose={() => setError(null)}>{error}</Alert>}
@@ -235,7 +290,7 @@ export function SubtitleTimeline({ activeWordEnabled, segments, words = [], disa
             <Tooltip title="פצל בגבול המילה הקרוב לסמן"><span><IconButton size="small" aria-label="פצל" disabled={locked || !canSplit} onClick={() => save(true)}><ContentCutRounded /></IconButton></span></Tooltip>
             <Tooltip title="ביטול טיוטת המקטע"><span><IconButton size="small" aria-label="ביטול טיוטה" disabled={locked || !drafts[String(draft.segment.id)]} onClick={() => clearDraft(draft.segment.id)}><RestartAltRounded /></IconButton></span></Tooltip>
           </>}
-          toolbarPrimary={<Tooltip title={drafts[String(draft.segment.id)] ? "שמור שינויים • יש טיוטה" : "אין שינויים לשמירה"}><span><IconButton size="small" aria-label="שמור שינויים" color="primary"
+          toolbarPrimary={<Tooltip title={drafts[String(draft.segment.id)] ? "שמור עכשיו • נשמר גם אוטומטית" : "אין שינויים לשמירה"}><span><IconButton size="small" aria-label="שמור שינויים" color="primary"
             sx={{ bgcolor: drafts[String(draft.segment.id)] ? "primary.main" : undefined, color: drafts[String(draft.segment.id)] ? "primary.contrastText" : undefined, "&:hover": { bgcolor: "primary.dark", color: "primary.contrastText" } }}
             disabled={locked || !drafts[String(draft.segment.id)] || !draft.segment.text.trim()} onClick={() => save()}><SaveOutlined /></IconButton></span></Tooltip>}
           toolbarClose={<Tooltip title="סגור עורך — הטיוטה נשמרת עד לשמירה או ביטול"><span><IconButton size="small" aria-label="סגור עורך" onClick={() => onSegmentSelect(null)} disabled={saving}><CloseRounded /></IconButton></span></Tooltip>}
@@ -248,7 +303,7 @@ export function SubtitleTimeline({ activeWordEnabled, segments, words = [], disa
         {draft && <TextField autoFocus fullWidth multiline minRows={4} maxRows={10} label="טקסט הכתובית" value={draft.segment.text} disabled={locked}
           inputProps={{ dir: preferences.direction }} sx={{ mt: 1 }} onChange={e => changeText(e.target.value)}
           onKeyDown={async e => { if ((e.ctrlKey || e.metaKey) && e.key === "Enter") { e.preventDefault(); if (await save()) setExpandedSegmentId(null); } }}
-          helperText="הזמנים נקבעים בציר הראשי. חזרה לציר שומרת את הטיוטה; שמרו שינויים כדי להחיל אותה." />}
+          helperText="הזמנים נקבעים בציר הראשי. שינוי הטקסט נשמר אוטומטית תוך כמה שניות." />}
         {error && <Alert severity="error" sx={{ mt: 2 }}>{error}</Alert>}
       </DialogContent>
       <DialogActions>
