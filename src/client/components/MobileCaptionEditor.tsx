@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ChangeEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ChangeEvent, type ReactNode } from "react";
 import {
   Alert,
   Box,
@@ -170,6 +170,11 @@ export function MobileCaptionEditor({
   const [draftText, setDraftText] = useState("");
   const [saving, setSaving] = useState(false);
   const [chromeTop, setChromeTop] = useState(56);
+  const captionStripRef = useRef<HTMLDivElement | null>(null);
+  const captionCardRefs = useRef(new Map<string, HTMLButtonElement>());
+  const captionScrollTimer = useRef(0);
+  const captionScrollFromCode = useRef(false);
+  const captionScrollFromUser = useRef(false);
 
   const duration = videoDuration && Number.isFinite(videoDuration) ? videoDuration : Math.max(1, ...editableSegments.map(s => s.end), 1);
   const selectedIndex = editableSegments.findIndex(s => s.id === selectedSegmentId);
@@ -230,6 +235,41 @@ export function MobileCaptionEditor({
     }
   };
 
+  const focusedSegment = editableSegments.find(segment => currentTime >= segment.start && currentTime < segment.end)
+    ?? editableSegments.find(segment => segment.id === (selectedSegmentId ?? activeSegmentId))
+    ?? null;
+
+  useEffect(() => {
+    if (mode !== "watch" || !focusedSegment || captionScrollFromUser.current) return;
+    const card = captionCardRefs.current.get(String(focusedSegment.id));
+    if (!card) return;
+    captionScrollFromCode.current = true;
+    card.scrollIntoView({ inline: "center", block: "nearest", behavior: "smooth" });
+    const timer = window.setTimeout(() => { captionScrollFromCode.current = false; }, 700);
+    return () => window.clearTimeout(timer);
+  }, [mode, focusedSegment?.id]);
+
+  const chooseCaptionFromStrip = () => {
+    const strip = captionStripRef.current;
+    if (!strip || captionScrollFromCode.current) return;
+    const midpoint = strip.getBoundingClientRect().left + strip.getBoundingClientRect().width / 2;
+    let nearest: Segment | null = null;
+    let nearestDistance = Number.POSITIVE_INFINITY;
+    for (const segment of editableSegments) {
+      const card = captionCardRefs.current.get(String(segment.id));
+      if (!card) continue;
+      const rect = card.getBoundingClientRect();
+      const distance = Math.abs(rect.left + rect.width / 2 - midpoint);
+      if (distance < nearestDistance) {
+        nearestDistance = distance;
+        nearest = segment;
+      }
+    }
+    if (!nearest || nearest.id === focusedSegment?.id) return;
+    onSegmentSelect(nearest.id);
+    onTimelineTimeChange(nearest.start);
+  };
+
   const player = (
     <VideoPlayer
       fill
@@ -247,13 +287,13 @@ export function MobileCaptionEditor({
     />
   );
 
-  const playerSlot = (kind: "watch" | "compact") => (
+  const playerSlot = (kind: "watch" | "compact" | "edit") => (
     <Box sx={{
-      flex: kind === "watch" ? 1 : "0 0 auto",
-      minHeight: 0,
+      flex: kind === "compact" ? "0 0 auto" : 1,
+      minHeight: kind === "edit" ? 180 : 0,
       width: "100%",
-      height: kind === "watch" ? undefined : "min(22dvh, 148px)",
-      maxHeight: kind === "watch" ? "100%" : "min(22dvh, 148px)",
+      height: kind === "compact" ? "min(22dvh, 148px)" : undefined,
+      maxHeight: kind === "compact" ? "min(22dvh, 148px)" : "100%",
       display: "flex",
       overflow: "hidden",
     }}>
@@ -314,24 +354,101 @@ export function MobileCaptionEditor({
                 const rect = event.currentTarget.getBoundingClientRect();
                 onTimelineTimeChange(Math.max(0, Math.min(duration, ((event.clientX - rect.left) / rect.width) * duration)));
               }}
-              sx={{ flexShrink: 0, position: "relative", width: "100%", height: 10, bgcolor: "#e8edf3", borderRadius: 999, cursor: "pointer" }}
+              sx={{ flexShrink: 0, position: "relative", width: "100%", height: 28, cursor: "pointer", display: "flex", alignItems: "center" }}
             >
-              {editableSegments.map(segment => (
-                <Box key={String(segment.id)} sx={{
-                  position: "absolute", top: "2px", height: 6, borderRadius: 999,
-                  left: `${(segment.start / duration) * 100}%`,
-                  width: `${Math.max(0.8, ((segment.end - segment.start) / duration) * 100)}%`,
-                  bgcolor: segment.id === (selectedSegmentId ?? activeSegmentId) ? "primary.main" : "#9b5700",
-                }} />
-              ))}
-              <Box sx={{ position: "absolute", top: "-3px", width: "2px", height: 16, bgcolor: "primary.main", left: `${(currentTime / duration) * 100}%` }} />
+              <Box sx={{ position: "relative", width: "100%", height: 6, bgcolor: "#e8edf3", borderRadius: 999 }}>
+                <Box sx={{ position: "absolute", top: 0, bottom: 0, width: `${(currentTime / duration) * 100}%`, bgcolor: "primary.main", borderRadius: 999 }} />
+                <Box sx={{ position: "absolute", top: "50%", width: 14, height: 14, borderRadius: "50%", bgcolor: "primary.main", transform: "translate(-50%, -50%)", left: `${(currentTime / duration) * 100}%` }} />
+              </Box>
             </Box>
+            {editableSegments.length > 0 && (
+              <Box
+                ref={captionStripRef}
+                dir={preferences.direction}
+                aria-label="מקטעי כתוביות"
+                onScroll={() => {
+                  if (captionScrollFromCode.current) return;
+                  captionScrollFromUser.current = true;
+                  window.clearTimeout(captionScrollTimer.current);
+                  captionScrollTimer.current = window.setTimeout(() => {
+                    chooseCaptionFromStrip();
+                    captionScrollFromUser.current = false;
+                  }, 140);
+                }}
+                sx={{
+                  flexShrink: 0,
+                  width: "100%",
+                  display: "flex",
+                  gap: 1,
+                  overflowX: "auto",
+                  scrollSnapType: "x mandatory",
+                  px: 3,
+                  py: 0.5,
+                  touchAction: "pan-x",
+                  "&::-webkit-scrollbar": { display: "none" },
+                  scrollbarWidth: "none",
+                }}
+              >
+                {editableSegments.map(segment => {
+                  const active = segment.id === focusedSegment?.id;
+                  return (
+                    <Button
+                      key={String(segment.id)}
+                      ref={node => {
+                        const key = String(segment.id);
+                        if (node) captionCardRefs.current.set(key, node);
+                        else captionCardRefs.current.delete(key);
+                      }}
+                      aria-pressed={active}
+                      aria-label={`כתובית: ${segment.text}`}
+                      onClick={() => {
+                        onSegmentSelect(segment.id);
+                        onTimelineTimeChange(segment.start);
+                        if (segment.id === focusedSegment?.id) setMode("edit");
+                      }}
+                      sx={{
+                        scrollSnapAlign: "center",
+                        flex: "0 0 78%",
+                        minHeight: 72,
+                        px: 1.5,
+                        py: 1,
+                        borderRadius: 2,
+                        border: 1,
+                        borderColor: active ? "primary.main" : "#e0e4ea",
+                        bgcolor: active ? "#f3f7ff" : "#ffffff",
+                        color: "text.primary",
+                        textTransform: "none",
+                        justifyContent: "flex-start",
+                        alignItems: "stretch",
+                        textAlign: "start",
+                        "&:hover": { bgcolor: active ? "#f3f7ff" : "#f8fafc" },
+                      }}
+                    >
+                      <Stack spacing={0.25} sx={{ width: "100%", minWidth: 0 }}>
+                        <Typography variant="caption" color="text.secondary" dir="ltr" sx={{ textAlign: "start" }}>{formatTimecode(segment.start, preferences.fps)}</Typography>
+                        <Typography sx={{
+                          fontSize: 16,
+                          fontWeight: 500,
+                          lineHeight: 1.35,
+                          display: "-webkit-box",
+                          WebkitLineClamp: 2,
+                          WebkitBoxOrient: "vertical",
+                          overflow: "hidden",
+                          direction: preferences.direction,
+                        }}>{segment.text}</Typography>
+                      </Stack>
+                    </Button>
+                  );
+                })}
+              </Box>
+            )}
           </Stack>
         )}
 
         {mode === "edit" && selected && (
-          <Stack spacing={1} sx={{ minWidth: 0, width: "100%", flex: 1, minHeight: 0, overflow: "auto" }}>
-            {playerSlot("compact")}
+          <Stack spacing={1} sx={{ minWidth: 0, width: "100%", flex: 1, minHeight: 0, height: "100%", overflow: "hidden" }}>
+            {playerSlot("edit")}
+            <Stack spacing={1} sx={{ flexShrink: 0, minHeight: 0, maxHeight: "48%", overflow: "auto" }}>
             <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ flexShrink: 0 }}>
               <IconButton aria-label="המקטע הקודם" disabled={selectedIndex <= 0} onClick={() => onSegmentSelect(editableSegments[selectedIndex - 1].id)}><ChevronRightRounded /></IconButton>
               <Typography variant="body2" color="text.secondary">מקטע {selectedIndex + 1} מתוך {editableSegments.length}</Typography>
@@ -370,6 +487,7 @@ export function MobileCaptionEditor({
               <Button variant="contained" onClick={() => void saveCaption()} disabled={locked || !draftText.trim() || draftText === selected.text}>{saving ? "שומר…" : "שמור"}</Button>
               <Button variant="outlined" startIcon={<RepeatRounded />} aria-pressed={timelineEditing.loopEnabled} onClick={() => timelineEditing.onLoopChange(!timelineEditing.loopEnabled)}>נגן בלולאה</Button>
               <Button variant="outlined" startIcon={<ContentCutRounded />} disabled={locked || draftText.trim().split(/\s+/).length < 2 || currentTime <= selected.start || currentTime >= selected.end} onClick={() => void onSplitSegment(selected.id, currentTime)}>פצל</Button>
+            </Stack>
             </Stack>
           </Stack>
         )}
