@@ -108,7 +108,7 @@ export function useTranscriptionState({
   }, [burnedVideo]);
 
   const persistSegments = useCallback(
-    async (nextSegments: Segment[], nextWords?: Word[], options?: { throwOnError?: boolean; history?: boolean }) => {
+    async (nextSegments: Segment[], nextWords?: Word[], options?: { throwOnError?: boolean; history?: boolean; quiet?: boolean }) => {
       console.log('💾 persistSegments called:', {
         segmentsCount: nextSegments.length,
         hasWords: !!nextWords,
@@ -131,8 +131,10 @@ export function useTranscriptionState({
         return;
       }
 
-      setSaveState("saving");
-      setSaveError(null);
+      if (!options?.quiet) {
+        setSaveState("saving");
+        setSaveError(null);
+      }
       pendingSaves.current++;
       const queued = saveQueue.current.catch(() => {}).then(async () => {
         await onSaveSegments(nextSegments, segmentsToSrt(nextSegments), synchronizedWords);
@@ -140,7 +142,7 @@ export function useTranscriptionState({
       saveQueue.current = queued;
       try {
         await queued;
-        if (pendingSaves.current === 1) setSaveState("success");
+        if (!options?.quiet && pendingSaves.current === 1) setSaveState("success");
       } catch (error) {
         console.error(error);
         // Explicit-save editors retain their own draft. Roll back the preview
@@ -178,7 +180,7 @@ export function useTranscriptionState({
     if (!previous) throw new Error("המקטע אינו זמין עוד.");
     const owned = new Set(wordsForSegment(editableWords, previous));
     await persistSegments(editableSegments.map(s => s.id === segment.id ? segment : s),
-      [...editableWords.filter(w => !owned.has(w)), ...words], { throwOnError: true });
+      [...editableWords.filter(w => !owned.has(w)), ...words], { throwOnError: true, quiet: true });
   };
 
   const handleSegmentTextChange = useCallback(
@@ -219,7 +221,7 @@ export function useTranscriptionState({
       return;
     }
 
-    await persistSegments(editableSegments.map((segment) => ({ ...segment })));
+    await persistSegments(editableSegments.map((segment) => ({ ...segment })), undefined, { quiet: true });
   };
 
   const handleAddSubtitle = useCallback(

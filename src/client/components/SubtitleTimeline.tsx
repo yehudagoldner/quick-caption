@@ -1,7 +1,7 @@
 import "react-virtualized/styles.css";
 import "./SubtitleTimeline.css";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { Alert, Box, Button, Chip, Dialog, DialogActions, DialogContent, DialogTitle, IconButton, InputAdornment, Slider, Stack, TextField, ThemeProvider, Tooltip, Typography, createTheme, useTheme } from "@mui/material";
+import { Alert, Box, Button, Dialog, DialogActions, DialogContent, DialogTitle, IconButton, InputAdornment, Slider, Stack, TextField, ThemeProvider, Tooltip, Typography, createTheme, useTheme } from "@mui/material";
 import { PlayArrowRounded, PauseRounded, UndoRounded, RedoRounded, RepeatRounded, ContentCutRounded, SaveOutlined, CloseRounded, RestartAltRounded, EditOutlined, OpenInFullRounded } from "@mui/icons-material";
 import { Timeline, type TimelineRow, type TimelineState } from "@xzdarcy/react-timeline-editor";
 import type { Segment, Word } from "../types";
@@ -49,7 +49,6 @@ export function SubtitleTimeline({ activeWordEnabled, segments, words = [], disa
   useEffect(() => { setZoom(null); scrollLeft.current = 0; timeline.current?.setScrollLeft(0); }, [mediaUrl]);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const [autoSaving, setAutoSaving] = useState(false);
   const [drafts, setDrafts] = useState<Record<string, CaptionDraft>>({});
   const [expandedSegmentId, setExpandedSegmentId] = useState<Segment["id"] | null>(null);
   useEffect(() => { setExpandedSegmentId(null); }, [mediaUrl]);
@@ -83,10 +82,11 @@ export function SubtitleTimeline({ activeWordEnabled, segments, words = [], disa
     }
   }, [time, pixelsPerSecond, width]);
   const seek = (value: number) => { onRequestTimeChange(Math.max(0, Math.min(total, snapToFrame(value, fps)))); return true; };
+  const trackStructure = segments.map(segment => `${segment.id}:${segment.start}:${segment.end}`).join("|");
   const rows = useMemo<TimelineRow[]>(() => [{ id: "captions", actions: segments.map(s => ({
-    id: String(s.id), effectId: String(s.id), start: s.start, end: s.end, movable: !locked && !dirty, flexible: !locked && !dirty,
-  })) }], [segments, locked, dirty]);
-  const effects = useMemo(() => Object.fromEntries(segments.map(s => [String(s.id), { id: String(s.id), name: s.text }])), [segments]);
+    id: String(s.id), effectId: String(s.id), start: s.start, end: s.end, movable: !locked, flexible: !locked,
+  })) }], [trackStructure, locked]);
+  const effects = useMemo(() => Object.fromEntries(segments.map(s => [String(s.id), { id: String(s.id), name: String(s.id) }])), [trackStructure]);
   const selected = segments.find(s => s.id === selectedSegmentId);
   // Playback changes time each frame, not the track data. Keep the word array stable
   // so the timeline does not rebuild its virtualized grid on every video frame.
@@ -138,7 +138,7 @@ export function SubtitleTimeline({ activeWordEnabled, segments, words = [], disa
       });
       return;
     }
-    await saveSegmentRef.current(item.segment, item.words);
+    await saveSegmentRef.current({ ...item.segment, start: source.start, end: source.end }, item.words);
     setDrafts(previous => {
       const current = previous[String(item.segment.id)];
       if (!current || draftSignature(current) !== stamp) return previous;
@@ -153,12 +153,10 @@ export function SubtitleTimeline({ activeWordEnabled, segments, words = [], disa
       const pending = Object.values(draftsRef.current).filter(item => item.segment.text.trim());
       if (!pending.length) return;
       flight.current = true;
-      setAutoSaving(true);
       try {
         for (const item of pending) await commitRef.current(item);
-        setError(null);
       } catch (e) { setError((e as Error).message || "השמירה נכשלה; הטיוטה נשמרה בעורך."); }
-      finally { flight.current = false; setAutoSaving(false); }
+      finally { flight.current = false; }
     };
     const timer = window.setInterval(() => { void tick(); }, 3000);
     return () => window.clearInterval(timer);
@@ -200,9 +198,6 @@ export function SubtitleTimeline({ activeWordEnabled, segments, words = [], disa
       <Button startIcon={<RedoRounded />} onClick={onRedo} disabled={!canRedo || locked || dirty}>ביצוע חוזר</Button>
     </Stack>
     </>}
-    {dirty && <Alert severity="info">{autoSaving ? "שומר את השינוי…" : "השינוי יישמר אוטומטית תוך כמה שניות."} אפשר לעבור בין מקטעים בלי לאבד אותו.
-      <Stack direction="row" useFlexGap flexWrap="wrap" gap={1} sx={{ mt: 1 }}>{Object.values(drafts).map(d => <Chip key={d.segment.id} label={`טיוטה: ${d.segment.text.slice(0, 22)}`} onClick={() => onSegmentSelect(d.segment.id)} />)}</Stack>
-    </Alert>}
     {error && !expanded && <Alert severity="warning" onClose={() => setError(null)}>{error}</Alert>}
     <Stack direction="row" alignItems="center" gap={1}>
       <IconButton aria-label={isPlaying ? "השהה" : "נגן"} onClick={onPlayPause}>{isPlaying ? <PauseRounded /> : <PlayArrowRounded />}</IconButton>
@@ -227,7 +222,7 @@ export function SubtitleTimeline({ activeWordEnabled, segments, words = [], disa
       <Button size="small" aria-label="התאם את כל ההקלטה" aria-pressed={zoom === 0} onClick={() => { setZoom(0); scrollLeft.current = 0; timeline.current?.setScrollLeft(0); }} sx={{ whiteSpace: "nowrap", minWidth: 0 }}>הכול</Button>
     </Stack>
     <Box ref={container} data-testid="caption-track" sx={{ minWidth: 0, direction: "ltr", "& *": { direction: "ltr !important" } }}>
-      <Timeline ref={timeline} editorData={rows} effects={effects} disableDrag={locked || dirty} gridSnap={false} dragLine
+      <Timeline ref={timeline} editorData={rows} effects={effects} disableDrag={locked} gridSnap={false} dragLine
         scale={scale} scaleWidth={scaleWidth} scaleSplitCount={4} minScaleCount={Math.max(2, Math.ceil(total / scale) + 1)}
         getScaleRender={value => <span>{formatTimecode(value, fps)}</span>}
         onCursorDrag={seek} onCursorDragEnd={seek} onClickTimeArea={seek}

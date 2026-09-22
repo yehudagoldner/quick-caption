@@ -1,6 +1,6 @@
 import type { ChangeEvent } from "react";
 import { useEffect, useRef } from "react";
-import { CircularProgress, IconButton, Stack, TextField, Typography, Box } from "@mui/material";
+import { IconButton, Stack, TextField, Typography, Box } from "@mui/material";
 import { AccessTimeRounded, DeleteRounded } from "@mui/icons-material";
 import type { Segment } from "../types";
 import { formatTimecode } from "../utils/timecode";
@@ -128,19 +128,6 @@ export function SubtitleEditor({
           );
         })}
       </Stack>
-
-      {saveState === "saving" && (
-        <Stack direction="row" spacing={1} alignItems="center">
-          <CircularProgress size={20} />
-          <Typography variant="body2">שומר שינויים...</Typography>
-        </Stack>
-      )}
-
-      {saveState === "success" && (
-        <Typography variant="body2" color="success.main">
-          השינויים נשמרו.
-        </Typography>
-      )}
 
       {saveState === "error" && saveError && (
         <Typography variant="body2" color="error.main">
