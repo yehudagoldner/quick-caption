@@ -178,7 +178,6 @@ export function MobileCaptionEditor({
   const [newStart, setNewStart] = useState(0);
   const [newEnd, setNewEnd] = useState(0);
   const [draftText, setDraftText] = useState("");
-  const [saving, setSaving] = useState(false);
   const [chromeTop, setChromeTop] = useState(56);
   const captionStripRef = useRef<HTMLDivElement | null>(null);
   const captionCardRefs = useRef(new Map<string, HTMLButtonElement>());
@@ -263,15 +262,13 @@ export function MobileCaptionEditor({
       return;
     }
     saveFlight.current = flightKey;
-    setSaving(true);
     try {
       await timelineEditing.onSaveSegment({ ...segment, text: nextText }, synchronizeWords([{ ...segment, text: nextText }], segmentWords));
       lastPersisted.current = flightKey;
     } catch {
-      // The editor already shows the save error and keeps the draft.
+      // Keep the draft. The next interval retries, and a failed request surfaces its own error.
     } finally {
       saveFlight.current = null;
-      setSaving(false);
       const queued = saveQueued.current;
       saveQueued.current = null;
       if (queued && `${queued.segment.id}:${queued.text}` !== flightKey) void persistCaption(queued.segment, queued.text, queued.words);
@@ -603,7 +600,6 @@ export function MobileCaptionEditor({
               </Stack>
             )}
             <Stack direction="row" useFlexGap flexWrap="wrap" gap={1}>
-              <Button variant="contained" onClick={() => void persistCaption(selected, draftText, captionWords)} disabled={!isEditable || saving || saveState === "saving" || !draftText.trim() || draftText.trim() === selected.text.trim()}>{saving || saveState === "saving" ? "שומר…" : draftText.trim() === selected.text.trim() ? "נשמר" : "שמור"}</Button>
               <Button variant="outlined" startIcon={<RepeatRounded />} aria-pressed={timelineEditing.loopEnabled} onClick={() => timelineEditing.onLoopChange(!timelineEditing.loopEnabled)}>נגן בלולאה</Button>
               <Button variant="outlined" startIcon={<ContentCutRounded />} disabled={!isEditable || saveState === "saving" || draftText.trim().split(/\s+/).length < 2 || currentTime <= selected.start || currentTime >= selected.end} onClick={() => { void persistCaption(selected, draftText, captionWords).then(() => onSplitSegment(selected.id, currentTime)); }}>פצל</Button>
               {canUndoSplit && <Button variant="outlined" startIcon={<UndoRounded />} disabled={!isEditable || saveState === "saving"} onClick={() => void onUndoSplit()}>בטל פיצול</Button>}

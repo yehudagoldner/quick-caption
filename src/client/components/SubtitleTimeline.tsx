@@ -2,7 +2,7 @@ import "react-virtualized/styles.css";
 import "./SubtitleTimeline.css";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Alert, Box, Button, Dialog, DialogActions, DialogContent, DialogTitle, IconButton, InputAdornment, Slider, Stack, TextField, ThemeProvider, Tooltip, Typography, createTheme, useTheme } from "@mui/material";
-import { PlayArrowRounded, PauseRounded, UndoRounded, RedoRounded, RepeatRounded, ContentCutRounded, SaveOutlined, CloseRounded, RestartAltRounded, EditOutlined, OpenInFullRounded } from "@mui/icons-material";
+import { PlayArrowRounded, PauseRounded, UndoRounded, RedoRounded, RepeatRounded, ContentCutRounded, CloseRounded, RestartAltRounded, EditOutlined, OpenInFullRounded } from "@mui/icons-material";
 import { Timeline, type TimelineRow, type TimelineState } from "@xzdarcy/react-timeline-editor";
 import type { Segment, Word } from "../types";
 import { useEditorPreferences } from "../contexts/EditorPreferences";
@@ -275,6 +275,7 @@ export function SubtitleTimeline({ activeWordEnabled, segments, words = [], disa
         <WordTimeline enabled={activeWordEnabled} segment={draft.segment} words={draft.words} currentTime={time} disabled={locked} onSeek={seek}
           toolbarEditor={<TextField className="caption-text-editor" variant="standard" fullWidth value={draft.segment.text} disabled={locked}
           placeholder="טקסט המקטע" inputProps={{ dir: preferences.direction, "aria-label": "טקסט המקטע", title: draft.segment.text }}
+          onBlur={() => { if (draft.segment.text.trim()) void commitDraft(draft); }}
           InputProps={{ disableUnderline: true,
             startAdornment: <InputAdornment position="start" sx={{ ml: .75, mr: 0, color: "primary.main", gap: .5 }}><EditOutlined sx={{ fontSize: 16 }} /><Typography component="span" variant="caption" sx={{ fontWeight: 700, color: "primary.main", display: { xs: "none", sm: "inline" } }}>ערכו כאן</Typography></InputAdornment>,
             endAdornment: <InputAdornment position="end" sx={{ ml: 0 }}><Tooltip title="פתח עריכה בחלון"><span><IconButton size="small" aria-label="פתח עריכה בחלון" disabled={locked} onClick={() => openExpandedEditor(draft.segment.id)}><OpenInFullRounded /></IconButton></span></Tooltip></InputAdornment>,
@@ -285,10 +286,8 @@ export function SubtitleTimeline({ activeWordEnabled, segments, words = [], disa
             <Tooltip title="פצל בגבול המילה הקרוב לסמן"><span><IconButton size="small" aria-label="פצל" disabled={locked || !canSplit} onClick={() => save(true)}><ContentCutRounded /></IconButton></span></Tooltip>
             <Tooltip title="ביטול טיוטת המקטע"><span><IconButton size="small" aria-label="ביטול טיוטה" disabled={locked || !drafts[String(draft.segment.id)]} onClick={() => clearDraft(draft.segment.id)}><RestartAltRounded /></IconButton></span></Tooltip>
           </>}
-          toolbarPrimary={<Tooltip title={drafts[String(draft.segment.id)] ? "שמור עכשיו • נשמר גם אוטומטית" : "אין שינויים לשמירה"}><span><IconButton size="small" aria-label="שמור שינויים" color="primary"
-            sx={{ bgcolor: drafts[String(draft.segment.id)] ? "primary.main" : undefined, color: drafts[String(draft.segment.id)] ? "primary.contrastText" : undefined, "&:hover": { bgcolor: "primary.dark", color: "primary.contrastText" } }}
-            disabled={locked || !drafts[String(draft.segment.id)] || !draft.segment.text.trim()} onClick={() => save()}><SaveOutlined /></IconButton></span></Tooltip>}
-          toolbarClose={<Tooltip title="סגור עורך — הטיוטה נשמרת עד לשמירה או ביטול"><span><IconButton size="small" aria-label="סגור עורך" onClick={() => onSegmentSelect(null)} disabled={saving}><CloseRounded /></IconButton></span></Tooltip>}
+          toolbarPrimary={null}
+          toolbarClose={<Tooltip title="סגור עורך"><span><IconButton size="small" aria-label="סגור עורך" onClick={() => onSegmentSelect(null)} disabled={saving}><CloseRounded /></IconButton></span></Tooltip>}
           onWordsChange={nextWords => setDraft({ segment: { ...draft.segment, text: nextWords.map(w => w.word).join(" ") }, words: nextWords })} />
     </Box>}
     </Box>
@@ -297,14 +296,13 @@ export function SubtitleTimeline({ activeWordEnabled, segments, words = [], disa
       <DialogContent>
         {draft && <TextField autoFocus fullWidth multiline minRows={4} maxRows={10} label="טקסט הכתובית" value={draft.segment.text} disabled={locked}
           inputProps={{ dir: preferences.direction }} sx={{ mt: 1 }} onChange={e => changeText(e.target.value)}
-          onKeyDown={async e => { if ((e.ctrlKey || e.metaKey) && e.key === "Enter") { e.preventDefault(); if (await save()) setExpandedSegmentId(null); } }}
-          helperText="הזמנים נקבעים בציר הראשי. שינוי הטקסט נשמר אוטומטית תוך כמה שניות." />}
+          onBlur={() => { if (draft.segment.text.trim()) void commitDraft(draft); }}
+          onKeyDown={e => { if ((e.ctrlKey || e.metaKey) && e.key === "Enter") { e.preventDefault(); if (draft.segment.text.trim()) void commitDraft(draft); setExpandedSegmentId(null); } }}
+          helperText="הזמנים נקבעים בציר הראשי." />}
         {error && <Alert severity="error" sx={{ mt: 2 }}>{error}</Alert>}
       </DialogContent>
       <DialogActions>
         <Button disabled={locked} onClick={() => setExpandedSegmentId(null)}>חזרה לציר</Button>
-        <Button variant="contained" disabled={locked || !draft?.segment.text.trim() || !drafts[String(draft?.segment.id)]}
-          onClick={async () => { if (await save()) setExpandedSegmentId(null); }}>{saving ? "שומר…" : "שמור שינויים"}</Button>
       </DialogActions>
     </Dialog>
   </Stack>;
