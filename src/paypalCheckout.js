@@ -80,7 +80,7 @@ export function createPayPalRouter({ client, getUserCredits, creditCapturedOrder
         body: JSON.stringify({
           intent: 'CAPTURE',
           purchase_units: [{ amount: { currency_code: 'USD', value: pkg.priceUSD }, description: `${pkg.credits} credits for QuickCaption`, custom_id: JSON.stringify({ userUid, credits: pkg.credits }) }],
-          application_context: { brand_name: 'QuickCaption', user_action: 'PAY_NOW', shipping_preference: 'NO_SHIPPING' },
+          application_context: { brand_name: 'QuickCaption', locale: 'he-IL', user_action: 'PAY_NOW', shipping_preference: 'NO_SHIPPING' },
         }),
       });
       if (!order.id) throw new PaymentError('לא ניתן ליצור הזמנה כרגע. נסו שוב.');

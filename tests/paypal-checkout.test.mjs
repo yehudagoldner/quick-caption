@@ -54,6 +54,7 @@ test('all packages use server prices even when the browser supplies a fake amoun
     assert.equal(result.status, 200);
     const payload = JSON.parse(f.requests.at(-1).body);
     assert.deepEqual(payload.purchase_units[0].amount, { currency_code: 'USD', value: pkg.priceUSD });
+    assert.equal(payload.application_context.locale, 'he-IL', 'Orders API requires a BCP 47 locale, unlike the SDK script parameter');
   }
   assert.equal((await f.post('/create-order', { userUid: 'buyer', credits: 999999 })).status, 400);
   assert.equal((await f.post('/create-order', { userUid: 'unknown', credits: 100 })).status, 404);

@@ -179,7 +179,7 @@ export function BuyCreditsPage({ user, currentCredits, onCreditsUpdated }: BuyCr
       {showCheckout && selectedPackage && config?.clientId && <Card variant="outlined"><CardContent>
         <Typography variant="h6">סיכום הזמנה</Typography>
         <Typography sx={{ mb: 2 }}>{selectedPackage.credits} קרדיטים · <bdi>${selectedPackage.priceUSD} USD</bdi></Typography>
-        <PayPalScriptProvider options={{ clientId: config.clientId, currency: "USD", intent: "capture" }}>
+        <PayPalScriptProvider options={{ clientId: config.clientId, currency: "USD", intent: "capture", locale: "he_IL" }}>
           <PaymentScriptStatus />
           <PayPalButtons style={{ layout: "vertical", label: "pay" }} forceReRender={[selectedPackage.credits, user?.uid]} disabled={loading || !user || unavailable}
             createOrder={handleCreateOrder} onApprove={data => captureOrder(data.orderID)}
