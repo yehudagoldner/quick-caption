@@ -1,8 +1,8 @@
 ﻿import { Stack, Typography } from "@mui/material";
 
-export function WorkflowIntro() {
+export function WorkflowIntro({ editing = false }: { editing?: boolean }) {
   return (
-    <Stack spacing={1} textAlign="center" sx={{ display: { xs: "none", sm: "flex" } }}>
+    <Stack spacing={1} textAlign="center" sx={{ display: { xs: "none", sm: "flex", md: editing ? "none" : "flex" } }}>
       <Typography variant="h4" component="h1">
         QuickCaption
       </Typography>

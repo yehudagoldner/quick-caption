@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { Alert, Button, Card, CardContent, Stack } from "@mui/material";
+import { useContext, useEffect, useMemo, useRef, useState } from "react";
+import { Alert, Button, Card, CardContent, Stack, useMediaQuery, useTheme } from "@mui/material";
 import type { ApiResponse, Segment } from "../types";
 import { useVideoPlayer } from "./VideoPlayer";
 import type { BurnOptions } from "./VideoToolbar";
@@ -15,6 +15,7 @@ import { serializeSubtitles } from "../utils/subtitleExport";
 import { useEditorPreferences } from "../contexts/EditorPreferences";
 import { cleanSegmentText, fixSegmentOverlaps, findSegment } from "../utils/transcriptionUtils";
 import { synchronizeWords } from "../../wordAlignment.js";
+import { EditorNavigationContext } from "../contexts/EditorNavigationContext";
 
 export type { BurnOptions };
 type BurnResult = { blob: Blob; filename?: string; };
@@ -146,6 +147,8 @@ export function TranscriptionResult({
 
   const { isPlaying, handlePlayPause } = useVideoControls(videoPlayer);
   const narrow = useNarrowViewport();
+  const desktop = useMediaQuery(useTheme().breakpoints.up("md"));
+  const registerNavigation = useContext(EditorNavigationContext);
 
   const leaveEditor = async (destination: () => void) => {
     if (isEditable && (saveState === "error" || JSON.stringify(editableSegments) !== JSON.stringify(savedSegments) || JSON.stringify(editableWords) !== JSON.stringify(savedWords))) {
@@ -156,6 +159,15 @@ export function TranscriptionResult({
   };
   const handleLeaveEditor = () => leaveEditor(onBack);
   const handleMyVideos = () => leaveEditor(onMyVideos);
+  const navigationRef = useRef(leaveEditor);
+  navigationRef.current = leaveEditor;
+  const navigationBlocked = isBurning || hasTimelineDrafts || saveState === "saving";
+  useEffect(() => {
+    registerNavigation(async destination => {
+      if (!navigationBlocked) await navigationRef.current(destination);
+    }, navigationBlocked);
+    return () => registerNavigation(null);
+  }, [registerNavigation, navigationBlocked]);
 
   const {
     handleVideoTimeUpdate,
@@ -202,9 +214,9 @@ export function TranscriptionResult({
 
   return (
     <Card elevation={narrow ? 0 : 3} sx={{ overflow: "visible", ...(narrow ? { bgcolor: "transparent", boxShadow: "none" } : {}) }}>
-      <CardContent sx={narrow ? { p: 0, "&:last-child": { pb: 0 } } : undefined}>
+      <CardContent sx={narrow ? { p: 0, "&:last-child": { pb: 0 } } : { p: { md: 1.5 }, "&:last-child": { pb: { md: 1.5 } } }}>
         <Stack spacing={narrow ? 0 : 1.5}>
-          {!narrow && (
+          {!narrow && !desktop && (
           <TranscriptionResultHeader
             subtitleFormatLabel={subtitleFormatLabel}
             downloadUrl={downloadUrl}
@@ -215,7 +227,7 @@ export function TranscriptionResult({
           />
           )}
           {saveState === "error" && <Alert severity="error" action={<Button onClick={() => persistSegments(editableSegments, editableWords)}>נסה לשמור שוב</Button>}>{saveError}</Alert>}
-          {!narrow && activeWordEnabled && !hasEstimatedTimingWarning && editableWords.some(word => word.timingSource === "estimated") && <Alert severity="info">לחלק מהמילים הושלם תזמון משוער. אפשר לדייק אותן בציר המילים של המקטע; הטקסט המתוקן נשמר במלואו.</Alert>}
+          {!narrow && !desktop && activeWordEnabled && !hasEstimatedTimingWarning && editableWords.some(word => word.timingSource === "estimated") && <Alert severity="info">לחלק מהמילים הושלם תזמון משוער. אפשר לדייק אותן בציר המילים של המקטע; הטקסט המתוקן נשמר במלואו.</Alert>}
 
           <TranscriptionMainContent
             hasTimelineDrafts={hasTimelineDrafts}

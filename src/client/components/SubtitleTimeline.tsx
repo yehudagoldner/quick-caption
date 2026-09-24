@@ -28,11 +28,12 @@ export type SubtitleTimelineProps = {
   onUndo: () => void; onRedo: () => void; canUndo: boolean; canRedo: boolean;
   onDraftStateChange: (dirty: boolean) => void;
   layout?: "full" | "timing";
+  compactDesktop?: boolean;
 };
 
 export function SubtitleTimeline({ activeWordEnabled, segments, words = [], disabled, busy, duration, currentTime = 0, mediaUrl,
   selectedSegmentId, onSegmentSelect, onRequestTimeChange, onSegmentsChange, onSaveSegment, onSplitSegment,
-  isPlaying, onPlayPause, onPlayFrom, loopEnabled, onLoopChange,   onUndo, onRedo, canUndo, canRedo, onDraftStateChange, layout = "full",
+  isPlaying, onPlayPause, onPlayFrom, loopEnabled, onLoopChange,   onUndo, onRedo, canUndo, canRedo, onDraftStateChange, layout = "full", compactDesktop = false,
 }: SubtitleTimelineProps) {
   const { preferences } = useEditorPreferences();
   const fps = preferences.fps;
@@ -189,8 +190,8 @@ export function SubtitleTimeline({ activeWordEnabled, segments, words = [], disa
   const compactTiming = layout === "timing";
   const canSplit = draft && draft.segment.text.trim().split(/\s+/).length > 1 && time > draft.segment.start && time < draft.segment.end;
 
-  return <Stack spacing={compactTiming ? 1 : 1.5} className="subtitle-timeline" sx={{ width: "100%", minWidth: 0 }}>
-    {!compactTiming && <>
+  return <Stack spacing={compactTiming || compactDesktop ? .75 : 1.5} className="subtitle-timeline" sx={{ width: "100%", minWidth: 0, flexShrink: 0 }}>
+    {!compactTiming && !compactDesktop && <>
     <Typography variant="subtitle1" fontWeight={700}>ציר הזמן הראשי — כל ההקלטה</Typography>
     <Typography variant="caption">גררו גוף מקטע להזזה וקצה לשינוי משך. חפיפות וחיתוך מילים מתוזמנות נחסמים. לחצו על מקטע לעריכה.</Typography>
     <Stack direction="row" useFlexGap flexWrap="wrap" gap={1} alignItems="center">
@@ -204,12 +205,13 @@ export function SubtitleTimeline({ activeWordEnabled, segments, words = [], disa
       <Button size="small" aria-label="פריים אחורה" onClick={() => seek(time - 1 / fps)}>−1F</Button>
       <Typography variant="body2" dir="ltr" data-testid="playhead-timecode" sx={{ whiteSpace: "nowrap" }}>{formatTimecode(time, fps)}</Typography>
       <Button size="small" aria-label="פריים קדימה" onClick={() => seek(time + 1 / fps)}>+1F</Button>
-      {compactTiming && <>
+      {(compactTiming || compactDesktop) && <>
         <IconButton size="small" aria-label="ביטול פעולה" onClick={onUndo} disabled={!canUndo || locked || dirty}><UndoRounded /></IconButton>
         <IconButton size="small" aria-label="ביצוע חוזר" onClick={onRedo} disabled={!canRedo || locked || dirty}><RedoRounded /></IconButton>
       </>}
+      {compactDesktop && <ThemeProvider theme={ltrTheme}><Box dir="ltr" sx={{ flex: 1, px: 2 }}><Slider aria-label="מיקום בהקלטה" min={0} max={total} step={1 / fps} value={time} onChange={(_, value) => seek(value as number)} /></Box></ThemeProvider>}
     </Stack>
-    <ThemeProvider theme={ltrTheme}><Box dir="ltr" sx={{ px: 1 }}><Slider aria-label="מיקום בהקלטה" min={0} max={total} step={1 / fps} value={time} onChange={(_, value) => seek(value as number)} /></Box></ThemeProvider>
+    {!compactDesktop && <ThemeProvider theme={ltrTheme}><Box dir="ltr" sx={{ px: 1 }}><Slider aria-label="מיקום בהקלטה" min={0} max={total} step={1 / fps} value={time} onChange={(_, value) => seek(value as number)} /></Box></ThemeProvider>}
     {!compactTiming && <AudioWaveform mediaUrl={mediaUrl} duration={total} currentTime={time} onSeek={seek} />}
     <Box data-testid="timeline-tracks" sx={{ minWidth: 0 }}>
     <Stack data-testid="main-timeline-zoom" direction="row" gap={1} alignItems="center" sx={{ height: compactTiming ? 36 : 40, px: 1, bgcolor: "action.hover", minWidth: 0 }}>
@@ -269,10 +271,10 @@ export function SubtitleTimeline({ activeWordEnabled, segments, words = [], disa
             sx={{ bgcolor: selectedSegmentId === segment.id ? "primary.main" : "#9b5700", color: "white", height: "100%", px: 1, display: "flex", alignItems: "center", borderRadius: 1, overflow: "hidden" }}>
             <Typography noWrap variant="caption" sx={{ direction: `${preferences.direction} !important`, unicodeBidi: "plaintext" }}>{segment.text}</Typography>
           </Box>;
-        }} style={{ height: compactTiming ? 88 : 130, width: "100%" }} />
+        }} style={{ height: compactTiming || compactDesktop ? 88 : 130, width: "100%" }} />
     </Box>
     {!compactTiming && draft && !disabled && <Box data-testid="segment-inspector">
-        <WordTimeline enabled={activeWordEnabled} segment={draft.segment} words={draft.words} currentTime={time} disabled={locked} onSeek={seek}
+        <WordTimeline compact={compactDesktop} enabled={activeWordEnabled} segment={draft.segment} words={draft.words} currentTime={time} disabled={locked} onSeek={seek}
           toolbarEditor={<TextField className="caption-text-editor" variant="standard" fullWidth value={draft.segment.text} disabled={locked}
           placeholder="טקסט המקטע" inputProps={{ dir: preferences.direction, "aria-label": "טקסט המקטע", title: draft.segment.text }}
           onBlur={() => { if (draft.segment.text.trim()) void commitDraft(draft); }}

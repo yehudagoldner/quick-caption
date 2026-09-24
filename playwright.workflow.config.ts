@@ -3,7 +3,7 @@ import base from './playwright.config';
 
 export default defineConfig({
   ...base,
-  testMatch: /(?:transcription-recovery|mobile-workflow|payments-ui)\.spec\.ts/,
+  testMatch: /(?:transcription-recovery|mobile-workflow|desktop-workflow|payments-ui)\.spec\.ts/,
   projects: [
     { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
     { name: 'webkit', use: { ...devices['Desktop Safari'] } },

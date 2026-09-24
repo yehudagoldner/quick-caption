@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { Alert, Box, CircularProgress, Container, CssBaseline, Stack, ThemeProvider, createTheme } from "@mui/material";
 import { AppHeader } from "./components/AppHeader";
 import { PromotionalHome } from "./components/PromotionalHome";
@@ -7,6 +7,7 @@ import { VideoEditPage } from "./components/VideoEditPage";
 import { VideosPage } from "./components/VideosPage";
 import { BuyCreditsPage } from "./components/BuyCreditsPage";
 import { useTranscriptionWorkflow } from "./hooks/useTranscriptionWorkflow";
+import { EditorNavigationContext, type EditorNavigationGuard } from "./contexts/EditorNavigationContext";
 import "./App.css";
 
 const theme = createTheme({
@@ -58,6 +59,13 @@ function App() {
   const [currentScreen, setCurrentScreen] = useState<AppScreen>("home");
   const [videoToken, setVideoToken] = useState<string | undefined>();
   const [credits, setCredits] = useState<number | null>(null);
+  const editorNavigation = useRef<EditorNavigationGuard | null>(null);
+  const [navigationBlocked, setNavigationBlocked] = useState(false);
+  const registerEditorNavigation = useCallback((guard: EditorNavigationGuard | null, blocked = false) => {
+    editorNavigation.current = guard;
+    setNavigationBlocked(blocked);
+  }, []);
+  const editing = currentScreen === "edit" || (currentScreen === "transcription" && workflow.activePage === "preview");
 
   useEffect(() => {
     const { screen, videoToken: token } = getScreenFromUrl();
@@ -159,7 +167,8 @@ function App() {
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
-      <Box sx={{ minHeight: "100vh", bgcolor: "background.default" }}>
+      <EditorNavigationContext.Provider value={registerEditorNavigation}>
+      <Box sx={{ minHeight: "100vh", display: "flow-root", bgcolor: "background.default" }}>
         <AppHeader
           user={workflow.user}
           authLoading={workflow.authLoading}
@@ -176,15 +185,23 @@ function App() {
           onProfileClose={workflow.onProfileClose}
           onSignIn={workflow.onSignIn}
           onSignOut={workflow.onSignOut}
-          onNavigate={(page) => navigateToScreen(page)}
+          navigationBlocked={navigationBlocked}
+          onNavigate={(page) => {
+            const navigate = () => {
+              if (page === "transcription") workflow.onBackToUpload();
+              navigateToScreen(page);
+            };
+            if (editorNavigation.current) void editorNavigation.current(navigate);
+            else navigate();
+          }}
           onBuyCredits={handleBuyCredits}
         />
 
         <Container maxWidth={false} sx={{
-          pt: { xs: currentScreen === "transcription" ? 7 : 2, md: 6 },
-          pb: { xs: currentScreen === "transcription" ? 1 : 2, md: 6 },
+          pt: { xs: currentScreen === "transcription" ? 7 : 2, md: editing ? 1 : 6 },
+          pb: { xs: currentScreen === "transcription" ? 1 : 2, md: editing ? 1 : 6 },
           px: { xs: 1.5, md: 3 },
-          mt: { xs: currentScreen === "transcription" ? 0 : 10, md: 10 },
+          mt: { xs: currentScreen === "transcription" ? 0 : 10, md: editing ? 8 : 10 },
         }}>
           {currentScreen === "home" && workflow.error && (
             <Alert severity="error" sx={{ mb: 3 }}>
@@ -250,6 +267,7 @@ function App() {
           )}
         </Container>
       </Box>
+      </EditorNavigationContext.Provider>
     </ThemeProvider>
   );
 }

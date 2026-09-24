@@ -14,8 +14,8 @@ export function TranscriptionPage({ workflow, onMyVideos }: TranscriptionPagePro
   const awaitingFile = workflow.activePage === "upload" && !workflow.file && !workflow.isSubmitting;
 
   return (
-    <Stack spacing={{ xs: 1, sm: 4 }} sx={{ minHeight: { xs: awaitingFile ? "calc(100dvh - 72px)" : undefined, sm: undefined }, justifyContent: { xs: awaitingFile ? "center" : "flex-start", sm: "flex-start" } }}>
-      <WorkflowIntro />
+    <Stack spacing={{ xs: 1, sm: 4, md: workflow.activePage === "preview" ? 0 : 4 }} sx={{ minHeight: { xs: awaitingFile ? "calc(100dvh - 72px)" : undefined, sm: undefined }, justifyContent: { xs: awaitingFile ? "center" : "flex-start", sm: "flex-start" } }}>
+      <WorkflowIntro editing={workflow.activePage === "preview"} />
 
       <UploadStepSection
         active={workflow.activePage === "upload"}

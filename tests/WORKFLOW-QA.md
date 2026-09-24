@@ -14,6 +14,7 @@ Reviewed against the requests in task `01a0d44a-3c89-7411-809d-05af683b00c3`.
 | Upload on phones | No slider before file selection; submit above slider; no 100% overall-transcription claim | Real media fixture at 320×568 and 390×844 in Chromium |
 | Editor draft | Wait for the latest text before navigating; retain text on slow failed save and allow retry | Browser tests on Chromium and WebKit |
 | Style drawer | Scrollable bottom drawer with interactive, large video above; font-size control includes the default 60 | Chromium geometry and hit-testing |
+| Desktop workspace | Compact header and controls, video sized to available height, both caption tracks visible without page scrolling; header upload starts a new file and waits for saved drafts | Chromium at 1366×600, 1280×720, 1366×768 and 1920×1080; navigation also checked in WebKit |
 
 ## Commands
 
@@ -32,4 +33,4 @@ The server applies the `stages_json` schema addition at startup. Heartbeats dete
 
 PayPal capture retries reuse the same request ID, following [PayPal's idempotency guidance](https://developer.paypal.com/api/make-api-requests). Authentication against the configured live PayPal account was checked without creating a charge. Completed-payment cases use a simulated PayPal gateway plus a real MySQL transaction test; a live buyer-approved charge has not been tested.
 
-Windows WebKit reports the video fixture as supported but cannot decode it in this runtime. Three media-layout tests explicitly skip there; the other WebKit workflow tests run. Chromium runs all layout tests with decoded video. A physical iPhone lock/unlock and playback test remains necessary before claiming device-level verification.
+Windows WebKit reports the video fixture as supported but cannot decode it in this runtime. Seven media-layout tests explicitly skip there; the other WebKit workflow tests run. Chromium runs all layout tests with decoded video. A physical iPhone lock/unlock and playback test remains necessary before claiming device-level verification.

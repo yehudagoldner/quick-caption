@@ -214,9 +214,9 @@ export function VideoEditPage({ user, videoToken, onSaveSegments, onNewUpload, o
 
   return (
     <Container maxWidth={false} disableGutters>
-      <Box sx={{ py: narrow ? 0 : 1 }}>
+      <Box sx={{ py: { xs: narrow ? 0 : 1, md: 0 } }}>
         {!narrow && (
-          <Typography variant="h4" gutterBottom sx={{ fontWeight: 600, textAlign: "center" }}>
+          <Typography variant="h4" gutterBottom sx={{ fontWeight: 600, textAlign: "center", display: { md: "none" } }}>
             עריכת כתוביות
           </Typography>
         )}

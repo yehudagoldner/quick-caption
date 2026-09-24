@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react";
-import { Box, Divider, FormControlLabel, Stack, Switch, Typography } from "@mui/material";
+import { Box, Divider, FormControlLabel, Stack, Switch, Typography, useMediaQuery, useTheme } from "@mui/material";
 import type { Segment, Word } from "../types";
 import { SubtitleTimeline, type SubtitleTimelineProps, type CaptionDraft } from "./SubtitleTimeline";
 import { VideoPlayer } from "./VideoPlayer";
@@ -134,6 +134,7 @@ export function TranscriptionMainContent({
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [showSubtitles, setShowSubtitles] = useState(true);
   const isNarrow = useNarrowViewport();
+  const desktop = useMediaQuery(useTheme().breakpoints.up("md"));
   const editorSettingsBlock = <>
     {editorSettings}
     <Box sx={{ p: 2 }}>
@@ -202,8 +203,8 @@ export function TranscriptionMainContent({
 
   return (
     <>
-      <Stack direction={{ xs: "column", lg: "row" }} spacing={2} alignItems="flex-start" sx={{ width: "100%", minWidth: 0 }}>
-        <Stack className="preview-wrapper" spacing={2} sx={{ flex: 1, minWidth: 0, width: "100%" }}>
+      <Stack data-testid="desktop-caption-editor" direction={{ xs: "column", md: "row" }} spacing={1.5} alignItems="flex-start" sx={{ width: "100%", minWidth: 0, height: { md: "calc(100dvh - 104px)" } }}>
+        <Stack className="preview-wrapper" spacing={desktop ? 1 : 2} sx={{ flex: 1, minWidth: 0, width: "100%", height: { md: "100%" } }}>
           <Stack direction="column" spacing={1.5} alignItems="center" justifyContent="center" sx={{ width: "100%", minWidth: 0 }}>
             <VideoToolbar
               pendingEdits={hasTimelineDrafts || saveState === "saving"}
@@ -237,8 +238,10 @@ export function TranscriptionMainContent({
             />
 
           </Stack>
-            <Box sx={{ minWidth: 0, width: "100%", position: { xs: selectedSegmentId !== null ? "sticky" : "static", sm: "static" }, top: 8, zIndex: 5, bgcolor: "background.paper", borderRadius: 2 }}>
+            <Box sx={{ minWidth: 0, width: "100%", flex: { md: 1 }, minHeight: { md: 96 }, position: { xs: selectedSegmentId !== null ? "sticky" : "static", sm: "static" }, top: 8, zIndex: 5, bgcolor: "background.paper", borderRadius: 2 }}>
               <VideoPlayer
+                fill={desktop}
+                hideMeta={desktop}
                 compact={selectedSegmentId !== null}
                 mediaUrl={mediaUrl}
                 activeSegmentText={showSubtitles ? activeSegmentText : null}
@@ -255,6 +258,7 @@ export function TranscriptionMainContent({
 
           {editableSegments.length > 0 && (
             <SubtitleTimeline
+              compactDesktop={desktop}
               activeWordEnabled={activeWordEnabled}
               {...timelineEditing}
               mediaUrl={mediaUrl}
@@ -279,7 +283,7 @@ export function TranscriptionMainContent({
           <>
             <Divider orientation="vertical" flexItem sx={{ display: { xs: "none", md: "block" } }} />
 
-            <Stack spacing={2} sx={{ width: { xs: "100%", lg: 310 }, flexShrink: 0, minWidth: 0 }}>
+            <Stack spacing={2} sx={{ width: { xs: "100%", md: 280, lg: 310 }, flexShrink: 0, minWidth: 0, maxHeight: { md: "100%" }, overflowY: "auto" }}>
               <SubtitleEditor
                 segments={editableSegments}
                 isEditable={isEditable && !hasTimelineDrafts && saveState !== "saving"}

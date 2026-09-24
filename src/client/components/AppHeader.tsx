@@ -31,6 +31,7 @@ type AppHeaderProps = {
   onSignOut: () => Promise<void>;
   onNavigate: (page: HeaderPage) => void;
   onBuyCredits: () => void;
+  navigationBlocked?: boolean;
 };
 
 export function AppHeader({
@@ -45,6 +46,7 @@ export function AppHeader({
   onSignOut,
   onNavigate,
   onBuyCredits,
+  navigationBlocked = false,
 }: AppHeaderProps) {
   const { isDevBypass } = useAuth();
   const narrow = useNarrowViewport();
@@ -64,6 +66,7 @@ export function AppHeader({
                 startIcon={<HomeRounded />}
                 variant={currentPage === "home" ? "contained" : "outlined"}
                 onClick={() => onNavigate("home")}
+                disabled={navigationBlocked}
                 size="small"
               >
                 דף הבית
@@ -72,6 +75,7 @@ export function AppHeader({
                 startIcon={<VideoLibraryRounded />}
                 variant={currentPage === "videos" ? "contained" : "outlined"}
                 onClick={() => onNavigate("videos")}
+                disabled={navigationBlocked}
                 size="small"
               >
                 היסטוריית סרטונים
@@ -80,6 +84,7 @@ export function AppHeader({
                 startIcon={<UploadFileOutlined />}
                 variant={currentPage === "transcription" ? "contained" : "outlined"}
                 onClick={() => onNavigate("transcription")}
+                disabled={navigationBlocked}
                 size="small"
               >
                 סרטון חדש

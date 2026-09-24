@@ -10,8 +10,9 @@ import { TimecodeField } from "./TimecodeField";
 import { TimelineEditToolbar } from "./TimelineEditToolbar";
 
 // Drafts belong to the parent so switching captions never discards work.
-export function WordTimeline({ enabled, segment, words, currentTime, onWordsChange, onSeek, disabled, toolbarEditor, toolbarActions, toolbarPrimary, toolbarClose }: {
+export function WordTimeline({ enabled, segment, words, currentTime, onWordsChange, onSeek, disabled, toolbarEditor, toolbarActions, toolbarPrimary, toolbarClose, compact = false }: {
   enabled: boolean;
+  compact?: boolean;
   segment: Segment; words: Word[]; currentTime: number;
   onWordsChange: (words: Word[]) => void; onSeek: (time: number) => void; disabled?: boolean;
   toolbarEditor: ReactNode; toolbarActions: ReactNode; toolbarPrimary: ReactNode; toolbarClose: ReactNode;
@@ -98,7 +99,7 @@ export function WordTimeline({ enabled, segment, words, currentTime, onWordsChan
           onClick={() => setSelected(Number(action.id))} onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setSelected(Number(action.id)); } }}
           sx={{ bgcolor: selected === Number(action.id) ? "primary.main" : "success.dark", height: "100%", color: "white", borderRadius: 1, px: 1, display: "flex", alignItems: "center", overflow: "hidden" }}>
           <Typography noWrap variant="caption" sx={{ direction: `${preferences.direction} !important`, unicodeBidi: "plaintext" }}>{words[Number(action.id)]?.word}</Typography>
-        </Box>} style={{ width: "100%", height: 120 }} />
+        </Box>} style={{ width: "100%", height: compact ? 88 : 120 }} />
     </Box>
     <Dialog open={!!editing} onClose={() => setEditing(null)} fullWidth maxWidth="sm">
       <DialogTitle>{editing?.index === null ? "הוסף מילה חדשה" : "עריכת מילה ותזמון"}</DialogTitle>
