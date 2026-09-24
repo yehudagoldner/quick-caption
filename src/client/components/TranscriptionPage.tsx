@@ -11,10 +11,14 @@ interface TranscriptionPageProps {
 
 export function TranscriptionPage({ workflow, onMyVideos }: TranscriptionPageProps) {
   const previewError = workflow.activePage === "preview" ? workflow.error : null;
-  const awaitingFile = workflow.activePage === "upload" && !workflow.file && !workflow.isSubmitting;
+  const uploading = workflow.activePage === "upload";
 
   return (
-    <Stack spacing={{ xs: 1, sm: 4, md: workflow.activePage === "preview" ? 0 : 4 }} sx={{ minHeight: { xs: awaitingFile ? "calc(100dvh - 72px)" : undefined, sm: undefined }, justifyContent: { xs: awaitingFile ? "center" : "flex-start", sm: "flex-start" } }}>
+    <Stack useFlexGap spacing={{ xs: 1, sm: 4, md: workflow.activePage === "preview" ? 0 : 4 }} sx={{
+      // A minimum (rather than fixed) height centers short forms and lets longer ones scroll.
+      minHeight: { xs: uploading ? "calc(100dvh - 64px)" : undefined, sm: "auto" },
+      justifyContent: { xs: uploading ? "center" : "flex-start", sm: "flex-start" },
+    }}>
       <WorkflowIntro editing={workflow.activePage === "preview"} />
 
       <UploadStepSection

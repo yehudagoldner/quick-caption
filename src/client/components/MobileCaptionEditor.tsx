@@ -649,7 +649,8 @@ export function MobileCaptionEditor({
             <Box sx={{ flex: "7 1 0", minWidth: 0, minHeight: 0, width: "100%", display: "flex", overflow: "hidden" }}>
               {player}
             </Box>
-            <Box sx={{ flex: "3 1 0", minWidth: 0, minHeight: 0, width: "100%", display: "flex", overflow: "hidden" }}>
+            {/* Keep room for four caption lines, timestamps, and touch handles. */}
+            <Box sx={{ flex: "3 1 0", minWidth: 0, minHeight: 248, width: "100%", display: "flex", overflow: "hidden" }}>
             <MobileTimingTimeline
               mediaUrl={mediaUrl}
               segments={editableSegments}

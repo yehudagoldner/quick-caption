@@ -33,7 +33,7 @@ export function UploadStepSection({
   return (
     <Fade in={active} mountOnEnter unmountOnExit>
       <Card elevation={3}>
-        <CardContent sx={{ px: { xs: 1.5, sm: 2 }, py: { xs: file ? 1 : 2, sm: 2 }, "&:last-child": { pb: { xs: file ? 1 : 2, sm: 2 } } }}>
+        <CardContent sx={{ px: { xs: 1.5, sm: 2 }, py: { xs: "clamp(8px, calc(5dvh - 20px), 24px)", sm: 2 }, "&:last-child": { pb: { xs: "clamp(8px, calc(5dvh - 20px), 24px)", sm: 2 } } }}>
           <Stack spacing={{ xs: 1, sm: 3 }}>
             <UploadForm
               file={file}

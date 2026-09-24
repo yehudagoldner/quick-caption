@@ -32,7 +32,7 @@ const STATUS_LABEL: Record<StageState["status"], string> = {
 export function UploadProgress({ progress, stages }: UploadProgressProps) {
   const uploading = progress < 100;
   return (
-    <Box mt={{ xs: 0.5, sm: 2 }} display="flex" flexDirection="column" gap={{ xs: 0.5, sm: 2 }}>
+    <Box mt={{ xs: 0.5, sm: 2 }} display="flex" flexDirection="column" gap={{ xs: "clamp(4px, calc(3dvh - 12px), 12px)", sm: 2 }}>
       <Typography variant="body2" color="text.secondary" role="status">
         {uploading ? "מעלים את הקובץ — השאירו את המסך פתוח עד סיום ההעלאה." : "ההעלאה הסתיימה. הסרטון עדיין בעיבוד."}
       </Typography>
@@ -52,6 +52,8 @@ export function UploadProgress({ progress, stages }: UploadProgressProps) {
               px: { xs: 0.5, sm: 1 },
               py: { xs: 0, sm: 0.5 },
               mb: { xs: 0, sm: 0.5 },
+              minHeight: { xs: "clamp(24px, calc(5dvh - 4px), 40px)", sm: "auto" },
+              columnGap: 1,
               bgcolor: stage.status === "active" ? "action.hover" : "transparent",
             }}
           >
@@ -61,9 +63,9 @@ export function UploadProgress({ progress, stages }: UploadProgressProps) {
               secondary={stage.message ?? undefined}
               primaryTypographyProps={{ fontWeight: stage.status === "active" ? 600 : undefined, sx: { fontSize: { xs: "0.875rem", sm: "1rem" } } }}
               secondaryTypographyProps={{ sx: { display: { xs: "none", sm: "block" } } }}
-              sx={{ my: { xs: 0, sm: 0.5 } }}
+              sx={{ my: { xs: 0, sm: 0.5 }, minWidth: 0, textAlign: "start" }}
             />
-            <Chip label={STATUS_LABEL[stage.status]} size="small" color={chipColor(stage.status)} variant="outlined" sx={{ height: { xs: 22, sm: 24 }, "& .MuiChip-label": { px: { xs: 0.75, sm: 1 } } }} />
+            <Chip label={STATUS_LABEL[stage.status]} size="small" color={chipColor(stage.status)} variant="outlined" sx={{ flexShrink: 0, height: { xs: 22, sm: 24 }, "& .MuiChip-label": { px: { xs: 0.75, sm: 1 } } }} />
           </ListItem>
         ))}
       </List>

@@ -61,9 +61,9 @@ export function UploadForm({
   };
 
   return (
-    <Stack component="form" dir="rtl" spacing={{ xs: file ? 1.25 : 2, sm: 3 }} onSubmit={onSubmit}>
+    <Stack component="form" dir="rtl" spacing={{ xs: "clamp(10px, calc(5dvh - 20px), 24px)", sm: 3 }} onSubmit={onSubmit}>
       {isSubmitting ? (
-        <Typography variant="body1" textAlign="center">{file ? file.name : "בודקים את מצב העיבוד בשרת..."}</Typography>
+        <Typography variant="body1" textAlign="center" sx={{ overflowWrap: "anywhere" }}>{file ? file.name : "בודקים את מצב העיבוד בשרת..."}</Typography>
       ) : !file ? <Box
         data-testid="media-dropzone"
         onDragEnter={e => { e.preventDefault(); dragDepth.current++; setDragging(true); }}
@@ -133,7 +133,7 @@ export function UploadForm({
             const media = event.currentTarget as HTMLVideoElement;
             const ratio = media.videoWidth && media.videoHeight ? ` · ${media.videoWidth}×${media.videoHeight} · ${media.videoHeight > media.videoWidth ? "אנכי" : "אופקי"}` : " · אודיו בלבד";
             setMediaInfo(`${Math.round(media.duration)} שניות${ratio}`);
-          }} sx={{ maxWidth: "100%", maxHeight: { xs: "min(22dvh, 170px)", sm: 220 }, borderRadius: 2 }} />
+          }} sx={{ maxWidth: "100%", maxHeight: { xs: "clamp(100px, calc(40dvh - 100px), 240px)", sm: 220 }, borderRadius: 2 }} />
         <Typography variant="caption" sx={{ fontSize: { xs: "0.75rem", sm: "0.875rem" } }}>{mediaInfo}</Typography>
       </Stack>}
       {!file && !isSubmitting && <Typography variant="body2" color="text.secondary" textAlign="center" sx={{ display: { xs: "none", sm: "block" } }}>
@@ -153,7 +153,7 @@ export function UploadForm({
         {isSubmitting ? "מעבד..." : "שלחו לעיבוד"}
       </Button>}
 
-      {isSubmitting && <Stack spacing={0.5} alignItems="center">
+      {isSubmitting && <Stack spacing={{ xs: "clamp(4px, calc(3dvh - 12px), 12px)", sm: 0.5 }} alignItems="center">
         <Button type="button" variant="outlined" onClick={onBackToUpload} sx={{ minHeight: 44 }}>
           חזרה לבחירת קובץ
         </Button>

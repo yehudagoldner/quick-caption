@@ -189,7 +189,7 @@ export function MobileTimingTimeline({
       {error && <Alert severity="warning" onClose={() => setError(null)} sx={{ position: "absolute", top: 26, left: 8, right: 8, zIndex: 5, py: 0 }}>{error}</Alert>}
       <Box ref={scrollerRef} data-testid="mobile-timing-track" dir="ltr" onScroll={onScroll} sx={{
         height: "100%", width: "100%", maxWidth: "100%", overflowX: "auto", overflowY: "hidden", touchAction: "pan-x", overscrollBehaviorX: "contain",
-        scrollbarWidth: "none", bgcolor: "#f3f5f8", borderRadius: 2, border: 1, borderColor: "#e4e8ee",
+        scrollbarWidth: "none", bgcolor: "#f3f5f8", borderRadius: "12px", border: 1, borderColor: "#e4e8ee",
         "&::-webkit-scrollbar": { display: "none" },
       }}>
         <Box sx={{ position: "relative", height: "100%", width: Math.max(width, pad + total * pps + pad) }}>
@@ -206,13 +206,13 @@ export function MobileTimingTimeline({
               onClick={event => { if ((event.target as HTMLElement).closest("[data-timing-handle]")) return; choose(segments.find(item => item.id === segment.id) ?? segment); }}
               onKeyDown={event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); choose(segment); } }}
               sx={{
-                position: "absolute", top: 22, bottom: 8, left, width: cardWidth, borderRadius: 1.5, bgcolor: "#fff",
+                position: "absolute", top: 22, bottom: 8, left, width: cardWidth, borderRadius: "8px", bgcolor: "#fff",
                 border: 1, borderColor: focused ? "primary.main" : "#e4e8ee", boxShadow: focused ? "0 0 0 1px #1976d2" : "none",
                 overflow: "hidden", zIndex: focused ? 2 : 1, touchAction: "pan-x",
               }}>
-              <Box sx={{ height: "100%", px: showChrome ? 4.5 : 1.5, display: "flex", flexDirection: "column", justifyContent: "center", pb: showChrome ? "40px" : 0.5, overflow: "hidden" }}>
-                <Typography dir={preferences.direction} sx={{ fontSize: 15, fontWeight: 600, lineHeight: 1.3, display: "-webkit-box", WebkitLineClamp: 4, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{segment.text}</Typography>
-                <Typography dir="ltr" variant="caption" color="text.secondary" sx={{ mt: 0.25, textAlign: preferences.direction === "rtl" ? "right" : "left" }}>{clock(segment.start)}–{clock(segment.end)}</Typography>
+              <Box sx={{ height: "100%", px: showChrome ? 4.5 : 1.5, display: "flex", flexDirection: "column", justifyContent: "center", pt: 0.5, pb: showChrome ? "40px" : 0.5, overflow: "hidden" }}>
+                <Typography dir={preferences.direction} sx={{ flexShrink: 0, fontSize: 15, fontWeight: 600, lineHeight: 1.3, overflowWrap: "anywhere", display: "-webkit-box", WebkitLineClamp: 4, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{segment.text}</Typography>
+                <Typography dir="ltr" variant="caption" color="text.secondary" sx={{ flexShrink: 0, mt: 0.25, textAlign: preferences.direction === "rtl" ? "right" : "left" }}>{clock(segment.start)}–{clock(segment.end)}</Typography>
               </Box>
               {showChrome && <>
                 <Handle label="הזזת התחלה" edge="start" onDown={event => beginDrag(event, segment, "start")} onMove={moveDrag} onUp={endDrag} />
