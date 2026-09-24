@@ -11,6 +11,7 @@ type PreviewStepSectionProps = {
   downloadName: string;
   mediaUrl: string | null;
   onBack: () => void;
+  onMyVideos: () => void;
   onBurn: (options: BurnOptions) => Promise<{ blob: Blob; filename?: string | undefined }>;
   onSaveSegments: (segments: Segment[], subtitleContent: string, words?: any[]) => Promise<void>;
   videoId: number | null;
@@ -25,6 +26,7 @@ export function PreviewStepSection({
   downloadName,
   mediaUrl,
   onBack,
+  onMyVideos,
   onBurn,
   onSaveSegments,
   videoId,
@@ -41,6 +43,7 @@ export function PreviewStepSection({
             downloadName={downloadName}
             mediaUrl={mediaUrl}
             onBack={onBack}
+            onMyVideos={onMyVideos}
             onBurn={onBurn}
             onSaveSegments={onSaveSegments}
             videoId={videoId}

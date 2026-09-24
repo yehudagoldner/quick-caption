@@ -6,13 +6,15 @@ import type { TranscriptionWorkflow } from "../hooks/useTranscriptionWorkflow";
 
 interface TranscriptionPageProps {
   workflow: TranscriptionWorkflow;
+  onMyVideos: () => void;
 }
 
-export function TranscriptionPage({ workflow }: TranscriptionPageProps) {
+export function TranscriptionPage({ workflow, onMyVideos }: TranscriptionPageProps) {
   const previewError = workflow.activePage === "preview" ? workflow.error : null;
+  const awaitingFile = workflow.activePage === "upload" && !workflow.file && !workflow.isSubmitting;
 
   return (
-    <Stack spacing={4}>
+    <Stack spacing={{ xs: 1, sm: 4 }} sx={{ minHeight: { xs: awaitingFile ? "calc(100dvh - 72px)" : undefined, sm: undefined }, justifyContent: { xs: awaitingFile ? "center" : "flex-start", sm: "flex-start" } }}>
       <WorkflowIntro />
 
       <UploadStepSection
@@ -21,9 +23,12 @@ export function TranscriptionPage({ workflow }: TranscriptionPageProps) {
         isSubmitting={workflow.isSubmitting}
         uploadProgress={workflow.uploadProgress}
         stages={workflow.stages}
+        maxCharactersPerSubtitle={workflow.maxCharactersPerSubtitle}
         error={workflow.activePage === "upload" ? workflow.error : null}
         onFileChange={workflow.onFileChange}
+        onMaxCharactersChange={workflow.onMaxCharactersChange}
         onSubmit={workflow.onSubmit}
+        onBackToUpload={workflow.onBackToUpload}
       />
 
       <PreviewStepSection
@@ -34,6 +39,7 @@ export function TranscriptionPage({ workflow }: TranscriptionPageProps) {
         downloadName={workflow.downloadName}
         mediaUrl={workflow.mediaPreviewUrl}
         onBack={workflow.onBackToUpload}
+        onMyVideos={onMyVideos}
         onBurn={workflow.onBurnVideoRequest}
         onSaveSegments={workflow.onSaveSegments}
         videoId={workflow.videoId}

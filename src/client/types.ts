@@ -21,6 +21,7 @@ export type SubtitlePayload = {
 
 export type ApiResponse = {
   text: string;
+  originalFilename?: string;
   segments: Segment[];
   words?: Word[];
   subtitle: SubtitlePayload;
@@ -46,6 +47,7 @@ export type StageState = {
 };
 
 export type StageEvent = {
+  jobId?: string;
   stage: StageId;
   status: "start" | "done" | "skipped" | "error";
   message?: string;

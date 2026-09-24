@@ -12,7 +12,8 @@ import "./src/loadAppEnv.js";
 import { transcribeMedia, normalizeSubtitleFormat, transcribeWithWordTimestamps, getMediaDuration, resegmentWithGPT, intelligentSplitSegment, aiEditSubtitles } from "./src/transcription.js";
 import { createBurnSubtitlesRouter } from "./routes/burnSubtitles.js";
 import paypalRouter from "./routes/paypal.js";
-import { ensureSchema, upsertUser, saveVideo, updateVideoSubtitles, getUserVideos, getVideoById, getUserCredits, deductCredits, ensureDevDummyUser } from "./db.js";
+import { ensureSchema, upsertUser, saveVideo, updateVideoSubtitles, getUserVideos, getVideoById, getUserCredits, deductCredits, ensureDevDummyUser, createTranscriptionJob, getTranscriptionJob, finishTranscriptionJob, updateTranscriptionProgress, completeTranscriptionJob } from "./db.js";
+import { trackTranscriptionProgress } from "./src/transcriptionJobs.js";
 import { estimateTranscriptionCredits, creditsToDollars, calculateTotalWorkflowCredits } from "./src/creditCalculator.js";
 import { getDevAuthUid, isDevAuthBypassEnabled } from "./src/devAuth.js";
 
@@ -371,9 +372,32 @@ app.get("/api/videos/:id/file", async (req, res) => {
   }
 });
 
+app.get("/api/transcribe/jobs/:jobId", async (req, res) => {
+  const { jobId } = req.params;
+  const { userUid } = req.query;
+  if (!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(jobId) || typeof userUid !== "string" || !userUid) {
+    return res.status(400).json({ error: "Valid jobId and userUid are required" });
+  }
+  try {
+    const job = await getTranscriptionJob({ jobId, userUid });
+    if (!job) return res.status(404).json({ error: "Job not found" });
+    res.set('Cache-Control', 'no-store');
+    res.json({
+      status: job.status,
+      result: job.status === "completed" ? JSON.parse(job.result_json) : undefined,
+      error: job.status === "failed" ? job.error_message : undefined,
+      stages: typeof job.stages_json === 'string' ? JSON.parse(job.stages_json) : job.stages_json ?? [],
+    });
+  } catch (error) {
+    console.error("Failed to fetch transcription job:", error);
+    res.status(500).json({ error: "Failed to fetch transcription job" });
+  }
+});
+
 app.post("/api/transcribe", upload.single("media"), async (req, res) => {
   const socketId = req.body?.socketId;
   const userUid = req.body?.userUid;
+  const jobId = req.body?.jobId;
   const maxWordsPerSubtitle = parseInt(req.body?.maxWordsPerSubtitle, 10) || 5;
   const rawCharacters = req.body?.maxCharactersPerSubtitle;
   const maxCharactersPerSubtitle = rawCharacters === undefined ? null : Number(rawCharacters);
@@ -381,7 +405,7 @@ app.post("/api/transcribe", upload.single("media"), async (req, res) => {
     if (req.file) await safeUnlink(req.file.path);
     return res.status(400).json({ error: "מגבלת התווים חייבת להיות בין 7 ל־20" });
   }
-  const emitStage = createStageEmitter(socketId);
+  let emitStage = createStageEmitter(socketId, jobId);
 
   if (!req.file) {
     emitStage("complete", "error", "נדרש קובץ מדיה");
@@ -393,6 +417,34 @@ app.post("/api/transcribe", upload.single("media"), async (req, res) => {
     await safeUnlink(req.file.path);
     return res.status(400).json({ error: 'userUid is required for credit check' });
   }
+
+  if (jobId && !/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(jobId)) {
+    await safeUnlink(req.file.path);
+    return res.status(400).json({ error: 'Invalid jobId' });
+  }
+  if (jobId) {
+    try {
+      await createTranscriptionJob({ jobId, userUid });
+    } catch (error) {
+      await safeUnlink(req.file.path);
+      console.error("Failed to create transcription job:", error);
+      return res.status(500).json({ error: "Failed to start transcription job" });
+    }
+  }
+  const progressTracker = jobId ? trackTranscriptionProgress({
+    update: stages => updateTranscriptionProgress(jobId, stages),
+    emit: emitStage,
+  }) : null;
+  if (progressTracker) emitStage = progressTracker.emit;
+  const failJob = async (message) => {
+    if (!jobId) return;
+    await progressTracker?.stop();
+    try {
+      await finishTranscriptionJob({ jobId, error: message });
+    } catch (error) {
+      console.error("Failed to record transcription error:", error);
+    }
+  };
 
   // Fix filename encoding - multer often corrupts UTF-8 filenames
   let originalFilename = req.file.originalname;
@@ -441,6 +493,7 @@ app.post("/api/transcribe", upload.single("media"), async (req, res) => {
     }
   } catch (error) {
     emitStage("complete", "error", error.message);
+    await failJob(error.message);
     await safeUnlink(req.file.path);
     return res.status(400).json({ error: error.message });
   }
@@ -470,6 +523,7 @@ app.post("/api/transcribe", upload.single("media"), async (req, res) => {
     const currentCredits = await getUserCredits(userUid);
     if (currentCredits === null) {
       emitStage("complete", "error", "משתמש לא נמצא");
+      await failJob("משתמש לא נמצא");
       await safeUnlink(req.file.path);
       return res.status(404).json({ error: 'User not found' });
     }
@@ -477,6 +531,7 @@ app.post("/api/transcribe", upload.single("media"), async (req, res) => {
     if (currentCredits < estimatedCredits) {
       const shortfall = estimatedCredits - currentCredits;
       emitStage("complete", "error", `אין מספיק קרדיטים. נדרשים ${estimatedCredits} קרדיטים, יש לך ${currentCredits}`);
+      await failJob("אין מספיק קרדיטים לביצוע הפעולה.");
       await safeUnlink(req.file.path);
       return res.status(402).json({
         error: 'Insufficient credits',
@@ -491,10 +546,12 @@ app.post("/api/transcribe", upload.single("media"), async (req, res) => {
   } catch (error) {
     console.error("Credit check failed:", error);
     emitStage("complete", "error", "בדיקת קרדיטים נכשלה");
+    await failJob("בדיקת קרדיטים נכשלה");
     await safeUnlink(req.file.path);
     return res.status(500).json({ error: 'Credit check failed' });
   }
 
+  let savedVideoId = null;
   try {
     const result = await transcribeMedia({
       inputPath: req.file.path,
@@ -505,7 +562,6 @@ app.post("/api/transcribe", upload.single("media"), async (req, res) => {
       onStage: emitStage,
     });
 
-    let savedVideoId = null;
     let storedPath = null;
     if (userUid && req.file) {
       try {
@@ -555,7 +611,7 @@ app.post("/api/transcribe", upload.single("media"), async (req, res) => {
         savedVideoId = await saveVideo({
           userUid,
           originalFilename,
-          storedPath: storedFilename,
+          storedPath: path.basename(storedPath),
           status: 'completed',
           mediaType: req.file?.mimetype?.startsWith('audio/') ? 'audio' : 'video',
           mimeType: req.file?.mimetype ?? null,
@@ -571,6 +627,7 @@ app.post("/api/transcribe", upload.single("media"), async (req, res) => {
         if (storedPath) {
           await safeUnlink(storedPath);
         }
+        throw videoError;
       }
     }
 
@@ -580,28 +637,27 @@ app.post("/api/transcribe", upload.single("media"), async (req, res) => {
     console.log(`Usage breakdown:`, JSON.stringify(result.usage, null, 2));
 
     // Deduct actual credits
-    const deductResult = await deductCredits(userUid, actualCredits);
-    if (!deductResult.success) {
-      console.error(`Failed to deduct actual credits: ${deductResult.error}`);
-      // Log error but don't fail the request - transcription already completed
-    } else {
-      console.log(`Deducted ${actualCredits} credits. New balance: ${deductResult.newBalance}`);
-    }
-
-    emitStage("complete", "done");
-    res.json({
+    let payload = {
       text: result.text,
+      originalFilename,
       segments: result.segments,
       words: result.words ?? [],
       subtitle: result.subtitle,
       warnings: result.warnings,
       models: result.models,
       videoId: savedVideoId,
-      creditsUsed: actualCredits,
-      creditsRemaining: deductResult.newBalance,
-    });
+    };
+    await progressTracker?.stop();
+    if (jobId) {
+      payload = await completeTranscriptionJob({ jobId, userUid, result: payload, credits: actualCredits });
+    } else {
+      const deducted = await deductCredits(userUid, actualCredits);
+      payload = { ...payload, creditsUsed: deducted.success ? actualCredits : 0, creditsRemaining: deducted.newBalance };
+    }
+    createStageEmitter(socketId, jobId)("complete", "done");
+    res.json(payload);
   } catch (error) {
-    if (userUid) {
+    if (userUid && !savedVideoId) {
       try {
         await saveVideo({
           userUid,
@@ -621,12 +677,15 @@ app.post("/api/transcribe", upload.single("media"), async (req, res) => {
       }
     }
     console.error("Transcription failed:", { status: error.status, code: error.code });
-    const message = error.status === 401 || /incorrect api key|invalid_api_key/i.test(error.message ?? "")
+    const message = savedVideoId ? "הסרטון נשמר ב׳הסרטונים שלי׳, אך עדכון מצב העיבוד נכשל. אפשר לפתוח אותו משם."
+      : error.status === 401 || /incorrect api key|invalid_api_key/i.test(error.message ?? "")
       ? "שירות התמלול אינו זמין: מפתח הגישה של השרת נדחה. יש לעדכן את הגדרת השירות ולנסות שוב."
       : "התמלול נכשל. בדקו שקובץ המדיה תקין ונסו שוב.";
     emitStage("complete", "error", message);
+    await failJob(message);
     res.status(500).json({ error: message });
   } finally {
+    await progressTracker?.stop();
     await safeUnlink(req.file.path);
   }
 });
@@ -737,12 +796,12 @@ httpServer.listen(port, () => {
   console.log(`Server listening on http://localhost:${port}`);
 });
 
-function createStageEmitter(socketId) {
+function createStageEmitter(socketId, jobId) {
   return (stage, status, message) => {
     if (!socketId) {
       return;
     }
-    io.to(socketId).emit("transcribe-status", { stage, status, message });
+    io.to(socketId).emit("transcribe-status", { stage, status, message, jobId });
   };
 }
 

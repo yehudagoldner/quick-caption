@@ -11,12 +11,13 @@ interface VideoEditPageProps {
   videoToken: string; // Secure token instead of plain ID
   onSaveSegments: (segments: Segment[], subtitleContent: string, words?: any[]) => Promise<void>;
   onNewUpload: () => void;
+  onMyVideos: () => void;
 }
 
 const RAW_API_BASE = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.trim() ?? "";
 const API_BASE_URL = RAW_API_BASE.replace(/\/?$/, "");
 
-export function VideoEditPage({ user, videoToken, onSaveSegments, onNewUpload }: VideoEditPageProps) {
+export function VideoEditPage({ user, videoToken, onSaveSegments, onNewUpload, onMyVideos }: VideoEditPageProps) {
   const narrow = useNarrowViewport();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -228,6 +229,7 @@ export function VideoEditPage({ user, videoToken, onSaveSegments, onNewUpload }:
           downloadName={downloadName}
           mediaUrl={mediaUrl}
           onBack={onNewUpload}
+          onMyVideos={onMyVideos}
           onBurn={handleBurnVideoRequest}
           onSaveSegments={handleSaveSegments}
           videoId={videoId}

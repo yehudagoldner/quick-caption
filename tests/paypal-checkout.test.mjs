@@ -1,0 +1,108 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import express from 'express';
+import { createPayPalClient, createPayPalRouter } from '../src/paypalCheckout.js';
+import { CREDIT_PACKAGES } from '../src/creditPackages.js';
+
+const orderId = 'ORDER123456789';
+function order(status = 'APPROVED', credits = 100, price = '5.00') {
+  return { id: orderId, intent: 'CAPTURE', status, purchase_units: [{ custom_id: JSON.stringify({ userUid: 'buyer', credits }), amount: { currency_code: 'USD', value: price },
+    ...(status === 'COMPLETED' ? { payments: { captures: [{ id: 'CAPTURE123456', status: 'COMPLETED', amount: { currency_code: 'USD', value: price } }] } } : {}) }] };
+}
+
+async function fixture(t, { payment = order(), lostCapture = false, creditFailure = false } = {}) {
+  const requests = [];
+  const ledger = new Map();
+  let balance = 50;
+  const client = createPayPalClient({ clientId: 'test', secret: 'test', baseUrl: 'https://paypal.invalid', fetchImpl: async (url, options) => {
+    requests.push({ url, ...options });
+    assert.ok(options.signal, 'Every remote request has a timeout');
+    if (url.endsWith('/token')) return Response.json({ access_token: 'token' });
+    if (url.endsWith('/capture')) {
+      payment = order('COMPLETED');
+      if (lostCapture) throw new TypeError('Network disconnected after capture');
+      return Response.json(payment);
+    }
+    if (options.method === 'POST') return Response.json({ id: orderId });
+    return Response.json(payment);
+  } });
+  const app = express();
+  app.use(express.json());
+  app.use(createPayPalRouter({ client, getUserCredits: async uid => uid === 'buyer' ? balance : null,
+    creditCapturedOrder: async data => {
+      if (creditFailure) { creditFailure = false; throw new Error('Database unavailable'); }
+      const credited = !ledger.has(data.orderId);
+      if (credited) { ledger.set(data.orderId, data); balance += data.credits; }
+      return { credited, newBalance: balance };
+    },
+  }));
+  const server = app.listen(0, '127.0.0.1');
+  await new Promise(resolve => server.once('listening', resolve));
+  t.after(() => new Promise(resolve => server.close(resolve)));
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const post = async (path, body) => {
+    const response = await fetch(base + path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    return { status: response.status, data: await response.json() };
+  };
+  return { post, requests, ledger, base };
+}
+
+test('all packages use server prices even when the browser supplies a fake amount', async t => {
+  const f = await fixture(t);
+  for (const pkg of CREDIT_PACKAGES) {
+    const result = await f.post('/create-order', { userUid: 'buyer', credits: pkg.credits, amount: '0.01', currency: 'ILS' });
+    assert.equal(result.status, 200);
+    const payload = JSON.parse(f.requests.at(-1).body);
+    assert.deepEqual(payload.purchase_units[0].amount, { currency_code: 'USD', value: pkg.priceUSD });
+  }
+  assert.equal((await f.post('/create-order', { userUid: 'buyer', credits: 999999 })).status, 400);
+  assert.equal((await f.post('/create-order', { userUid: 'unknown', credits: 100 })).status, 404);
+});
+
+test('approved checkout completes and replays without a second capture or credit', async t => {
+  const f = await fixture(t);
+  const first = await f.post('/capture-order', { orderId, userUid: 'buyer' });
+  assert.equal(first.data.newBalance, 150);
+  assert.equal(first.data.creditsAdded, 100);
+  const second = await f.post('/capture-order', { orderId, userUid: 'buyer' });
+  assert.equal(second.data.newBalance, 150);
+  assert.equal(second.data.creditsAdded, 0);
+  const captures = f.requests.filter(r => r.url.endsWith('/capture'));
+  assert.equal(captures.length, 1);
+  assert.equal(captures[0].headers['PayPal-Request-Id'], `capture-${orderId}`);
+});
+
+test('lost capture response is reconciled against the same order', async t => {
+  const f = await fixture(t, { lostCapture: true });
+  const result = await f.post('/capture-order', { orderId, userUid: 'buyer' });
+  assert.equal(result.status, 200);
+  assert.equal(result.data.newBalance, 150);
+});
+
+test('database failure after payment can be retried without another charge', async t => {
+  const f = await fixture(t, { creditFailure: true });
+  assert.equal((await f.post('/capture-order', { orderId, userUid: 'buyer' })).data.code, 'CREDIT_UPDATE_PENDING');
+  assert.equal((await f.post('/capture-order', { orderId, userUid: 'buyer' })).data.newBalance, 150);
+  assert.equal(f.requests.filter(r => r.url.endsWith('/capture')).length, 1);
+});
+
+for (const scenario of ['wrong owner', 'wrong price', 'pending', 'unapproved', 'wrong captured currency']) {
+  test(`no credits are issued for ${scenario}`, async t => {
+    const payment = order('COMPLETED');
+    if (scenario === 'wrong owner') payment.purchase_units[0].custom_id = JSON.stringify({ userUid: 'someone-else', credits: 100 });
+    if (scenario === 'wrong price') payment.purchase_units[0].amount.value = '0.01';
+    if (scenario === 'pending') payment.purchase_units[0].payments.captures[0].status = 'PENDING';
+    if (scenario === 'unapproved') payment.status = 'CREATED';
+    if (scenario === 'wrong captured currency') payment.purchase_units[0].payments.captures[0].amount.currency_code = 'EUR';
+    const f = await fixture(t, { payment });
+    const result = await f.post('/capture-order', { orderId, userUid: 'buyer' });
+    assert.equal(result.status, 409);
+    assert.equal(f.ledger.size, 0);
+  });
+}
+
+test('missing payment credentials does not prevent the application from starting', async () => {
+  const client = createPayPalClient({ baseUrl: 'https://paypal.invalid', fetchImpl: () => { throw new Error('Should not contact PayPal'); } });
+  assert.equal(client.available, false);
+  await assert.rejects(client.accessToken(), error => error.status === 503);
+});

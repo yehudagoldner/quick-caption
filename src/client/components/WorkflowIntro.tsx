@@ -2,7 +2,7 @@
 
 export function WorkflowIntro() {
   return (
-    <Stack spacing={1} textAlign="center">
+    <Stack spacing={1} textAlign="center" sx={{ display: { xs: "none", sm: "flex" } }}>
       <Typography variant="h4" component="h1">
         QuickCaption
       </Typography>

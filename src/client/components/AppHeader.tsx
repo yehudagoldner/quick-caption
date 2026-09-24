@@ -90,7 +90,7 @@ export function AppHeader({
         {user ? (
           <>
             {credits !== null && (
-              <Tooltip title={`יתרת קרדיטים: ${credits} (${(credits / 100).toFixed(2)}$)`}>
+              <Tooltip title={`יתרת קרדיטים: ${credits}`}>
                 <Chip
                   icon={<AccountBalanceWalletRounded />}
                   label={`${credits} קרדיטים`}

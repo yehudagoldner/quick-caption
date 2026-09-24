@@ -30,13 +30,17 @@ const STATUS_LABEL: Record<StageState["status"], string> = {
 };
 
 export function UploadProgress({ progress, stages }: UploadProgressProps) {
+  const uploading = progress < 100;
   return (
-    <Box mt={2} display="flex" flexDirection="column" gap={2}>
-      <Box display="flex" alignItems="center" gap={2}>
-        <LinearProgress variant="determinate" value={progress} sx={{ flexGrow: 1, height: 8, borderRadius: 999 }} />
-        <Typography variant="body2" color="text.secondary">
+    <Box mt={{ xs: 0.5, sm: 2 }} display="flex" flexDirection="column" gap={{ xs: 0.5, sm: 2 }}>
+      <Typography variant="body2" color="text.secondary" role="status">
+        {uploading ? "מעלים את הקובץ — השאירו את המסך פתוח עד סיום ההעלאה." : "ההעלאה הסתיימה. הסרטון עדיין בעיבוד."}
+      </Typography>
+      <Box display="flex" alignItems="center" gap={{ xs: 1, sm: 2 }}>
+        <LinearProgress aria-label={uploading ? "התקדמות העלאה" : "עיבוד הסרטון"} variant={uploading ? "determinate" : "indeterminate"} value={progress} sx={{ flexGrow: 1, height: 8, borderRadius: 999 }} />
+        {uploading && <Typography variant="body2" color="text.secondary">
           {progress}%
-        </Typography>
+        </Typography>}
       </Box>
 
       <List dense disablePadding>
@@ -45,19 +49,21 @@ export function UploadProgress({ progress, stages }: UploadProgressProps) {
             key={stage.id}
             sx={{
               borderRadius: 2,
-              px: 1,
-              py: 0.5,
-              mb: 0.5,
+              px: { xs: 0.5, sm: 1 },
+              py: { xs: 0, sm: 0.5 },
+              mb: { xs: 0, sm: 0.5 },
               bgcolor: stage.status === "active" ? "action.hover" : "transparent",
             }}
           >
-            <ListItemIcon sx={{ minWidth: 36 }}>{STATUS_ICON[stage.status]}</ListItemIcon>
+            <ListItemIcon sx={{ minWidth: { xs: 28, sm: 36 }, "& svg": { fontSize: { xs: 20, sm: 24 } } }}>{STATUS_ICON[stage.status]}</ListItemIcon>
             <ListItemText
               primary={stage.label}
               secondary={stage.message ?? undefined}
-              primaryTypographyProps={{ fontWeight: stage.status === "active" ? 600 : undefined }}
+              primaryTypographyProps={{ fontWeight: stage.status === "active" ? 600 : undefined, sx: { fontSize: { xs: "0.875rem", sm: "1rem" } } }}
+              secondaryTypographyProps={{ sx: { display: { xs: "none", sm: "block" } } }}
+              sx={{ my: { xs: 0, sm: 0.5 } }}
             />
-            <Chip label={STATUS_LABEL[stage.status]} size="small" color={chipColor(stage.status)} variant="outlined" />
+            <Chip label={STATUS_LABEL[stage.status]} size="small" color={chipColor(stage.status)} variant="outlined" sx={{ height: { xs: 22, sm: 24 }, "& .MuiChip-label": { px: { xs: 0.75, sm: 1 } } }} />
           </ListItem>
         ))}
       </List>

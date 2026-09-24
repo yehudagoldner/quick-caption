@@ -3,6 +3,7 @@ import {
   Alert,
   Box,
   Button,
+  ButtonBase,
   CircularProgress,
   Dialog,
   DialogActions,
@@ -55,9 +56,11 @@ import { type CaptionDraft, type SubtitleTimelineProps } from "./SubtitleTimelin
 import { MobileTimingTimeline } from "./MobileTimingTimeline";
 
 type SaveState = "idle" | "saving" | "success" | "error";
-type MobileMode = "watch" | "edit" | "timing" | "style";
+type MobileMode = "watch" | "edit" | "timing";
 
 type BurnedVideo = { url: string; name: string };
+
+const STYLE_DRAWER_HEIGHT = "min(36dvh, 306px)";
 
 export type MobileCaptionEditorProps = {
   timelineEditing: Pick<SubtitleTimelineProps, "onSaveSegment" | "onUndo" | "onRedo" | "canUndo" | "canRedo" | "onPlayFrom" | "loopEnabled" | "onLoopChange" | "onDraftStateChange">;
@@ -109,6 +112,7 @@ export type MobileCaptionEditorProps = {
   isPlaying?: boolean;
   onPlayPause?: () => void;
   onBack?: () => void;
+  onMyVideos: () => void;
   backDisabled?: boolean;
 };
 
@@ -162,10 +166,12 @@ export function MobileCaptionEditor({
   isPlaying,
   onPlayPause,
   onBack,
+  onMyVideos,
   backDisabled,
 }: MobileCaptionEditorProps) {
   const { preferences } = useEditorPreferences();
   const [mode, setMode] = useState<MobileMode>("watch");
+  const [styleOpen, setStyleOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
   const [sharing, setSharing] = useState(false);
   const [readyToShare, setReadyToShare] = useState<{ url: string; name: string } | null>(null);
@@ -178,6 +184,9 @@ export function MobileCaptionEditor({
   const [newStart, setNewStart] = useState(0);
   const [newEnd, setNewEnd] = useState(0);
   const [draftText, setDraftText] = useState("");
+  const [draftError, setDraftError] = useState<string | null>(null);
+  const [savingDraft, setSavingDraft] = useState(false);
+  const [leaving, setLeaving] = useState(false);
   const [chromeTop, setChromeTop] = useState(56);
   const captionStripRef = useRef<HTMLDivElement | null>(null);
   const captionCardRefs = useRef(new Map<string, HTMLButtonElement>());
@@ -186,9 +195,13 @@ export function MobileCaptionEditor({
   const captionScrollFromUser = useRef(false);
   const draftTextRef = useRef("");
   const savedTextRef = useRef("");
-  const saveFlight = useRef<string | null>(null);
-  const lastPersisted = useRef<string | null>(null);
-  const saveQueued = useRef<{ segment: Segment; text: string; words: Word[] } | null>(null);
+  const saveFlight = useRef<{ key: string; promise: Promise<boolean> } | null>(null);
+  const saveSegmentRef = useRef(timelineEditing.onSaveSegment);
+  saveSegmentRef.current = timelineEditing.onSaveSegment;
+  const destinationsRef = useRef({ onMyVideos, onBack });
+  destinationsRef.current = { onMyVideos, onBack };
+  const splitSegmentRef = useRef(onSplitSegment);
+  splitSegmentRef.current = onSplitSegment;
 
   const duration = videoDuration && Number.isFinite(videoDuration) ? videoDuration : Math.max(1, ...editableSegments.map(s => s.end), 1);
   const selectedIndex = editableSegments.findIndex(s => s.id === selectedSegmentId);
@@ -209,10 +222,10 @@ export function MobileCaptionEditor({
 
   useEffect(() => {
     if (!selected) return;
+    // Optimistic parent updates and their rollback must not overwrite the local draft.
+    if (saveFlight.current) return;
     setDraftText(current => current.trim() === savedTextRef.current ? selected.text : current);
     savedTextRef.current = selected.text;
-    const savedKey = `${selected.id}:${selected.text.trim()}`;
-    if (lastPersisted.current?.startsWith(`${selected.id}:`) && lastPersisted.current !== savedKey) lastPersisted.current = savedKey;
   }, [selected?.text]);
 
   useEffect(() => {
@@ -239,8 +252,15 @@ export function MobileCaptionEditor({
     return () => window.removeEventListener("resize", update);
   }, []);
 
-  const goMode = (next: MobileMode) => {
+  const goMode = async (next: MobileMode | "style") => {
+    if (!await flushDraft()) return;
     setMoreOpen(false);
+    if (next === "style") {
+      setMode("watch");
+      setStyleOpen(open => !open);
+      return;
+    }
+    setStyleOpen(false);
     if (next === mode) {
       setMode("watch");
       return;
@@ -252,31 +272,53 @@ export function MobileCaptionEditor({
     setMode(next);
   };
 
-  const persistCaption = async (segment: Segment, text: string, segmentWords: Word[]) => {
+  const persistCaption = async (segment: Segment, text: string, segmentWords: Word[]): Promise<boolean> => {
     const nextText = text.trim();
-    if (!segment || !nextText || nextText === segment.text.trim() || !isEditable) return;
+    if (!isEditable) return true;
+    if (!nextText) { setDraftError("הכתובית ריקה. הקלידו טקסט לפני היציאה."); return false; }
     const flightKey = `${segment.id}:${nextText}`;
-    if (saveFlight.current === flightKey || lastPersisted.current === flightKey) return;
-    if (saveFlight.current) {
-      saveQueued.current = { segment, text: nextText, words: segmentWords };
-      return;
+    while (saveFlight.current) {
+      const flight = saveFlight.current;
+      const saved = await flight.promise;
+      if (flight.key === flightKey) return saved;
     }
-    saveFlight.current = flightKey;
-    try {
-      await timelineEditing.onSaveSegment({ ...segment, text: nextText }, synchronizeWords([{ ...segment, text: nextText }], segmentWords));
-      lastPersisted.current = flightKey;
-    } catch {
-      // Keep the draft. The next interval retries, and a failed request surfaces its own error.
-    } finally {
-      saveFlight.current = null;
-      const queued = saveQueued.current;
-      saveQueued.current = null;
-      if (queued && `${queued.segment.id}:${queued.text}` !== flightKey) void persistCaption(queued.segment, queued.text, queued.words);
-    }
+    if (nextText === segment.text.trim() && !draftError) return true;
+    setSavingDraft(true);
+    setDraftError(null);
+    const promise = (async () => {
+      try {
+        await saveSegmentRef.current({ ...segment, text: nextText }, synchronizeWords([{ ...segment, text: nextText }], segmentWords));
+        savedTextRef.current = nextText;
+        return true;
+      } catch {
+        setDraftError("שמירת הכתובית נכשלה. הטקסט נשאר כאן; נסו לשמור שוב.");
+        return false;
+      } finally {
+        saveFlight.current = null;
+        setSavingDraft(false);
+      }
+    })();
+    saveFlight.current = { key: flightKey, promise };
+    return promise;
+  };
+
+  const flushDraft = () => mode === "edit" && selected
+    ? persistCaption(selected, draftTextRef.current, captionWords)
+    : Promise.resolve(true);
+  const leave = async (destination: "onMyVideos" | "onBack") => {
+    setLeaving(true);
+    try { if (await flushDraft()) destinationsRef.current[destination]?.(); }
+    finally { setLeaving(false); }
+  };
+  const selectCaption = async (id: Segment["id"]) => {
+    if (await flushDraft()) onSegmentSelect(id);
+  };
+  const openMore = async () => {
+    if (await flushDraft()) setMoreOpen(true);
   };
 
   useEffect(() => {
-    if (mode !== "edit" || !selected || !isEditable) return;
+    if (mode !== "edit" || !selected || !isEditable || draftError) return;
     const segment = selected;
     const text = draftText;
     const segmentWords = captionWords;
@@ -285,17 +327,7 @@ export function MobileCaptionEditor({
       void persistCaption(segment, text, segmentWords);
     }, 1000);
     return () => window.clearTimeout(timer);
-  }, [draftText, selected?.id, selected?.text, mode, isEditable]);
-
-  useEffect(() => {
-    const segment = selected;
-    const segmentWords = captionWords;
-    return () => {
-      const text = draftTextRef.current;
-      if (!segment || !text.trim() || text.trim() === segment.text.trim()) return;
-      void persistCaption(segment, text, segmentWords);
-    };
-  }, [selected?.id]);
+  }, [draftText, selected?.id, selected?.text, mode, isEditable, draftError]);
 
   const focusedSegment = editableSegments.find(segment => currentTime >= segment.start && currentTime < segment.end)
     ?? editableSegments.find(segment => segment.id === (selectedSegmentId ?? activeSegmentId))
@@ -349,13 +381,12 @@ export function MobileCaptionEditor({
     />
   );
 
-  const playerSlot = (kind: "watch" | "compact" | "edit") => (
+  const playerSlot = (kind: "watch" | "edit") => (
     <Box sx={{
-      flex: kind === "compact" ? "0 0 auto" : 1,
+      flex: 1,
       minHeight: kind === "edit" ? 180 : 0,
       width: "100%",
-      height: kind === "compact" ? "min(22dvh, 148px)" : undefined,
-      maxHeight: kind === "compact" ? "min(22dvh, 148px)" : "100%",
+      maxHeight: "100%",
       display: "flex",
       overflow: "hidden",
     }}>
@@ -363,8 +394,8 @@ export function MobileCaptionEditor({
     </Box>
   );
 
-  const canExport = Boolean(downloadUrl) && !hasTimelineDrafts;
-  const canShareVideo = canBurn && Boolean(mediaUrl) && !hasTimelineDrafts && !isBurning && !sharing;
+  const hasCaptionDraft = mode === "edit" && selected !== null && draftText.trim() !== selected.text.trim();
+  const canShareVideo = canBurn && Boolean(mediaUrl) && !hasTimelineDrafts && !hasCaptionDraft && !savingDraft && !isBurning && !sharing;
 
   const shareBurnedFile = async (file: { url: string; name: string }) => {
     const blob = await fetch(file.url).then(result => result.blob());
@@ -429,13 +460,14 @@ export function MobileCaptionEditor({
       pb: "env(safe-area-inset-bottom, 0px)",
     }}>
       <Stack direction="row" alignItems="center" sx={{ flexShrink: 0, px: 0.5, py: 0.25, minHeight: 56, borderBottom: 1, borderColor: "#e8edf3", bgcolor: "#ffffff" }}>
-        <IconButton size="small" aria-label="חזרה לצפייה" onClick={() => setMode("watch")}><ChevronRightRounded /></IconButton>
-        <Typography sx={{ flex: 1, fontWeight: 500, fontSize: 15 }}>עורך כתוביות</Typography>
-        <IconButton aria-label="שיתוף סרטון עם כתוביות" disabled={!canShareVideo} onClick={() => { void shareVideo(); }} sx={{ width: 48, height: 48, bgcolor: "primary.main", color: "#fff", "&:hover": { bgcolor: "primary.dark" }, "&.Mui-disabled": { bgcolor: "action.disabledBackground", color: "action.disabled" } }}>
-          {isBurning || sharing ? <CircularProgress size={26} sx={{ color: "inherit" }} /> : <ShareRounded sx={{ fontSize: 30 }} />}
+        <IconButton size="small" aria-label="חזרה לצפייה" onClick={() => { void goMode("watch"); }} sx={{ width: 44, height: 44 }}><ChevronRightRounded /></IconButton>
+        <ButtonBase onClick={() => void leave("onMyVideos")} disabled={backDisabled || leaving} sx={{ flex: 1, minHeight: 44, justifyContent: "flex-start", fontWeight: 500, fontSize: 15, color: "text.primary", minWidth: 0 }}>
+          לסרטונים שלי
+        </ButtonBase>
+        <IconButton size="small" aria-label="שיתוף סרטון עם כתוביות" disabled={!canShareVideo} onClick={() => { void shareVideo(); }} sx={{ width: 44, height: 44, bgcolor: "primary.main", color: "#fff", "&:hover": { bgcolor: "primary.dark" }, "&.Mui-disabled": { bgcolor: "action.disabledBackground", color: "action.disabled" } }}>
+          {isBurning || sharing ? <CircularProgress size={20} sx={{ color: "inherit" }} /> : <ShareRounded />}
         </IconButton>
-        <IconButton size="small" aria-label="הורדה" disabled={!canExport} {...(canExport ? { component: "a" as const, href: downloadUrl ?? undefined, download: downloadName } : {})}><DownloadRounded /></IconButton>
-        <IconButton size="small" aria-label="תפריט" onClick={() => setMoreOpen(true)}><MenuRounded /></IconButton>
+        <IconButton size="small" aria-label="תפריט" onClick={() => void openMore()} sx={{ width: 44, height: 44 }}><MenuRounded /></IconButton>
       </Stack>
 
       {burnError && <Alert severity="error" sx={{ flexShrink: 0, mx: 1.5, mt: 1 }}>{burnError}</Alert>}
@@ -449,7 +481,7 @@ export function MobileCaptionEditor({
         boxSizing: "border-box",
         px: 1.5,
         pt: 1,
-        pb: 0.5,
+        pb: styleOpen ? `calc(${STYLE_DRAWER_HEIGHT} - 60px)` : 0.5,
         display: "flex",
         flexDirection: "column",
         overflow: "hidden",
@@ -457,7 +489,8 @@ export function MobileCaptionEditor({
         {mode === "watch" && (
           <Stack spacing={1} alignItems="center" sx={{ flex: 1, minHeight: 0, height: "100%" }}>
             {playerSlot("watch")}
-            <Typography variant="caption" color="text.secondary" sx={{ flexShrink: 0 }}>{formatTimecode(currentTime, preferences.fps)}</Typography>
+            {!styleOpen && <Typography variant="caption" color="text.secondary" sx={{ flexShrink: 0 }}>{formatTimecode(currentTime, preferences.fps)}</Typography>}
+            {!styleOpen && <>
             <Box
               dir="ltr"
               role="slider"
@@ -557,6 +590,7 @@ export function MobileCaptionEditor({
                 })}
               </Box>
             )}
+            </>}
           </Stack>
         )}
 
@@ -565,9 +599,9 @@ export function MobileCaptionEditor({
             {playerSlot("edit")}
             {selected && <Stack spacing={1} sx={{ flexShrink: 0, minHeight: 0, maxHeight: "48%", overflow: "auto" }}>
             <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ flexShrink: 0 }}>
-              <IconButton aria-label="המקטע הקודם" disabled={selectedIndex <= 0} onClick={() => onSegmentSelect(editableSegments[selectedIndex - 1].id)}><ChevronLeftRounded /></IconButton>
+              <IconButton aria-label="המקטע הקודם" disabled={selectedIndex <= 0 || leaving} onClick={() => void selectCaption(editableSegments[selectedIndex - 1].id)}><ChevronLeftRounded /></IconButton>
               <Typography variant="body2" color="text.secondary">מקטע {selectedIndex + 1} מתוך {editableSegments.length}</Typography>
-              <IconButton aria-label="המקטע הבא" disabled={selectedIndex >= editableSegments.length - 1} onClick={() => onSegmentSelect(editableSegments[selectedIndex + 1].id)}><ChevronRightRounded /></IconButton>
+              <IconButton aria-label="המקטע הבא" disabled={selectedIndex >= editableSegments.length - 1 || leaving} onClick={() => void selectCaption(editableSegments[selectedIndex + 1].id)}><ChevronRightRounded /></IconButton>
             </Stack>
             <TextField
               label="טקסט המקטע"
@@ -576,12 +610,13 @@ export function MobileCaptionEditor({
               maxRows={3}
               fullWidth
               value={draftText}
-              disabled={!isEditable}
+              disabled={!isEditable || leaving}
               onBlur={() => { if (selected) void persistCaption(selected, draftText, captionWords); }}
-              onChange={event => setDraftText(event.target.value)}
+              onChange={event => { setDraftText(event.target.value); setDraftError(null); }}
               inputProps={{ dir: preferences.direction, "aria-label": "טקסט המקטע" }}
               sx={{ maxWidth: "100%" }}
             />
+            {draftError && <Alert severity="error" action={<Button onClick={() => void flushDraft()}>שמירה חוזרת</Button>}>{draftError}</Alert>}
             <Stack direction="row" justifyContent="space-between">
               <Typography variant="caption" color="text.secondary" dir="ltr">{formatTimecode(selected.start, preferences.fps)}</Typography>
               <Typography variant="caption" color="text.secondary" dir="ltr">{formatTimecode(selected.end, preferences.fps)}</Typography>
@@ -601,7 +636,7 @@ export function MobileCaptionEditor({
             )}
             <Stack direction="row" useFlexGap flexWrap="wrap" gap={1}>
               <Button variant="outlined" startIcon={<RepeatRounded />} aria-pressed={timelineEditing.loopEnabled} onClick={() => timelineEditing.onLoopChange(!timelineEditing.loopEnabled)}>נגן בלולאה</Button>
-              <Button variant="outlined" startIcon={<ContentCutRounded />} disabled={!isEditable || saveState === "saving" || draftText.trim().split(/\s+/).length < 2 || currentTime <= selected.start || currentTime >= selected.end} onClick={() => { void persistCaption(selected, draftText, captionWords).then(() => onSplitSegment(selected.id, currentTime)); }}>פצל</Button>
+              <Button variant="outlined" startIcon={<ContentCutRounded />} disabled={!isEditable || savingDraft || saveState === "saving" || draftText.trim().split(/\s+/).length < 2 || currentTime <= selected.start || currentTime >= selected.end} onClick={() => { void flushDraft().then(saved => { if (saved) return splitSegmentRef.current(selected.id, currentTime); }); }}>פצל</Button>
               {canUndoSplit && <Button variant="outlined" startIcon={<UndoRounded />} disabled={!isEditable || saveState === "saving"} onClick={() => void onUndoSplit()}>בטל פיצול</Button>}
             </Stack>
             </Stack>}
@@ -637,33 +672,6 @@ export function MobileCaptionEditor({
           </Stack>
         )}
 
-        {mode === "style" && (
-          <Stack spacing={1} sx={{ flex: 1, minHeight: 0, height: "100%" }}>
-            {playerSlot("compact")}
-            <Box sx={{ flex: 1, minHeight: 0, overflow: "auto", p: 1.5, pb: 2, border: 1, borderColor: "#e0e4ea", borderRadius: 2, bgcolor: "#ffffff" }}>
-              <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
-                <Typography fontWeight={500}>עיצוב כתוביות</Typography>
-                <IconButton aria-label="סגירת עיצוב" onClick={() => setMode("watch")}><CheckRounded /></IconButton>
-              </Stack>
-              <FormControl fullWidth size="small" sx={{ my: 1.5 }}>
-                <InputLabel>גודל פונט</InputLabel>
-                <Select value={fontSize} label="גודל פונט" onChange={event => onFontSizeChange({ target: { value: String(event.target.value) } } as ChangeEvent<HTMLInputElement>)}>
-                  {[24, 32, 40, 48, 56, 64, 72, 80, 96].map(size => <MenuItem key={size} value={size}>{size}</MenuItem>)}
-                </Select>
-              </FormControl>
-              <Stack direction="row" spacing={1} sx={{ my: 1.5 }}>
-                <TextField label="צבע טקסט" type="color" value={fontColor} onChange={onFontColorChange} fullWidth size="small" InputLabelProps={{ shrink: true }} />
-                <TextField label="צבע מסגרת" type="color" value={outlineColor} onChange={onOutlineColorChange} fullWidth size="small" InputLabelProps={{ shrink: true }} />
-              </Stack>
-              <Typography variant="body2" sx={{ mt: 1 }}>מיקום</Typography>
-              <Slider value={offsetYPercent} onChange={onOffsetYChange} min={0} max={100} valueLabelDisplay="auto" />
-              <Typography variant="body2">שוליים</Typography>
-              <Slider value={marginPercent} onChange={onMarginChange} min={0} max={40} valueLabelDisplay="auto" />
-              <FormControlLabel control={<Switch checked={activeWordEnabled} onChange={onToggleActiveWord} />} label="מילה אקטיבית" />
-              <FormControlLabel control={<Switch checked={showSubtitles} onChange={(_, checked) => onShowSubtitlesChange(checked)} />} label="הצג כתוביות בתצוגה המקדימה" />
-            </Box>
-          </Stack>
-        )}
       </Box>
 
       <Stack direction="row" component="nav" aria-label="מצבי עריכה" sx={{ flexShrink: 0, borderTop: 1, borderColor: "#e8edf3", bgcolor: "#ffffff", pb: 0.75, pt: 0.5, zIndex: 8, position: "relative" }}>
@@ -672,16 +680,66 @@ export function MobileCaptionEditor({
           { id: "style" as const, label: "עיצוב", icon: <SettingsRounded /> },
           { id: "edit" as const, label: "עריכה", icon: <EditOutlined /> },
         ].map(item => (
-          <Button key={item.id} onClick={() => goMode(item.id)} sx={{ flex: 1, flexDirection: "column", color: mode === item.id ? "primary.main" : "text.secondary", minHeight: 48, fontSize: 12 }}>
+          <Button key={item.id} onClick={() => goMode(item.id)} sx={{ flex: 1, flexDirection: "column", color: (item.id === "style" ? styleOpen : mode === item.id) ? "primary.main" : "text.secondary", minHeight: 48, fontSize: 12 }}>
             {item.icon}
             {item.label}
           </Button>
         ))}
-        <Button onClick={() => setMoreOpen(true)} sx={{ flex: 1, flexDirection: "column", color: "text.secondary", minHeight: 48, fontSize: 12 }}>
+        <Button onClick={() => void openMore()} sx={{ flex: 1, flexDirection: "column", color: "text.secondary", minHeight: 48, fontSize: 12 }}>
           <AddRounded />
           עוד
         </Button>
       </Stack>
+
+      <Drawer
+        variant="persistent"
+        anchor="bottom"
+        open={styleOpen}
+        onClose={() => setStyleOpen(false)}
+        slotProps={{ paper: { role: "region", "aria-label": "עיצוב כתוביות", dir: "rtl", sx: {
+          height: STYLE_DRAWER_HEIGHT,
+          borderTopLeftRadius: 18,
+          borderTopRightRadius: 18,
+          bgcolor: "#ffffff",
+          boxShadow: "0 -6px 24px rgba(15, 23, 42, 0.16)",
+          overflow: "hidden",
+          "& .MuiTypography-root, & .MuiInputBase-root, & .MuiInputLabel-root": { fontSize: "0.9rem" },
+          "& .MuiTypography-body2": { fontSize: "0.7875rem" },
+          "& .MuiOutlinedInput-root": { height: 36 },
+          "& .MuiInputBase-input": { minWidth: 0, px: 1.575, py: "7.65px" },
+          "& input[type=color]": { width: "100%", height: "100%", boxSizing: "border-box" },
+          "& .MuiSlider-root": { height: 3.6, py: "11.7px" },
+          "& .MuiSlider-thumb": { width: 18, height: 18 },
+          "& .MuiSlider-valueLabel": { fontSize: "0.7875rem" },
+          "& .MuiFormControlLabel-root": { minHeight: 36, ml: "-9.9px", mr: "14.4px" },
+          "& .MuiSwitch-root": { width: 52.2, height: 34.2, p: "10.8px" },
+          "& .MuiSwitch-switchBase": { p: "8.1px", "&.Mui-checked": { transform: "translateX(18px)" } },
+          "& .MuiSwitch-thumb": { width: 18, height: 18 },
+        } } }}
+      >
+        <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ px: 1.8, pt: 0.9, pb: 0.45, flexShrink: 0 }}>
+          <Typography fontWeight={500}>עיצוב כתוביות</Typography>
+          <IconButton aria-label="סגירת עיצוב" onClick={() => setStyleOpen(false)} sx={{ p: 0.9 }}><CheckRounded sx={{ fontSize: 21.6 }} /></IconButton>
+        </Stack>
+        <Box sx={{ px: 1.8, pb: "max(14.4px, env(safe-area-inset-bottom, 0px))", overflowY: "auto", minHeight: 0 }}>
+          <Box sx={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 0.9, my: 1.35, "& > *": { minWidth: 0 } }}>
+            <FormControl fullWidth size="small">
+              <InputLabel id="mobile-caption-font-size">גודל פונט</InputLabel>
+              <Select labelId="mobile-caption-font-size" value={fontSize} label="גודל פונט" onChange={event => onFontSizeChange({ target: { value: String(event.target.value) } } as ChangeEvent<HTMLInputElement>)}>
+                {[24, 32, 40, 48, 56, 60, 64, 72, 80, 96].map(size => <MenuItem key={size} value={size} sx={{ fontSize: "0.9rem" }}>{size}</MenuItem>)}
+              </Select>
+            </FormControl>
+            <TextField label="צבע טקסט" type="color" value={fontColor} onChange={onFontColorChange} fullWidth size="small" InputLabelProps={{ shrink: true }} />
+            <TextField label="צבע מסגרת" type="color" value={outlineColor} onChange={onOutlineColorChange} fullWidth size="small" InputLabelProps={{ shrink: true }} />
+          </Box>
+          <Typography variant="body2" sx={{ mt: 0.9 }}>מיקום</Typography>
+          <Slider aria-label="מיקום הכתובית" value={offsetYPercent} onChange={onOffsetYChange} min={0} max={100} valueLabelDisplay="auto" />
+          <Typography variant="body2">שוליים</Typography>
+          <Slider aria-label="שולי הכתובית" value={marginPercent} onChange={onMarginChange} min={0} max={40} valueLabelDisplay="auto" />
+          <FormControlLabel control={<Switch checked={activeWordEnabled} onChange={onToggleActiveWord} />} label="מילה אקטיבית" />
+          <FormControlLabel control={<Switch checked={showSubtitles} onChange={(_, checked) => onShowSubtitlesChange(checked)} />} label="הצג כתוביות בתצוגה המקדימה" />
+        </Box>
+      </Drawer>
 
       <Drawer anchor="bottom" open={moreOpen} onClose={() => setMoreOpen(false)} slotProps={{ paper: { sx: { borderTopLeftRadius: 16, borderTopRightRadius: 16, bgcolor: "#ffffff" } } }}>
         <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ px: 2, pt: 1.5 }}>
@@ -722,7 +780,7 @@ export function MobileCaptionEditor({
             <ListItemText primary="הגדרות כתוביות" />
           </ListItemButton>
           {onBack && (
-            <ListItemButton disabled={backDisabled} onClick={() => { setMoreOpen(false); onBack(); }}>
+            <ListItemButton disabled={backDisabled || leaving} onClick={() => { setMoreOpen(false); void leave("onBack"); }}>
               <ListItemIcon><ChevronRightRounded /></ListItemIcon>
               <ListItemText primary="העלאת סרטון או אודיו אחר" />
             </ListItemButton>

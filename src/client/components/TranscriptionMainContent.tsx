@@ -71,6 +71,7 @@ type TranscriptionMainContentProps = {
   isPlaying?: boolean;
   onPlayPause?: () => void;
   onBack?: () => void;
+  onMyVideos: () => void;
   backDisabled?: boolean;
 };
 
@@ -127,6 +128,7 @@ export function TranscriptionMainContent({
   onResegment,
   onAIEdit,
   onBack,
+  onMyVideos,
   backDisabled,
 }: TranscriptionMainContentProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -192,6 +194,7 @@ export function TranscriptionMainContent({
         isPlaying={isPlaying}
         onPlayPause={onPlayPause}
         onBack={onBack}
+        onMyVideos={onMyVideos}
         backDisabled={backDisabled}
       />
     );

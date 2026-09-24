@@ -26,6 +26,7 @@ type TranscriptionResultProps = {
   downloadName: string;
   mediaUrl: string | null;
   onBack: () => void;
+  onMyVideos: () => void;
   onBurn: (options: BurnOptions) => Promise<BurnResult>;
   onSaveSegments: (segments: Segment[], subtitleContent: string, words?: any[]) => Promise<void>;
   videoId: number | null;
@@ -39,6 +40,7 @@ export function TranscriptionResult({
   downloadName: originalDownloadName,
   mediaUrl,
   onBack,
+  onMyVideos,
   onBurn,
   onSaveSegments,
   videoId,
@@ -145,13 +147,15 @@ export function TranscriptionResult({
   const { isPlaying, handlePlayPause } = useVideoControls(videoPlayer);
   const narrow = useNarrowViewport();
 
-  const handleLeaveEditor = async () => {
+  const leaveEditor = async (destination: () => void) => {
     if (isEditable && (saveState === "error" || JSON.stringify(editableSegments) !== JSON.stringify(savedSegments) || JSON.stringify(editableWords) !== JSON.stringify(savedWords))) {
       try { await persistSegments(editableSegments, editableWords, { throwOnError: true }); }
       catch { return; }
     }
-    onBack();
+    destination();
   };
+  const handleLeaveEditor = () => leaveEditor(onBack);
+  const handleMyVideos = () => leaveEditor(onMyVideos);
 
   const {
     handleVideoTimeUpdate,
@@ -284,6 +288,7 @@ export function TranscriptionResult({
             isPlaying={isPlaying}
             onPlayPause={handlePlayPause}
             onBack={handleLeaveEditor}
+            onMyVideos={handleMyVideos}
             backDisabled={saveState === "saving" || isBurning || hasTimelineDrafts}
           />
 

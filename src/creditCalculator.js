@@ -1,6 +1,6 @@
 /**
  * Credit system for OpenAI API usage
- * Conversion rate: 100 credits = $1
+ * Credits used for API cost accounting; purchase packages are priced separately.
  *
  * Pricing (as of 2025):
  * - Whisper-1: $0.006 per minute

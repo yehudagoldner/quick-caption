@@ -1,5 +1,7 @@
-﻿import mysql from "mysql2/promise";
+import mysql from "mysql2/promise";
 import "./src/loadAppEnv.js";
+import { creditPayment } from "./src/creditPayments.js";
+import { completeJob, JOB_STALE_SECONDS } from "./src/transcriptionJobs.js";
 
 const pool = mysql.createPool({
   host: process.env.DB_HOST,
@@ -24,9 +26,37 @@ export async function ensureSchema() {
       is_email_verified TINYINT(1) DEFAULT 0,
       provider_id VARCHAR(128),
       last_login_at DATETIME,
-      credits INT DEFAULT 100 NOT NULL COMMENT 'User credits: 100 credits = $1',
+      credits INT DEFAULT 50 NOT NULL COMMENT 'User credit balance',
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
+  `);
+
+  await pool.execute(`
+    CREATE TABLE IF NOT EXISTS credit_payments (
+      paypal_order_id VARCHAR(64) NOT NULL PRIMARY KEY,
+      paypal_capture_id VARCHAR(64) NOT NULL UNIQUE,
+      user_uid VARCHAR(128) NOT NULL,
+      credits INT NOT NULL,
+      amount_usd DECIMAL(10, 2) NOT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_credit_payments_user_uid (user_uid),
+      CONSTRAINT fk_credit_payments_user FOREIGN KEY (user_uid) REFERENCES users(uid)
+    ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
+  `);
+
+  await pool.execute(`
+    CREATE TABLE IF NOT EXISTS transcription_jobs (
+      id CHAR(36) NOT NULL PRIMARY KEY,
+      user_uid VARCHAR(128) NOT NULL,
+      status ENUM('processing','completed','failed') NOT NULL DEFAULT 'processing',
+      result_json LONGTEXT,
+      error_message TEXT,
+      stages_json JSON,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      INDEX idx_transcription_jobs_user (user_uid),
+      CONSTRAINT fk_transcription_jobs_user FOREIGN KEY (user_uid) REFERENCES users(uid) ON DELETE CASCADE
     ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
   `);
 
@@ -51,6 +81,8 @@ export async function ensureSchema() {
   `);
 
   const [subtitleJsonColumns] = await pool.query("SHOW COLUMNS FROM videos LIKE 'subtitle_json'");
+  const [jobStageColumns] = await pool.query("SHOW COLUMNS FROM transcription_jobs LIKE 'stages_json'");
+  if (jobStageColumns.length === 0) await pool.execute("ALTER TABLE transcription_jobs ADD COLUMN stages_json JSON NULL");
   if (Array.isArray(subtitleJsonColumns) && subtitleJsonColumns.length === 0) {
     await pool.execute("ALTER TABLE videos ADD COLUMN subtitle_json JSON NULL");
   }
@@ -69,9 +101,9 @@ export async function ensureSchema() {
   const [creditsColumns] = await pool.query("SHOW COLUMNS FROM users LIKE 'credits'");
   if (Array.isArray(creditsColumns) && creditsColumns.length === 0) {
     console.log("Adding credits column to users table...");
-    await pool.execute("ALTER TABLE users ADD COLUMN credits INT DEFAULT 100 NOT NULL COMMENT 'User credits: 100 credits = $1' AFTER last_login_at");
-    console.log("Granting 100 credits to all existing users...");
-    await pool.execute("UPDATE users SET credits = 100 WHERE credits = 0 OR credits IS NULL");
+    await pool.execute("ALTER TABLE users ADD COLUMN credits INT DEFAULT 50 NOT NULL COMMENT 'User credit balance' AFTER last_login_at");
+  } else if (String(creditsColumns[0].Default) !== "50") {
+    await pool.execute("ALTER TABLE users ALTER COLUMN credits SET DEFAULT 50");
   }
 }
 
@@ -264,23 +296,50 @@ export async function deductCredits(userUid, amount) {
   }
 }
 
-/**
- * Add credits to user's balance
- * @param {string} userUid - User's Firebase UID
- * @param {number} amount - Amount of credits to add
- * @returns {Promise<number|null>} New balance or null if user not found
- */
-export async function addCredits(userUid, amount) {
-  const [result] = await pool.execute(
-    `UPDATE users SET credits = credits + ? WHERE uid = ?`,
-    [amount, userUid],
+/** Record and credit a captured PayPal order once, atomically. */
+export async function creditCapturedOrder(options) {
+  const connection = await pool.getConnection();
+  try { return await creditPayment(connection, options); }
+  finally { connection.release(); }
+}
+export async function createTranscriptionJob({ jobId, userUid }) {
+  await pool.execute(
+    `INSERT INTO transcription_jobs (id, user_uid) VALUES (?, ?)`,
+    [jobId, userUid],
   );
+}
 
-  if (result.affectedRows === 0) {
-    return null;
-  }
+export async function getTranscriptionJob({ jobId, userUid }) {
+  await pool.execute(
+    `UPDATE transcription_jobs SET status = 'failed', error_message = ?
+     WHERE id = ? AND user_uid = ? AND status = 'processing'
+       AND updated_at < DATE_SUB(NOW(), INTERVAL ${JOB_STALE_SECONDS} SECOND)`,
+    ['העיבוד הופסק בשרת. אפשר להעלות את הקובץ מחדש.', jobId, userUid],
+  );
+  const [rows] = await pool.execute(
+    `SELECT status, result_json, error_message, stages_json,
+            TIMESTAMPDIFF(SECOND, created_at, NOW()) AS age_seconds
+     FROM transcription_jobs WHERE id = ? AND user_uid = ? LIMIT 1`,
+    [jobId, userUid],
+  );
+  return rows[0] ?? null;
+}
 
-  return await getUserCredits(userUid);
+export async function finishTranscriptionJob({ jobId, result = null, error = null }) {
+  await pool.execute(
+    `UPDATE transcription_jobs SET status = ?, result_json = ?, error_message = ? WHERE id = ? AND status = 'processing'`,
+    [error ? 'failed' : 'completed', result ? JSON.stringify(result) : null, error, jobId],
+  );
+}
+
+export async function updateTranscriptionProgress(jobId, stages) {
+  await pool.execute("UPDATE transcription_jobs SET stages_json = ?, updated_at = NOW() WHERE id = ? AND status = 'processing'", [JSON.stringify(stages), jobId]);
+}
+
+export async function completeTranscriptionJob(options) {
+  const connection = await pool.getConnection();
+  try { return await completeJob(connection, options); }
+  finally { connection.release(); }
 }
 
 export async function ensureDevDummyUser({ uid, email, displayName }) {
@@ -288,7 +347,7 @@ export async function ensureDevDummyUser({ uid, email, displayName }) {
 
   await pool.execute(
     `INSERT INTO users (uid, email, display_name, is_email_verified, provider_id, last_login_at, credits)
-     VALUES (?, ?, ?, 1, 'dev-bypass', ?, 1000)
+     VALUES (?, ?, ?, 1, 'dev-bypass', ?, 50)
      ON DUPLICATE KEY UPDATE
        email = VALUES(email),
        display_name = VALUES(display_name),

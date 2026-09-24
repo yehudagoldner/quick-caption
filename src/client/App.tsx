@@ -180,7 +180,12 @@ function App() {
           onBuyCredits={handleBuyCredits}
         />
 
-        <Container maxWidth={false} sx={{ py: { xs: 2, md: 6 }, px: { xs: 1.5, md: 3 }, mt: { xs: 10, md: 10 } }}>
+        <Container maxWidth={false} sx={{
+          pt: { xs: currentScreen === "transcription" ? 7 : 2, md: 6 },
+          pb: { xs: currentScreen === "transcription" ? 1 : 2, md: 6 },
+          px: { xs: 1.5, md: 3 },
+          mt: { xs: currentScreen === "transcription" ? 0 : 10, md: 10 },
+        }}>
           {currentScreen === "home" && workflow.error && (
             <Alert severity="error" sx={{ mb: 3 }}>
               {workflow.error}
@@ -211,6 +216,7 @@ function App() {
           {currentScreen === "transcription" && (
             <TranscriptionPage
               workflow={workflow}
+              onMyVideos={() => navigateToScreen("videos")}
             />
           )}
 
@@ -239,6 +245,7 @@ function App() {
                 workflow.onBackToUpload();
                 navigateToScreen("transcription");
               }}
+              onMyVideos={() => navigateToScreen("videos")}
             />
           )}
         </Container>

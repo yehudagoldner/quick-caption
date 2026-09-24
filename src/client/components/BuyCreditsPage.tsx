@@ -1,30 +1,29 @@
-import { useState } from "react";
-import {
-  Box,
-  Card,
-  CardContent,
-  Typography,
-  Alert,
-  CircularProgress,
-  Container,
-  Stack,
-  Chip,
-} from "@mui/material";
-import { PayPalScriptProvider, PayPalButtons } from "@paypal/react-paypal-js";
-import { AccountBalanceWalletRounded, CheckCircleRounded } from "@mui/icons-material";
+import { useEffect, useRef, useState } from "react";
+import { Alert, Box, Button, Card, CardActionArea, CardContent, Chip, CircularProgress, Container, Stack, Typography } from "@mui/material";
+import { PayPalScriptProvider, PayPalButtons, usePayPalScriptReducer, DISPATCH_ACTION, SCRIPT_LOADING_STATE } from "@paypal/react-paypal-js";
+import { AccountBalanceWalletRounded } from "@mui/icons-material";
 import type { AuthUser } from "../hooks/useTranscriptionWorkflow";
 
-const RAW_API_BASE = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.trim() ?? "";
-const API_BASE_URL = RAW_API_BASE.replace(/\/?$/, "");
+const API_BASE_URL = ((import.meta.env.VITE_API_BASE_URL as string | undefined)?.trim() ?? "").replace(/\/?$/, "");
+type CreditPackage = { credits: number; priceUSD: string };
+type PaymentConfig = { available?: boolean; clientId: string | null; packages: CreditPackage[] };
+const paymentKey = (uid: string) => `quickcaption:pending-payment:${uid}`;
+function readPending(uid?: string) {
+  try { return uid ? localStorage.getItem(paymentKey(uid)) : null; } catch { return null; }
+}
+function savePending(uid: string, orderId: string | null) {
+  try {
+    if (orderId) localStorage.setItem(paymentKey(uid), orderId);
+    else localStorage.removeItem(paymentKey(uid));
+  } catch { /* The current page can still retry if browser storage is unavailable. */ }
+}
 
-const PAYPAL_CLIENT_ID = "AdwBUYGcx87z5DHZla4elO52n42osNIK_obh7uZAVLkNmeVhaLGpv6uMrKWpbRvz7aPG_NdGFj-LWhCE";
-
-// Credit packages: 10 ILS = 100 credits
-const CREDIT_PACKAGES = [
-  { credits: 100, price: 10, priceUSD: 2.78, popular: false },
-  { credits: 500, price: 50, priceUSD: 13.89, popular: true },
-  { credits: 1000, price: 100, priceUSD: 27.78, popular: false },
-];
+function PaymentScriptStatus() {
+  const [{ isPending, isRejected }, dispatch] = usePayPalScriptReducer();
+  if (isPending) return <Typography role="status" textAlign="center">טוענים את PayPal...</Typography>;
+  if (isRejected) return <Alert severity="error" action={<Button onClick={() => dispatch({ type: DISPATCH_ACTION.LOADING_STATUS, value: SCRIPT_LOADING_STATE.PENDING })}>נסו שוב</Button>}>לא ניתן לטעון את PayPal. בדקו את החיבור ונסו שוב.</Alert>;
+  return null;
+}
 
 interface BuyCreditsPageProps {
   user: AuthUser;
@@ -33,209 +32,160 @@ interface BuyCreditsPageProps {
 }
 
 export function BuyCreditsPage({ user, currentCredits, onCreditsUpdated }: BuyCreditsPageProps) {
-  const [selectedPackage, setSelectedPackage] = useState<typeof CREDIT_PACKAGES[0] | null>(null);
+  const [config, setConfig] = useState<PaymentConfig | null>(null);
+  const [configAttempt, setConfigAttempt] = useState(0);
+  const [configLoading, setConfigLoading] = useState(true);
+  const [selectedPackage, setSelectedPackage] = useState<CreditPackage | null>(null);
   const [loading, setLoading] = useState(false);
+  const [checkoutOpen, setCheckoutOpen] = useState(false);
+  const [pendingOrder, setPendingOrder] = useState<string | null>(() => readPending(user?.uid));
+  const [canDiscardPending, setCanDiscardPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState(false);
+  const [success, setSuccess] = useState<string | null>(null);
+  const session = useRef(0);
+  const captureFlight = useRef(false);
 
-  const handleCreateOrder = async () => {
-    if (!selectedPackage) return;
+  useEffect(() => {
+    session.current++;
+    setPendingOrder(readPending(user?.uid));
+    setCanDiscardPending(false);
+    setSelectedPackage(null);
+    setCheckoutOpen(false);
+    setLoading(false);
+    captureFlight.current = false;
+    setError(null);
+    setSuccess(null);
+    return () => { session.current++; };
+  }, [user?.uid]);
 
+  useEffect(() => {
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 15_000);
+    let active = true;
+    setConfigLoading(true);
+    fetch(`${API_BASE_URL}/api/payments/config`, { signal: controller.signal })
+      .then(async response => {
+        if (!response.ok) throw new Error();
+        const data = await response.json() as PaymentConfig;
+        if (!Array.isArray(data.packages)) throw new Error();
+        if (active) { setConfig(data); setError(null); }
+      })
+      .catch(() => { if (active) setError("לא ניתן לטעון את אפשרויות התשלום כרגע."); })
+      .finally(() => { window.clearTimeout(timeout); if (active) setConfigLoading(false); });
+    return () => { active = false; controller.abort(); window.clearTimeout(timeout); };
+  }, [configAttempt]);
+
+  const handleCreateOrder = async (): Promise<string> => {
+    if (!user || !selectedPackage || pendingOrder) throw new Error("יש לבחור חבילה ולהתחבר לחשבון.");
+    const revision = session.current;
+    const uid = user.uid;
+    setError(null);
+    setSuccess(null);
+    setCheckoutOpen(true);
     try {
-      const response = await fetch(`${API_BASE_URL || ""}/api/payments/create-order`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          userUid: user?.uid,
-          credits: selectedPackage.credits,
-          amount: selectedPackage.priceUSD.toFixed(2),
-          currency: "USD",
-        }),
+      const response = await fetch(`${API_BASE_URL}/api/payments/create-order`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userUid: uid, credits: selectedPackage.credits }),
+        signal: AbortSignal.timeout(30_000),
       });
-
       const data = await response.json();
-      if (!response.ok) {
-        throw new Error(data.error || "Failed to create order");
-      }
-
+      if (!response.ok || typeof data.orderId !== "string") throw new Error(data.error || "לא ניתן ליצור הזמנה כרגע.");
+      savePending(uid, data.orderId);
+      if (session.current !== revision) throw new Error("החשבון השתנה. פתחו שוב את מסך הרכישה.");
+      setPendingOrder(data.orderId);
       return data.orderId;
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to create order");
+      if (session.current === revision) { setCheckoutOpen(false); setError(err instanceof Error ? err.message : "לא ניתן ליצור הזמנה כרגע."); }
       throw err;
     }
   };
 
-  const handleApprove = async (data: any) => {
-    if (!selectedPackage) return;
-
+  const captureOrder = async (orderId: string) => {
+    if (!user || captureFlight.current) return;
+    const revision = session.current;
+    const uid = user.uid;
+    captureFlight.current = true;
+    savePending(uid, orderId);
+    setPendingOrder(orderId);
+    setLoading(true);
+    setError(null);
+    setCanDiscardPending(false);
     try {
-      setLoading(true);
-      const response = await fetch(`${API_BASE_URL || ""}/api/payments/capture-order`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          orderId: data.orderID,
-          userUid: user?.uid,
-          credits: selectedPackage.credits,
-        }),
+      const response = await fetch(`${API_BASE_URL}/api/payments/capture-order`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderId, userUid: uid }), signal: AbortSignal.timeout(60_000),
       });
-
-      const result = await response.json();
-      if (!response.ok) {
-        throw new Error(result.error || "Failed to capture payment");
+      const data = await response.json();
+      if (session.current !== revision) return;
+      if (!response.ok || data.success !== true) {
+        setCanDiscardPending(data.code === "PAYMENT_NOT_APPROVED");
+        throw new Error(data.error || "לא ניתן לאשר את הזיכוי כרגע. בדקו שוב את אותה הרכישה.");
       }
-
-      setSuccess(true);
-      setError(null);
+      savePending(uid, null);
+      setPendingOrder(null);
+      setSelectedPackage(null);
+      setSuccess(data.creditsAdded > 0 ? `${data.creditsAdded} קרדיטים נוספו לחשבון. התשלום הושלם בהצלחה.` : "הרכישה כבר זוכתה בחשבון. לא בוצע זיכוי כפול.");
       onCreditsUpdated();
-
-      // Reset after 3 seconds
-      setTimeout(() => {
-        setSuccess(false);
-        setSelectedPackage(null);
-      }, 3000);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Payment failed");
+      if (session.current === revision) setError(err instanceof Error && err.name !== "TimeoutError" && err.name !== "TypeError" ? err.message : "החיבור נקטע. בדקו שוב את הרכישה כדי לוודא שהקרדיטים נוספו.");
     } finally {
-      setLoading(false);
+      if (session.current === revision) { captureFlight.current = false; setLoading(false); setCheckoutOpen(false); }
     }
   };
 
-  return (
-    <Container maxWidth="md">
-      <Stack spacing={4}>
-        <Box sx={{ textAlign: "center" }}>
-          <Typography variant="h3" gutterBottom>
-            רכישת קרדיטים
-          </Typography>
-          <Typography variant="body1" color="text.secondary">
-            בחר חבילת קרדיטים ושלם בקלות דרך PayPal
-          </Typography>
-          {currentCredits !== null && (
-            <Chip
-              icon={<AccountBalanceWalletRounded />}
-              label={`יתרה נוכחית: ${currentCredits} קרדיטים`}
-              color="primary"
-              sx={{ mt: 2 }}
-            />
-          )}
-        </Box>
+  const clearUnpaidOrder = () => {
+    if (user) savePending(user.uid, null);
+    setPendingOrder(null);
+    setCanDiscardPending(false);
+    setCheckoutOpen(false);
+    setError(null);
+  };
+  const unavailable = config?.available === false || !config?.clientId;
+  const locked = loading || checkoutOpen || Boolean(pendingOrder);
 
-        {error && (
-          <Alert severity="error" onClose={() => setError(null)}>
-            {error}
-          </Alert>
-        )}
-
-        {success && (
-          <Alert severity="success" icon={<CheckCircleRounded />}>
-            התשלום בוצע בהצלחה! הקרדיטים נוספו לחשבונך.
-          </Alert>
-        )}
-
-        <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", md: "repeat(3, 1fr)" }, gap: 3 }}>
-          {CREDIT_PACKAGES.map((pkg) => (
-            <Card
-              key={pkg.credits}
-              sx={{
-                position: "relative",
-                border: selectedPackage?.credits === pkg.credits ? 3 : 1,
-                borderColor: selectedPackage?.credits === pkg.credits ? "primary.main" : "divider",
-                cursor: "pointer",
-                transition: "all 0.2s",
-                "&:hover": {
-                  transform: "translateY(-4px)",
-                  boxShadow: 4,
-                },
-              }}
-              onClick={() => setSelectedPackage(pkg)}
-            >
-              {pkg.popular && (
-                <Chip
-                  label="פופולרי"
-                  color="secondary"
-                  size="small"
-                  sx={{ position: "absolute", top: 12, left: 12 }}
-                />
-              )}
-              <CardContent sx={{ textAlign: "center", py: 4 }}>
-                <Typography variant="h4" gutterBottom>
-                  {pkg.credits}
-                </Typography>
-                <Typography variant="body2" color="text.secondary" gutterBottom>
-                  קרדיטים
-                </Typography>
-                <Typography variant="h5" color="primary" sx={{ mt: 2 }}>
-                  ₪{pkg.price}
-                </Typography>
-                <Typography variant="caption" color="text.secondary">
-                  (${pkg.priceUSD.toFixed(2)} USD)
-                </Typography>
-                <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
-                  ₪{(pkg.price / pkg.credits).toFixed(2)} לקרדיט
-                </Typography>
-              </CardContent>
-            </Card>
-          ))}
-        </Box>
-
-        {selectedPackage && (
-          <Card sx={{ bgcolor: "primary.50" }}>
-            <CardContent>
-              <Typography variant="h6" gutterBottom>
-                סיכום הזמנה
-              </Typography>
-              <Stack spacing={1}>
-                <Box sx={{ display: "flex", justifyContent: "space-between" }}>
-                  <Typography>קרדיטים:</Typography>
-                  <Typography fontWeight="bold">{selectedPackage.credits}</Typography>
-                </Box>
-                <Box sx={{ display: "flex", justifyContent: "space-between" }}>
-                  <Typography>מחיר:</Typography>
-                  <Typography fontWeight="bold">
-                    ₪{selectedPackage.price} (${selectedPackage.priceUSD.toFixed(2)} USD)
-                  </Typography>
-                </Box>
-              </Stack>
-
-              <Box sx={{ mt: 3 }}>
-                {loading ? (
-                  <Box sx={{ display: "flex", justifyContent: "center", py: 3 }}>
-                    <CircularProgress />
-                  </Box>
-                ) : (
-                  <PayPalScriptProvider
-                    options={{
-                      clientId: PAYPAL_CLIENT_ID,
-                      currency: "USD",
-                    }}
-                  >
-                    <PayPalButtons
-                      style={{ layout: "vertical", label: "pay" }}
-                      createOrder={handleCreateOrder}
-                      onApprove={handleApprove}
-                      onError={(err) => {
-                        console.error("PayPal error:", err);
-                        setError("אירעה שגיאה בתשלום. נסה שוב.");
-                      }}
-                    />
-                  </PayPalScriptProvider>
-                )}
-              </Box>
-
-              <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 2, textAlign: "center" }}>
-                תשלום מאובטח באמצעות PayPal
-              </Typography>
+  return <Container maxWidth="md" dir="rtl" sx={{ px: { xs: 0, sm: 2 } }}>
+    <Stack spacing={{ xs: 2, sm: 4 }}>
+      <Box textAlign="center">
+        <Typography variant="h3" sx={{ fontSize: { xs: "1.75rem", sm: "3rem" } }} gutterBottom>רכישת קרדיטים</Typography>
+        <Typography color="text.secondary">בחרו חבילה ותשלמו דרך PayPal</Typography>
+        {currentCredits !== null && <Chip icon={<AccountBalanceWalletRounded />} label={`יתרה נוכחית: ${currentCredits} קרדיטים`} color="primary" sx={{ mt: 2 }} />}
+      </Box>
+      {!user && <Alert severity="info">יש להתחבר לחשבון כדי לרכוש קרדיטים.</Alert>}
+      {error && <Alert severity="error">{error}</Alert>}
+      {success && <Alert severity="success">{success}</Alert>}
+      {configLoading && <Box role="status" textAlign="center"><CircularProgress size={28} aria-label="טעינת חבילות" /></Box>}
+      {!configLoading && !config && <Button onClick={() => setConfigAttempt(attempt => attempt + 1)}>טעינת חבילות מחדש</Button>}
+      {config && unavailable && <Alert severity="info">התשלום אינו זמין כרגע. נסו שוב מאוחר יותר.</Alert>}
+      {pendingOrder && !checkoutOpen && <Card variant="outlined"><CardContent><Stack spacing={1.5}>
+        <Typography fontWeight={600}>בדיקת רכישה קיימת</Typography>
+        <Typography variant="body2">נשמרה רכישה שעדיין לא קיבלנו אישור על הזיכוי שלה. נבדוק את אותה הרכישה לפני התחלת תשלום נוסף.</Typography>
+        <Typography variant="caption">מספר הזמנה: <bdi>{pendingOrder}</bdi></Typography>
+        <Button variant="contained" disabled={loading} onClick={() => void captureOrder(pendingOrder)}>{loading ? "בודקים את הרכישה..." : "בדיקת הרכישה והשלמת הזיכוי"}</Button>
+        {canDiscardPending && <Button onClick={clearUnpaidOrder}>חזרה לבחירת חבילה</Button>}
+      </Stack></CardContent></Card>}
+      <Box role="radiogroup" aria-label="חבילת קרדיטים" sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "repeat(3, 1fr)" }, gap: 2 }}>
+        {config?.packages.map(pkg => <Card key={pkg.credits} variant="outlined" sx={{ borderWidth: 2, borderColor: selectedPackage?.credits === pkg.credits ? "primary.main" : "divider" }}>
+          <CardActionArea role="radio" aria-checked={selectedPackage?.credits === pkg.credits} aria-label={`${pkg.credits} קרדיטים ב־${pkg.priceUSD} דולר`} disabled={!user || locked || unavailable}
+            onClick={() => { setSelectedPackage(pkg); setError(null); setSuccess(null); }}>
+            <CardContent sx={{ textAlign: "center", py: { xs: 2, sm: 3 }, display: { xs: "flex", sm: "block" }, justifyContent: "space-between", alignItems: "center" }}>
+              <Box><Typography variant="h4">{pkg.credits.toLocaleString()}</Typography><Typography color="text.secondary">קרדיטים</Typography></Box>
+              <Box><Typography variant="h5" color="primary" dir="ltr">${pkg.priceUSD}</Typography><Typography variant="caption" color="text.secondary">${(Number(pkg.priceUSD) / pkg.credits).toFixed(2)} לקרדיט</Typography></Box>
             </CardContent>
-          </Card>
-        )}
-
-        <Box sx={{ textAlign: "center", py: 2 }}>
-          <Typography variant="body2" color="text.secondary">
-            100 קרדיטים = $1 | מחירים בדולרים בעת התשלום
-          </Typography>
-        </Box>
-      </Stack>
-    </Container>
-  );
+          </CardActionArea>
+        </Card>)}
+      </Box>
+      {selectedPackage && config?.clientId && <Card variant="outlined"><CardContent>
+        <Typography variant="h6">סיכום הזמנה</Typography>
+        <Typography sx={{ mb: 2 }}>{selectedPackage.credits} קרדיטים · <bdi>${selectedPackage.priceUSD} USD</bdi></Typography>
+        <PayPalScriptProvider options={{ clientId: config.clientId, currency: "USD", intent: "capture" }}>
+          <PaymentScriptStatus />
+          <PayPalButtons style={{ layout: "vertical", label: "pay" }} forceReRender={[selectedPackage.credits, user?.uid]} disabled={locked}
+            createOrder={handleCreateOrder} onApprove={data => captureOrder(data.orderID)}
+            onCancel={clearUnpaidOrder}
+            onError={() => { setCheckoutOpen(false); setError("אירעה שגיאה בחיבור ל־PayPal. אם התחלתם רכישה, בדקו את מצבה כאן."); }} />
+        </PayPalScriptProvider>
+        {loading && <Typography role="status" textAlign="center">מאשרים את התשלום ומעדכנים את היתרה...</Typography>}
+      </CardContent></Card>}
+    </Stack>
+  </Container>;
 }
