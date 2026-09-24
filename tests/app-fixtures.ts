@@ -12,22 +12,32 @@ export async function prepareApp(page: Page) {
   await page.route('**/api/videos/42/media?**', route => route.fulfill({ contentType: 'video/webm', body: portraitVideo }));
 }
 
-export async function mockPayPal(page: Page) {
+export async function mockPayPal(page: Page, { deferApproval = false } = {}) {
   await page.route('https://www.paypal.com/sdk/js?**', route => route.fulfill({ contentType: 'application/javascript', body: `
     window.paypal = { Buttons(options) {
-      let button;
+      let button, approveButton, orderID;
       return {
         isEligible: () => true,
         render: async (container) => {
           button = document.createElement('button'); button.textContent = 'PayPal test checkout';
           button.onclick = async () => {
-            try { const orderID = await options.createOrder(); await options.onApprove({ orderID }); }
+            try {
+              orderID = await options.createOrder();
+              if (${deferApproval}) approveButton.hidden = false;
+              else await options.onApprove({ orderID });
+            }
             catch (error) { options.onError(error); }
           };
           container.appendChild(button);
-          options.onInit({}, { disable: async () => { button.disabled = true; }, enable: async () => { button.disabled = false; } });
+          approveButton = document.createElement('button'); approveButton.textContent = 'PayPal test approve'; approveButton.hidden = true;
+          approveButton.onclick = () => options.onApprove({ orderID });
+          container.appendChild(approveButton);
+          options.onInit({}, {
+            disable: async () => { button.disabled = approveButton.disabled = true; },
+            enable: async () => { button.disabled = approveButton.disabled = false; },
+          });
         },
-        close: async () => button?.remove(),
+        close: async () => { button?.remove(); approveButton?.remove(); },
       };
     } };
   ` }));

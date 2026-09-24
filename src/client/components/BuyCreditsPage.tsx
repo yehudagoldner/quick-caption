@@ -142,6 +142,8 @@ export function BuyCreditsPage({ user, currentCredits, onCreditsUpdated }: BuyCr
   };
   const unavailable = config?.available === false || !config?.clientId;
   const locked = loading || checkoutOpen || Boolean(pendingOrder);
+  // Package selection stays locked, but PayPal must remain interactive while the buyer approves.
+  const showCheckout = Boolean(selectedPackage && config?.clientId && (!pendingOrder || checkoutOpen));
 
   return <Container maxWidth="md" dir="rtl" sx={{ px: { xs: 0, sm: 2 } }}>
     <Stack spacing={{ xs: 2, sm: 4 }}>
@@ -174,12 +176,12 @@ export function BuyCreditsPage({ user, currentCredits, onCreditsUpdated }: BuyCr
           </CardActionArea>
         </Card>)}
       </Box>
-      {selectedPackage && config?.clientId && <Card variant="outlined"><CardContent>
+      {showCheckout && selectedPackage && config?.clientId && <Card variant="outlined"><CardContent>
         <Typography variant="h6">סיכום הזמנה</Typography>
         <Typography sx={{ mb: 2 }}>{selectedPackage.credits} קרדיטים · <bdi>${selectedPackage.priceUSD} USD</bdi></Typography>
         <PayPalScriptProvider options={{ clientId: config.clientId, currency: "USD", intent: "capture" }}>
           <PaymentScriptStatus />
-          <PayPalButtons style={{ layout: "vertical", label: "pay" }} forceReRender={[selectedPackage.credits, user?.uid]} disabled={locked}
+          <PayPalButtons style={{ layout: "vertical", label: "pay" }} forceReRender={[selectedPackage.credits, user?.uid]} disabled={loading || !user || unavailable}
             createOrder={handleCreateOrder} onApprove={data => captureOrder(data.orderID)}
             onCancel={clearUnpaidOrder}
             onError={() => { setCheckoutOpen(false); setError("אירעה שגיאה בחיבור ל־PayPal. אם התחלתם רכישה, בדקו את מצבה כאן."); }} />

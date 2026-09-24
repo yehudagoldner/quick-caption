@@ -3,6 +3,48 @@ import { mockPayPal, prepareApp, testUid } from './app-fixtures';
 
 const config = { available: true, clientId: 'test-client', packages: [{ credits: 100, priceUSD: '5.00' }, { credits: 500, priceUSD: '20.00' }, { credits: 1000, priceUSD: '30.00' }] };
 const storageKey = `quickcaption:pending-payment:${testUid}`;
+
+test('the open PayPal form remains interactive until buyer approval', async ({ page }) => {
+  await prepareApp(page);
+  await mockPayPal(page, { deferApproval: true });
+  await page.route('**/api/payments/config', route => route.fulfill({ json: config }));
+  await page.route('**/api/payments/create-order', route => route.fulfill({ json: { orderId: 'ORDER123456789' } }));
+  let captured = 0;
+  await page.route('**/api/payments/capture-order', async route => {
+    captured++;
+    await route.fulfill({ json: { success: true, creditsAdded: 100, newBalance: 150 } });
+  });
+  await page.goto('/?screen=buy-credits');
+  await page.getByRole('radio').first().click();
+  await page.getByRole('button', { name: 'PayPal test checkout' }).click();
+  const approve = page.getByRole('button', { name: 'PayPal test approve' });
+  await expect(approve).toBeVisible();
+  await expect(page.getByRole('radio').first()).toBeDisabled();
+  await expect(approve).toBeEnabled();
+  await expect(page.locator('.paypal-buttons-disabled')).toHaveCount(0);
+  expect(captured).toBe(0);
+  expect(await page.evaluate(key => localStorage.getItem(key), storageKey)).toBe('ORDER123456789');
+  await approve.click();
+  await expect(page.getByText('התשלום הושלם בהצלחה.', { exact: false })).toBeVisible();
+  expect(captured).toBe(1);
+});
+
+test('an unapproved checkout replaces the inactive PayPal form with recovery actions', async ({ page }) => {
+  await prepareApp(page);
+  await mockPayPal(page);
+  await page.route('**/api/payments/config', route => route.fulfill({ json: config }));
+  await page.route('**/api/payments/create-order', route => route.fulfill({ json: { orderId: 'ORDER123456789' } }));
+  await page.route('**/api/payments/capture-order', route => route.fulfill({ status: 409, json: { code: 'PAYMENT_NOT_APPROVED', error: 'הרכישה עדיין לא אושרה ב־PayPal.' } }));
+  await page.goto('/?screen=buy-credits');
+  await page.getByRole('radio').first().click();
+  await page.getByRole('button', { name: 'PayPal test checkout' }).click();
+  await expect(page.getByText('הרכישה עדיין לא אושרה ב־PayPal.')).toBeVisible();
+  await expect(page.getByText('בדיקת רכישה קיימת', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'PayPal test checkout' })).toHaveCount(0);
+  await page.getByRole('button', { name: 'חזרה לבחירת חבילה' }).click();
+  await expect(page.getByRole('radio').first()).toBeEnabled();
+  expect(await page.evaluate(key => localStorage.getItem(key), storageKey)).toBeNull();
+});
 test('checkout uses the selected package, locks selection, and recovers a lost response after reload', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await prepareApp(page);
