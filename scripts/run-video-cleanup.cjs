@@ -12,6 +12,9 @@ try {
   const environment = Object.fromEntries(fs.readFileSync(`/proc/${app.pid}/environ`, 'utf8').split('\0').filter(Boolean).map(value => {
     const index = value.indexOf('='); return [value.slice(0, index), value.slice(index + 1)];
   }));
+  // A standalone cron child has no PM2 IPC channel. Inheriting its descriptor
+  // makes Node abort on exit even after the cleanup has completed successfully.
+  for (const key of ['NODE_CHANNEL_FD', 'NODE_CHANNEL_SERIALIZATION_MODE', 'NODE_UNIQUE_ID']) delete environment[key];
   const child = spawnSync(app.pm2_env.exec_interpreter, [path.join(cwd, 'scripts/cleanup-videos.js'), args[0]], { cwd, env: environment, stdio: 'inherit' });
   if (child.error || child.status !== 0) process.exitCode = 1;
 } catch (error) {
