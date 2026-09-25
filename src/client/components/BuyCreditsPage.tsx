@@ -100,7 +100,7 @@ export function BuyCreditsPage({ user, currentCredits, onCreditsUpdated }: BuyCr
     }
   };
 
-  const captureOrder = async (orderId: string) => {
+  const captureOrder = async (orderId: string, checkOnly = false) => {
     if (!user || captureFlight.current) return;
     const revision = session.current;
     const uid = user.uid;
@@ -111,14 +111,19 @@ export function BuyCreditsPage({ user, currentCredits, onCreditsUpdated }: BuyCr
     setError(null);
     setCanDiscardPending(false);
     try {
-      const response = await fetch(`${API_BASE_URL}/api/payments/capture-order`, {
+      const response = await fetch(`${API_BASE_URL}/api/payments/${checkOnly ? "check-order" : "capture-order"}`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ orderId, userUid: uid }), signal: AbortSignal.timeout(60_000),
       });
       const data = await response.json();
       if (session.current !== revision) return;
       if (!response.ok || data.success !== true) {
-        setCanDiscardPending(data.code === "PAYMENT_NOT_APPROVED");
+        if (data.code === "PAYMENT_NOT_APPROVED") {
+          clearUnpaidOrder();
+          setSuccess("הרכישה הקודמת לא הושלמה. אפשר לבחור חבילה ולנסות שוב.");
+          return;
+        }
+        setCanDiscardPending(data.code === "PAYMENT_ORDER_UNAVAILABLE");
         throw new Error(data.error || "לא ניתן לאשר את הזיכוי כרגע. בדקו שוב את אותה הרכישה.");
       }
       savePending(uid, null);
@@ -133,7 +138,18 @@ export function BuyCreditsPage({ user, currentCredits, onCreditsUpdated }: BuyCr
     }
   };
 
+  useEffect(() => {
+    const savedOrder = readPending(user?.uid);
+    if (savedOrder) void captureOrder(savedOrder, true);
+    // Check only when entering the page/account, never when opening the PayPal form.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.uid]);
+
   const clearUnpaidOrder = () => {
+    // Keep an unavailable order's reference for support instead of destroying it.
+    if (user && pendingOrder && canDiscardPending) {
+      try { localStorage.setItem(`quickcaption:unresolved-payment:${user.uid}:${pendingOrder}`, pendingOrder); } catch { /* Storage may be unavailable. */ }
+    }
     if (user) savePending(user.uid, null);
     setPendingOrder(null);
     setCanDiscardPending(false);
@@ -159,11 +175,11 @@ export function BuyCreditsPage({ user, currentCredits, onCreditsUpdated }: BuyCr
       {!configLoading && !config && <Button onClick={() => setConfigAttempt(attempt => attempt + 1)}>טעינת חבילות מחדש</Button>}
       {config && unavailable && <Alert severity="info">התשלום אינו זמין כרגע. נסו שוב מאוחר יותר.</Alert>}
       {pendingOrder && !checkoutOpen && <Card variant="outlined"><CardContent><Stack spacing={1.5}>
-        <Typography fontWeight={600}>בדיקת רכישה קיימת</Typography>
-        <Typography variant="body2">נשמרה רכישה שעדיין לא קיבלנו אישור על הזיכוי שלה. נבדוק את אותה הרכישה לפני התחלת תשלום נוסף.</Typography>
+        <Typography fontWeight={600}>{loading ? "בודקים את הרכישה הקודמת" : "בדיקת רכישה קיימת"}</Typography>
+        <Typography variant="body2">{canDiscardPending ? "לא ניתן לאתר את ההזמנה הקודמת. אם לא חויבתם, אפשר לחזור לבחירת חבילה." : "בודקים אם הרכישה הקודמת הושלמה כדי לעדכן את הקרדיטים ולמנוע תשלום חוזר."}</Typography>
         <Typography variant="caption">מספר הזמנה: <bdi>{pendingOrder}</bdi></Typography>
         <Button variant="contained" disabled={loading} onClick={() => void captureOrder(pendingOrder)}>{loading ? "בודקים את הרכישה..." : "בדיקת הרכישה והשלמת הזיכוי"}</Button>
-        {canDiscardPending && <Button onClick={clearUnpaidOrder}>חזרה לבחירת חבילה</Button>}
+        {canDiscardPending && <Button variant="outlined" disabled={loading} onClick={clearUnpaidOrder}>חזרה לבחירת חבילה</Button>}
       </Stack></CardContent></Card>}
       <Box role="radiogroup" aria-label="חבילת קרדיטים" sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "repeat(3, 1fr)" }, gap: 2 }}>
         {config?.packages.map(pkg => <Card key={pkg.credits} variant="outlined" sx={{ borderWidth: 2, borderColor: selectedPackage?.credits === pkg.credits ? "primary.main" : "divider" }}>

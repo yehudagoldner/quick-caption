@@ -297,6 +297,11 @@ export async function deductCredits(userUid, amount) {
 }
 
 /** Record and credit a captured PayPal order once, atomically. */
+export async function getRecordedPayment(orderId) {
+  const [rows] = await pool.execute('SELECT user_uid, credits, paypal_capture_id FROM credit_payments WHERE paypal_order_id = ? LIMIT 1', [orderId]);
+  return rows[0] ?? null;
+}
+
 export async function creditCapturedOrder(options) {
   const connection = await pool.getConnection();
   try { return await creditPayment(connection, options); }

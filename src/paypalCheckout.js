@@ -16,6 +16,9 @@ export function createPayPalClient({ clientId, secret, baseUrl, fetchImpl = fetc
     try {
       const response = await fetchImpl(`${baseUrl}${path}`, { ...options, signal: AbortSignal.timeout(15_000) });
       const data = await response.json();
+      if (response.status === 404 && data.name === 'RESOURCE_NOT_FOUND' && /^\/v2\/checkout\/orders\/[A-Za-z0-9]+$/.test(path) && (!options.method || options.method === 'GET')) {
+        throw new PaymentError('ההזמנה הקודמת אינה זמינה עוד ב־PayPal. אם לא חויבתם, אפשר להתחיל רכישה חדשה. אם חויבתם, שמרו את מספר ההזמנה ופנו אלינו לבדיקת הזיכוי.', 409, 'PAYMENT_ORDER_UNAVAILABLE');
+      }
       if (!response.ok) throw new PaymentError("לא ניתן להשלים את הבדיקה מול PayPal כרגע. נסו שוב.");
       return data;
     } catch (error) {
@@ -56,7 +59,7 @@ function verifyOrder(order, orderId, userUid) {
 }
 
 // Inject dependencies to exercise checkout without live charges or customer data.
-export function createPayPalRouter({ client, getUserCredits, creditCapturedOrder }) {
+export function createPayPalRouter({ client, getUserCredits, creditCapturedOrder, getRecordedPayment = async () => null }) {
   const router = express.Router();
   const failure = (res, error) => {
     const known = error instanceof PaymentError;
@@ -87,17 +90,25 @@ export function createPayPalRouter({ client, getUserCredits, creditCapturedOrder
       res.json({ orderId: order.id });
     } catch (error) { failure(res, error); }
   });
-  router.post('/capture-order', async (req, res) => {
+  const reconcileOrder = (allowCapture) => async (req, res) => {
     const { orderId, userUid } = req.body ?? {};
     if (typeof orderId !== 'string' || !/^[A-Za-z0-9]{10,64}$/.test(orderId) || typeof userUid !== 'string' || !userUid || userUid.length > 128) {
       return res.status(400).json({ error: 'פרטי הרכישה חסרים.' });
     }
     try {
-      if (await getUserCredits(userUid) === null) throw new PaymentError('יש להתחבר מחדש כדי להשלים את הרכישה.', 404, 'USER_NOT_FOUND');
+      const balance = await getUserCredits(userUid);
+      if (balance === null) throw new PaymentError('יש להתחבר מחדש כדי להשלים את הרכישה.', 404, 'USER_NOT_FOUND');
+      // The local ledger is authoritative even after PayPal stops returning an old order.
+      const recorded = await getRecordedPayment(orderId);
+      if (recorded) {
+        if (recorded.user_uid !== userUid) throw new PaymentError('פרטי ההזמנה אינם תואמים לרכישה.', 409, 'PAYMENT_MISMATCH');
+        return res.json({ success: true, creditsAdded: 0, purchasedCredits: recorded.credits, newBalance: balance, transactionId: recorded.paypal_capture_id });
+      }
       const token = await client.accessToken();
       let order = await client.orderRequest(`/${orderId}`, token);
       const pkg = verifyOrder(order, orderId, userUid);
       if (order.status === 'APPROVED') {
+        if (!allowCapture) throw new PaymentError('הרכישה אושרה ב־PayPal אך טרם הושלמה. לחצו להשלמת התשלום והזיכוי.', 409, 'PAYMENT_APPROVED');
         try {
           await client.orderRequest(`/${orderId}/capture`, token, { method: 'POST', headers: { 'PayPal-Request-Id': `capture-${orderId}` } });
         } catch (error) {
@@ -113,12 +124,16 @@ export function createPayPalRouter({ client, getUserCredits, creditCapturedOrder
       }
       const captures = order.purchase_units[0].payments?.captures;
       if (captures?.some(capture => capture.status === 'PENDING')) throw new PaymentError('התשלום ממתין לאישור PayPal. בדקו שוב בעוד כמה דקות.', 409, 'PAYMENT_PENDING');
+      if (captures?.length === 1 && ['DECLINED', 'DENIED'].includes(captures[0].status)) throw new PaymentError('התשלום נדחה ולא הושלם. אפשר לבחור חבילה ולנסות שוב.', 409, 'PAYMENT_NOT_APPROVED');
       if (order.status !== 'COMPLETED' || captures?.length !== 1 || captures[0].status !== 'COMPLETED' || !captures[0].id || captures[0].amount?.currency_code !== 'USD' || captures[0].amount.value !== pkg.priceUSD) {
         throw new PaymentError('התשלום טרם אומת. בדקו שוב את הרכישה לפני תשלום נוסף.', 409, 'PAYMENT_UNVERIFIED');
       }
       const { credited, newBalance } = await creditCapturedOrder({ orderId, captureId: captures[0].id, userUid, credits: pkg.credits, amountUSD: pkg.priceUSD });
       res.json({ success: true, creditsAdded: credited ? pkg.credits : 0, purchasedCredits: pkg.credits, newBalance, transactionId: captures[0].id });
     } catch (error) { failure(res, error); }
-  });
+  };
+  // Page recovery checks existing payments, but never initiates a charge on page load.
+  router.post('/check-order', reconcileOrder(false));
+  router.post('/capture-order', reconcileOrder(true));
   return router;
 }

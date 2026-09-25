@@ -1,5 +1,5 @@
 import "../src/loadAppEnv.js";
-import { creditCapturedOrder, getUserCredits } from "../db.js";
+import { creditCapturedOrder, getUserCredits, getRecordedPayment } from "../db.js";
 import { createPayPalClient, createPayPalRouter } from "../src/paypalCheckout.js";
 
 const client = createPayPalClient({
@@ -8,4 +8,4 @@ const client = createPayPalClient({
   baseUrl: process.env.PAYPAL_API_BASE || "https://api-m.sandbox.paypal.com",
 });
 
-export default createPayPalRouter({ client, getUserCredits, creditCapturedOrder });
+export default createPayPalRouter({ client, getUserCredits, creditCapturedOrder, getRecordedPayment });

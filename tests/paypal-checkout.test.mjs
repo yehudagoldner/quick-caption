@@ -10,7 +10,7 @@ function order(status = 'APPROVED', credits = 100, price = '5.00') {
     ...(status === 'COMPLETED' ? { payments: { captures: [{ id: 'CAPTURE123456', status: 'COMPLETED', amount: { currency_code: 'USD', value: price } }] } } : {}) }] };
 }
 
-async function fixture(t, { payment = order(), lostCapture = false, creditFailure = false } = {}) {
+async function fixture(t, { payment = order(), lostCapture = false, creditFailure = false, lookupStatus = 200, recorded = null } = {}) {
   const requests = [];
   const ledger = new Map();
   let balance = 50;
@@ -24,11 +24,12 @@ async function fixture(t, { payment = order(), lostCapture = false, creditFailur
       return Response.json(payment);
     }
     if (options.method === 'POST') return Response.json({ id: orderId });
-    return Response.json(payment);
+    return Response.json(lookupStatus === 404 ? { name: 'RESOURCE_NOT_FOUND' } : lookupStatus === 503 ? { name: 'SERVICE_UNAVAILABLE' } : payment, { status: lookupStatus });
   } });
   const app = express();
   app.use(express.json());
   app.use(createPayPalRouter({ client, getUserCredits: async uid => uid === 'buyer' ? balance : null,
+    getRecordedPayment: async () => recorded,
     creditCapturedOrder: async data => {
       if (creditFailure) { creditFailure = false; throw new Error('Database unavailable'); }
       const credited = !ledger.has(data.orderId);
@@ -107,3 +108,50 @@ test('missing payment credentials does not prevent the application from starting
   assert.equal(client.available, false);
   await assert.rejects(client.accessToken(), error => error.status === 503);
 });
+
+test('checking an approved order never initiates a capture', async t => {
+  const f = await fixture(t);
+  const result = await f.post('/check-order', { orderId, userUid: 'buyer' });
+  assert.equal(result.data.code, 'PAYMENT_APPROVED');
+  assert.equal(f.requests.filter(r => r.url.endsWith('/capture')).length, 0);
+  assert.equal(f.ledger.size, 0);
+});
+
+test('checking a completed payment restores credit idempotently without capture', async t => {
+  const f = await fixture(t, { payment: order('COMPLETED') });
+  assert.equal((await f.post('/check-order', { orderId, userUid: 'buyer' })).data.creditsAdded, 100);
+  assert.equal((await f.post('/check-order', { orderId, userUid: 'buyer' })).data.creditsAdded, 0);
+  assert.equal(f.requests.filter(r => r.url.endsWith('/capture')).length, 0);
+});
+
+test('recorded payment recovers even when PayPal no longer returns the order', async t => {
+  const f = await fixture(t, { lookupStatus: 404, recorded: { user_uid: 'buyer', credits: 100, paypal_capture_id: 'CAPTURE123456' } });
+  const result = await f.post('/check-order', { orderId, userUid: 'buyer' });
+  assert.equal(result.data.success, true);
+  assert.equal(result.data.creditsAdded, 0);
+  assert.equal(f.requests.length, 0);
+});
+
+test('recorded payment cannot be recovered by another user', async t => {
+  const f = await fixture(t, { recorded: { user_uid: 'someone-else', credits: 100 } });
+  assert.equal((await f.post('/check-order', { orderId, userUid: 'buyer' })).data.code, 'PAYMENT_MISMATCH');
+  assert.equal(f.requests.length, 0);
+});
+
+for (const [status, code] of [[404, 'PAYMENT_ORDER_UNAVAILABLE'], [503, 'PAYMENT_UNAVAILABLE']]) {
+  test(`order lookup HTTP ${status} is classified without pretending it was paid or unpaid`, async t => {
+    const f = await fixture(t, { lookupStatus: status });
+    assert.equal((await f.post('/check-order', { orderId, userUid: 'buyer' })).data.code, code);
+    assert.equal(f.ledger.size, 0);
+  });
+}
+
+for (const state of ['CREATED', 'VOIDED', 'PAYER_ACTION_REQUIRED', 'DECLINED', 'PENDING']) {
+  test(`recovery classifies ${state} without charging`, async t => {
+    const payment = order(['DECLINED', 'PENDING'].includes(state) ? 'COMPLETED' : state);
+    if (['DECLINED', 'PENDING'].includes(state)) payment.purchase_units[0].payments.captures[0].status = state;
+    const f = await fixture(t, { payment });
+    assert.equal((await f.post('/check-order', { orderId, userUid: 'buyer' })).data.code, state === 'PENDING' ? 'PAYMENT_PENDING' : 'PAYMENT_NOT_APPROVED');
+    assert.equal(f.requests.filter(r => r.url.endsWith('/capture')).length, 0);
+  });
+}
