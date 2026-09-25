@@ -120,6 +120,11 @@ function App() {
     updateUrl(screen, token);
   };
 
+  const handleNewVideo = () => {
+    workflow.onBackToUpload();
+    navigateToScreen("transcription");
+  };
+
   const handleEditVideo = async (videoId: number) => {
     if (!workflow.user?.uid) return;
 
@@ -188,8 +193,8 @@ function App() {
           navigationBlocked={navigationBlocked}
           onNavigate={(page) => {
             const navigate = () => {
-              if (page === "transcription") workflow.onBackToUpload();
-              navigateToScreen(page);
+              if (page === "transcription") handleNewVideo();
+              else navigateToScreen(page);
             };
             if (editorNavigation.current) void editorNavigation.current(navigate);
             else navigate();
@@ -226,7 +231,7 @@ function App() {
             <VideosPage
               variant="workspace"
               onEditVideo={handleEditVideo}
-              onNewVideo={() => navigateToScreen("transcription")}
+              onNewVideo={handleNewVideo}
             />
           )}
 
@@ -241,7 +246,7 @@ function App() {
             <VideosPage
               variant="history"
               onEditVideo={handleEditVideo}
-              onNewVideo={() => navigateToScreen("transcription")}
+              onNewVideo={handleNewVideo}
             />
           )}
 
@@ -258,10 +263,7 @@ function App() {
               user={workflow.user}
               videoToken={videoToken}
               onSaveSegments={handleSaveSegments}
-              onNewUpload={() => {
-                workflow.onBackToUpload();
-                navigateToScreen("transcription");
-              }}
+              onNewUpload={handleNewVideo}
               onMyVideos={() => navigateToScreen("videos")}
             />
           )}

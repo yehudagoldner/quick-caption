@@ -133,3 +133,49 @@ test('a restored failed job shows its error and allows another file', async ({ p
   await chooseFile(page);
   expect(await page.evaluate(key => localStorage.getItem(key), storageKey)).toBeNull();
 });
+
+for (const destination of ['היסטוריית סרטונים', 'דף הבית']) {
+  test(`new video from ${destination} clears the completed upload`, async ({ page }) => {
+    await page.setViewportSize({ width: 1366, height: 768 });
+    await prepare(page);
+    await page.route('**/api/transcribe', route => route.fulfill({ json: result }));
+    await page.route('**/api/transcribe/jobs/**', route => route.fulfill({ json: { status: 'processing' } }));
+    await page.goto('/?screen=transcription');
+    await chooseFile(page, 'first.wav');
+    await page.getByRole('button', { name: 'שלחו לעיבוד' }).click();
+    await expect(page.getByTestId('caption-track')).toBeVisible();
+    await page.getByRole('button', { name: destination, exact: true }).click();
+    // The last button is the list's call to action; the header has a separate button.
+    await page.getByRole('button', { name: 'סרטון חדש', exact: true }).last().click();
+    await expect(page).toHaveURL(/screen=transcription/);
+    await expect(page.getByTestId('media-dropzone')).toBeVisible();
+    await expect(page.getByTestId('caption-track')).toHaveCount(0);
+    expect(await page.locator('input[type=file]').evaluate((input: HTMLInputElement) => input.files?.length)).toBe(0);
+    await chooseFile(page);
+    await expect(page.getByRole('button', { name: 'שלחו לעיבוד' })).toBeEnabled();
+  });
+}
+
+test('new video from the video list ignores a late completion of the previous job', async ({ page }) => {
+  await prepare(page, true);
+  let release!: () => void;
+  const pending = new Promise<void>(resolve => { release = resolve; });
+  let polling = false;
+  await page.route('**/api/transcribe/jobs/**', async route => {
+    polling = true;
+    await pending;
+    await route.fulfill({ json: { status: 'completed', result } }).catch(() => {});
+  });
+  await page.goto('/?screen=videos');
+  await expect.poll(() => polling).toBe(true);
+  await page.getByRole('button', { name: 'סרטון חדש', exact: true }).last().click();
+  await expect(page.getByTestId('media-dropzone')).toBeVisible();
+  expect(await page.evaluate(key => localStorage.getItem(key), storageKey)).toBeNull();
+  await chooseFile(page);
+  release();
+  await page.waitForTimeout(2700);
+  await expect(page.getByRole('button', { name: 'שלחו לעיבוד' })).toBeEnabled();
+  await expect(page.getByTestId('caption-track')).toHaveCount(0);
+  await page.reload();
+  await expect(page.getByTestId('media-dropzone')).toBeVisible();
+});
