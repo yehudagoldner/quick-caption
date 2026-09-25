@@ -87,6 +87,7 @@ Return a JSON object with "segments" array containing the modified subtitles. Ea
 
   const response = await client.responses.create({
     model: model,
+    ...getTextServiceTier(),
     input: [
       {
         role: "user",
@@ -194,6 +195,7 @@ Think about the meaning, any jokes/punchlines, and natural breaks. Then provide 
     console.log(`Using reasoning model ${model} for intelligent split...`);
     response = await client.responses.create({
       model: model,
+      ...getTextServiceTier(),
       input: [
         {
           role: "user",
@@ -232,6 +234,7 @@ Think about the meaning, any jokes/punchlines, and natural breaks. Then provide 
     // Fall back to regular chat completion for non-reasoning models
     response = await client.chat.completions.create({
       model: model,
+      ...getTextServiceTier(),
       messages: [
         { role: "system", content: systemPrompt },
         { role: "user", content: userPrompt }
@@ -317,6 +320,7 @@ Return ONLY the text with newlines separating segments. No JSON, no markdown, no
   console.log(`Resegmenting with ${model} (reasoning enabled)...`);
   const response = await client.responses.create({
     model: model,
+    ...getTextServiceTier(),
     input: [
       {
         role: "user",
@@ -475,6 +479,7 @@ export async function transcribeMedia({
           audioPreparation.audioPath,
           options,
           logger,
+          timedResult.usage.durationSeconds,
         );
         if (highAccuracyResult.usage) {
           usage.highAccuracy = highAccuracyResult.usage;
@@ -643,6 +648,12 @@ function createOpenAIClient() {
   return new OpenAI({ apiKey });
 }
 
+// Opt in locally through .env; audio requests do not accept this text-only tier.
+function getTextServiceTier() {
+  const tier = process.env.OPENAI_TEXT_SERVICE_TIER?.trim();
+  return tier ? { service_tier: tier } : {};
+}
+
 function getTranscriptionOptions() {
   const temperature = Number.parseFloat(process.env.OPENAI_TEMPERATURE ?? "0");
   const translate = /^true$/i.test(process.env.OPENAI_TRANSLATE ?? "false");
@@ -709,17 +720,16 @@ function shouldRunHighAccuracy(modelName) {
   return normalized !== "none" && normalized !== "skip" && normalized !== "false";
 }
 
-async function transcribeWithHighAccuracyModel(client, audioPath, options, logger) {
+async function transcribeWithHighAccuracyModel(client, audioPath, options, logger, timedDuration = 0) {
   const { highAccuracyModel, temperature, translate, language } = options;
+  const isGptTranscribe = highAccuracyModel === "gpt-transcribe";
 
   const transcription = await client.audio.transcriptions.create({
     file: fs.createReadStream(audioPath),
     model: highAccuracyModel,
-    temperature,
-    response_format: "json",
-    translate,
-    language,
-    timestamp_granularities: ["segment"],
+    ...(isGptTranscribe
+      ? (language ? { languages: [language] } : {})
+      : { temperature, response_format: "json", translate, language }),
   });
 
   const segments = extractSegmentsFromTranscription(transcription);
@@ -731,7 +741,9 @@ async function transcribeWithHighAccuracyModel(client, audioPath, options, logge
   }
 
   // Extract usage data for billing
-  const duration = segments.length > 0 ? segments[segments.length - 1].end : 0;
+  // Text-only transcription has no segments. Keep the audio duration for accounting.
+  const duration = transcription.duration ?? transcription.usage?.seconds ??
+    (segments.length > 0 ? segments[segments.length - 1].end : timedDuration);
 
   return {
     text: combinedText,
@@ -787,6 +799,9 @@ async function refineTranscriptWithGPT(client, baseResult, highAccuracyResult, o
 
   const response = await client.responses.create({
     model,
+    ...getTextServiceTier(),
+    reasoning: { effort: "medium" },
+    text: { format: { type: "json_object" } },
     input: [
       {
         role: "system",
@@ -845,7 +860,8 @@ async function refineTranscriptWithGPT(client, baseResult, highAccuracyResult, o
     model: model,
     inputTokens: response.usage?.input_tokens || 0,
     outputTokens: response.usage?.output_tokens || 0,
-    cachedTokens: response.usage?.cached_tokens || 0,
+    cachedTokens: response.usage?.input_tokens_details?.cached_tokens || response.usage?.cached_tokens || 0,
+    serviceTier: response.service_tier || getTextServiceTier().service_tier || "default",
   };
 
   return {

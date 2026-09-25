@@ -515,6 +515,7 @@ app.post("/api/transcribe", upload.single("media"), async (req, res) => {
       timedModel,
       highAccuracyModel,
       correctionModel,
+      serviceTier: process.env.OPENAI_TEXT_SERVICE_TIER,
     });
 
     console.log(`Estimated credits for ${durationMinutes.toFixed(2)} minutes: ${estimatedCredits} credits (${creditsToDollars(estimatedCredits)})`);

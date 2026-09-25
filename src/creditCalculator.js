@@ -16,6 +16,7 @@ const CREDITS_PER_DOLLAR = 40;
 // Audio transcription pricing (per minute)
 const WHISPER_COST_PER_MINUTE = 0.006; // $0.006 per minute
 const GPT4O_TRANSCRIBE_COST_PER_MINUTE = 0.006; // ~$0.006 per minute (approximate, token-based)
+const GPT_TRANSCRIBE_COST_PER_MINUTE = 0.0045;
 
 // GPT-5 text model pricing (per 1000 tokens)
 const GPT5_INPUT_COST_PER_1K_TOKENS = 0.00125; // $1.25 per 1M tokens
@@ -31,7 +32,9 @@ const GPT5_CACHED_INPUT_COST_PER_1K_TOKENS = 0.000125; // $0.125 per 1M tokens
 export function calculateAudioTranscriptionCredits(durationMinutes, model = 'whisper-1') {
   let costPerMinute = WHISPER_COST_PER_MINUTE;
 
-  if (model.includes('gpt-4o-transcribe') || model.includes('gpt-4o-audio')) {
+  if (model === 'gpt-transcribe') {
+    costPerMinute = GPT_TRANSCRIBE_COST_PER_MINUTE;
+  } else if (model.includes('gpt-4o-transcribe') || model.includes('gpt-4o-audio')) {
     costPerMinute = GPT4O_TRANSCRIBE_COST_PER_MINUTE;
   }
 
@@ -61,6 +64,22 @@ export function calculateGPT5Credits(inputTokens, outputTokens, cachedInputToken
   return Math.ceil(credits); // Round up to ensure we never undercharge
 }
 
+// GPT-6 Luna Standard USD / 1M tokens; Fast is 2x. Keep legacy rates unchanged.
+// https://developers.openai.com/api/docs/models/gpt-6-luna
+export function calculateTextCredits(inputTokens, outputTokens, cachedTokens = 0, options = {}) {
+  if (options.model !== 'gpt-6-luna') {
+    return calculateGPT5Credits(inputTokens, outputTokens, cachedTokens);
+  }
+  const tierMultiplier = ['fast', 'priority'].includes(options.serviceTier) ? 2 : 1;
+  const longContext = inputTokens > 272000;
+  const inputMultiplier = longContext ? 2 : 1;
+  const outputMultiplier = longContext ? 1.5 : 1;
+  const cached = Math.min(inputTokens, Math.max(0, cachedTokens));
+  const cost = ((inputTokens - cached) * 0.10 * inputMultiplier +
+    cached * 0.01 * inputMultiplier + outputTokens * 0.50 * outputMultiplier) / 1_000_000;
+  return Math.ceil(cost * tierMultiplier * CREDITS_PER_DOLLAR);
+}
+
 /**
  * Estimate credits for a full transcription workflow
  * This estimates the total cost before we have exact token counts
@@ -75,7 +94,8 @@ export function estimateTranscriptionCredits(durationMinutes, options = {}) {
   const {
     timedModel = 'whisper-1',
     highAccuracyModel = null,
-    correctionModel = null
+    correctionModel = null,
+    serviceTier = 'default',
   } = options;
 
   let totalCredits = 0;
@@ -96,7 +116,9 @@ export function estimateTranscriptionCredits(durationMinutes, options = {}) {
     const estimatedInputTokens = Math.ceil(durationMinutes * 100);
     const estimatedOutputTokens = Math.ceil(durationMinutes * 120);
 
-    totalCredits += calculateGPT5Credits(estimatedInputTokens, estimatedOutputTokens);
+    totalCredits += calculateTextCredits(estimatedInputTokens, estimatedOutputTokens, 0, {
+      model: correctionModel, serviceTier,
+    });
   }
 
   return Math.ceil(totalCredits);
@@ -124,7 +146,7 @@ export function calculateActualCredits(usage) {
     const outputTokens = usage.outputTokens || 0;
     const cachedTokens = usage.cachedTokens || 0;
 
-    return calculateGPT5Credits(inputTokens, outputTokens, cachedTokens);
+    return calculateTextCredits(inputTokens, outputTokens, cachedTokens, usage);
   }
 
   // Legacy format support
@@ -133,7 +155,7 @@ export function calculateActualCredits(usage) {
     const outputTokens = usage.completion_tokens || 0;
     const cachedTokens = usage.cached_tokens || 0;
 
-    return calculateGPT5Credits(inputTokens, outputTokens, cachedTokens);
+    return calculateTextCredits(inputTokens, outputTokens, cachedTokens, usage);
   }
 
   return 0;
