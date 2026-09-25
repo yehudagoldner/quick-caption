@@ -2,6 +2,7 @@ import mysql from "mysql2/promise";
 import "./src/loadAppEnv.js";
 import { creditPayment } from "./src/creditPayments.js";
 import { completeJob, JOB_STALE_SECONDS } from "./src/transcriptionJobs.js";
+import { ensureVideoRetention, touchVideo } from "./src/videoRetention.js";
 
 const pool = mysql.createPool({
   host: process.env.DB_HOST,
@@ -81,6 +82,7 @@ export async function ensureSchema() {
   `);
 
   const [subtitleJsonColumns] = await pool.query("SHOW COLUMNS FROM videos LIKE 'subtitle_json'");
+  await ensureVideoRetention(pool);
   const [jobStageColumns] = await pool.query("SHOW COLUMNS FROM transcription_jobs LIKE 'stages_json'");
   if (jobStageColumns.length === 0) await pool.execute("ALTER TABLE transcription_jobs ADD COLUMN stages_json JSON NULL");
   if (Array.isArray(subtitleJsonColumns) && subtitleJsonColumns.length === 0) {
@@ -217,6 +219,7 @@ export async function getUserVideos({ userUid, limit = 50, offset = 0 }) {
 
 
 export async function getVideoById({ videoId, userUid }) {
+  await touchVideo(pool, videoId, userUid);
   const [rows] = await pool.execute(
     `SELECT id, user_uid, original_filename, stored_path, status, media_type, mime_type, format, duration_seconds, size_bytes, transcription_id, subtitle_json, words_json, created_at, updated_at
      FROM videos

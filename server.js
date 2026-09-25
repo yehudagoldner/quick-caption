@@ -1,6 +1,6 @@
 ﻿import express from "express";
 import cors from "cors";
-import multer from "multer";
+import { createMediaUpload, mediaUploadError } from "./src/mediaUpload.js";
 import path from "path";
 import os from "os";
 import crypto from "crypto";
@@ -42,20 +42,7 @@ if (isDevAuthBypassEnabled()) {
   console.log("Dev auth bypass enabled for local dummy user");
 }
 
-const upload = multer({
-  dest: uploadDir,
-  // Ensure proper filename handling
-  fileFilter: (req, file, cb) => {
-    // Log original filename for debugging
-    console.log('Multer received filename:', {
-      originalname: file.originalname,
-      encoding: file.encoding,
-      mimetype: file.mimetype,
-      bytes: file.originalname ? Array.from(file.originalname).map(c => c.charCodeAt(0)) : []
-    });
-    cb(null, true);
-  }
-});
+const upload = createMediaUpload(uploadDir);
 app.use("/api/burn-subtitles", createBurnSubtitlesRouter(upload));
 app.use("/api/payments", paypalRouter);
 
@@ -788,6 +775,8 @@ app.post("/api/transcribe-words", upload.single("media"), async (req, res) => {
 app.use(express.static(path.join(process.cwd(), 'dist')));
 
 // Handle all unhandled routes by serving the React app
+app.use(mediaUploadError);
+
 // This must be after all API routes
 app.get(/.*/, (req, res) => {
   res.sendFile(path.join(process.cwd(), 'dist', 'index.html'));

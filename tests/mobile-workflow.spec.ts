@@ -1,6 +1,27 @@
 import { test, expect } from '@playwright/test';
 import { prepareApp, portraitVideo, testUid } from './app-fixtures';
 
+test('oversized media is rejected before upload and exactly 500 MB can be selected', async ({ page }) => {
+  await prepareApp(page);
+  await page.addInitScript(() => {
+    const size = Object.getOwnPropertyDescriptor(Blob.prototype, 'size')!.get!;
+    Object.defineProperty(File.prototype, 'size', { get() {
+      return this.name === 'too-large.webm' ? 500_000_001 : this.name === 'boundary.webm' ? 500_000_000 : size.call(this);
+    } });
+  });
+  let uploads = 0;
+  await page.route('**/api/transcribe', route => { uploads++; return route.abort(); });
+  await page.goto('/?screen=transcription');
+  await expect(page.getByText('עד 500MB לקובץ.', { exact: false })).toBeVisible();
+  await page.locator('input[type=file]').setInputFiles({ name: 'too-large.webm', mimeType: 'video/webm', buffer: portraitVideo });
+  await expect(page.getByText('הקובץ גדול מדי.', { exact: false })).toBeVisible();
+  await expect(page.locator('video')).toHaveCount(0);
+  expect(uploads).toBe(0);
+  await page.locator('input[type=file]').setInputFiles({ name: 'boundary.webm', mimeType: 'video/webm', buffer: portraitVideo });
+  await expect(page.locator('video')).toBeVisible();
+  await expect(page.getByText('הקובץ גדול מדי.', { exact: false })).toHaveCount(0);
+});
+
 for (const viewport of [{ width: 320, height: 568 }, { width: 390, height: 844 }]) {
   test(`upload fits ${viewport.width}px before selection, after selection, and while processing`, async ({ page, browserName }) => {
     test.skip(browserName === 'webkit' && process.platform === 'win32', 'Windows WebKit cannot decode the media fixture; media layout is verified in Chromium.');

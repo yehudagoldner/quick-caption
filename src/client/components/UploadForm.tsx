@@ -11,6 +11,7 @@ import type { StageState } from "../types";
 import { UploadProgress } from "./UploadProgress";
 import { InitialCharacterLimitSlider } from "./InitialCharacterLimitSlider";
 import { useEffect, useRef, useState } from "react";
+import { MAX_MEDIA_BYTES, MEDIA_SIZE_ERROR } from "../../mediaPolicy.js";
 
 type UploadFormProps = {
   file: File | null;
@@ -50,6 +51,7 @@ export function UploadForm({
   }, [file]);
   const chooseFile = (next: File | undefined) => {
     if (!next || isSubmitting) return;
+    if (next.size > MAX_MEDIA_BYTES) { setFileError(MEDIA_SIZE_ERROR); return; }
     if (!/^(audio|video)\//.test(next.type) && !/\.(mp4|mov|webm|mkv|avi|m4v|wav|flac|mp3|m4a|aac|ogg|opus)$/i.test(next.name)) {
       setFileError("בחרו קובץ וידאו או אודיו נתמך."); return;
     }
@@ -125,6 +127,7 @@ export function UploadForm({
         </Button>
       </Box>}
 
+      {!isSubmitting && <Typography variant="caption" color="text.secondary" textAlign="center">עד 500MB לקובץ. סרטונים והכתוביות שלהם נמחקים לאחר 30 יום ללא פתיחה או עריכה.</Typography>}
       {fileError && <Alert severity="error">{fileError}</Alert>}
       {previewUrl && !isSubmitting && <Stack spacing={{ xs: 0.25, sm: 1 }} alignItems="center">
         <Box component={file?.type.startsWith("audio/") || /\.(wav|flac|mp3|m4a|aac|ogg|opus)$/i.test(file?.name || "") ? "audio" : "video"}

@@ -1,0 +1,32 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import express from 'express';
+import { mkdtemp, readdir, rmdir, unlink } from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import { createMediaUpload, mediaUploadError } from '../src/mediaUpload.js';
+import { MAX_MEDIA_BYTES } from '../src/mediaPolicy.js';
+
+test('streaming upload limit rejects oversized multipart data and removes partial files', async t => {
+  assert.equal(MAX_MEDIA_BYTES, 500_000_000);
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'caption-upload-test-'));
+  const app = express();
+  let handled = false;
+  app.post('/upload', createMediaUpload(dir, 1024).single('media'), (_req, res) => { handled = true; res.json({ ok: true }); });
+  app.use(mediaUploadError);
+  const server = app.listen(0, '127.0.0.1');
+  await new Promise(resolve => server.once('listening', resolve));
+  t.after(async () => { await new Promise(resolve => server.close(resolve)); await rmdir(dir); });
+  const data = new FormData();
+  data.append('media', new Blob([Buffer.alloc(1025)]), 'video.mp4');
+  const response = await fetch(`http://127.0.0.1:${server.address().port}/upload`, { method: 'POST', body: data });
+  assert.equal(response.status, 413);
+  assert.equal((await response.json()).code, 'LIMIT_FILE_SIZE');
+  assert.equal(handled, false);
+  assert.deepEqual(await readdir(dir), []);
+  const exact = new FormData();
+  exact.append('media', new Blob([Buffer.alloc(1024)]), 'boundary.mp4');
+  const accepted = await fetch(`http://127.0.0.1:${server.address().port}/upload`, { method: 'POST', body: exact });
+  assert.equal(accepted.status, 200);
+  for (const file of await readdir(dir)) await unlink(path.join(dir, file));
+});
