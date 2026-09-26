@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { Alert, Box, Button, IconButton, Stack, Typography } from "@mui/material";
-import { DragIndicator, PauseRounded, PlayArrowRounded, RedoRounded, UndoRounded } from "@mui/icons-material";
+import { DragIndicator, PauseRounded, PlayArrowRounded, RedoRounded, UndoRounded, TuneRounded } from "@mui/icons-material";
 import type { Segment, Word } from "../types";
 import { useEditorPreferences } from "../contexts/EditorPreferences";
 import { formatTimecode } from "../utils/timecode";
@@ -17,7 +17,7 @@ type Preview = Segment[];
 export function MobileTimingTimeline({
   segments, words = [], disabled, duration, currentTime = 0, mediaUrl,
   selectedSegmentId, onSegmentSelect, onRequestTimeChange, onSegmentsChange,
-  isPlaying, onPlayPause, onUndo, onRedo, canUndo, canRedo,
+  isPlaying, onPlayPause, onUndo, onRedo, canUndo, canRedo, onEditWords,
 }: {
   segments: Segment[];
   words?: Word[];
@@ -35,6 +35,7 @@ export function MobileTimingTimeline({
   onRedo: () => void;
   canUndo: boolean;
   canRedo: boolean;
+  onEditWords: (id: Segment["id"]) => void;
 }) {
   const { preferences } = useEditorPreferences();
   const fps = preferences.fps;
@@ -197,14 +198,20 @@ export function MobileTimingTimeline({
             const cardWidth = Math.max(8, (segment.end - segment.start) * pps - 4);
             return <Box key={segment.id} data-testid="mobile-timing-clip" data-start={segment.start} data-end={segment.end} role="button" tabIndex={0}
               aria-label={`כתובית: ${segment.text}`} aria-pressed={focused}
-              onClick={event => { if ((event.target as HTMLElement).closest("[data-timing-handle]")) return; choose(segments.find(item => item.id === segment.id) ?? segment); }}
-              onKeyDown={event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); choose(segment); } }}
+              onClick={event => { if ((event.target as HTMLElement).closest("[data-timing-handle], [data-word-timing-button]")) return; choose(segments.find(item => item.id === segment.id) ?? segment); }}
+              onKeyDown={event => { if (event.target !== event.currentTarget) return; if (event.key === "Enter" || event.key === " ") { event.preventDefault(); choose(segment); } }}
               sx={{
                 position: "absolute", top: 22, bottom: 8, left, width: cardWidth, borderRadius: "8px", bgcolor: "#fff",
                 border: 1, borderColor: focused ? "primary.main" : "#e4e8ee", boxShadow: focused ? "0 0 0 1px #1976d2" : "none",
                 overflow: "hidden", zIndex: focused ? 2 : 1, touchAction: "pan-x",
               }}>
-              <Box sx={{ height: "100%", px: showChrome ? 4.5 : 1.5, display: "flex", flexDirection: "column", justifyContent: "center", pt: 0.5, pb: showChrome ? "40px" : 0.5, overflow: "hidden" }}>
+              <IconButton data-word-timing-button size="small" aria-label={`תזמון מילים: ${segment.text}`} title="תזמון מילים" disabled={disabled}
+                onPointerDown={event => event.stopPropagation()}
+                onClick={event => { event.stopPropagation(); onEditWords(segment.id); }}
+                sx={{ position: "absolute", top: 2, right: 2, width: 32, height: 32, zIndex: 3, color: "primary.main", bgcolor: "#e8f1fc", "&:hover": { bgcolor: "#d7e8fc" } }}>
+                <TuneRounded sx={{ fontSize: 18 }} />
+              </IconButton>
+              <Box sx={{ height: "100%", px: showChrome ? 4.5 : 1.5, display: "flex", flexDirection: "column", justifyContent: "center", pt: 4.5, pb: showChrome ? "40px" : 0.5, overflow: "hidden" }}>
                 <Typography dir={preferences.direction} sx={{ flexShrink: 0, fontSize: 15, fontWeight: 600, lineHeight: 1.3, overflowWrap: "anywhere", display: "-webkit-box", WebkitLineClamp: 4, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{segment.text}</Typography>
                 <Typography dir="ltr" variant="caption" color="text.secondary" sx={{ flexShrink: 0, mt: 0.25, textAlign: preferences.direction === "rtl" ? "right" : "left" }}>{formatTimecode(segment.start, fps)}–{formatTimecode(segment.end, fps)}</Typography>
               </Box>

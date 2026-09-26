@@ -124,7 +124,7 @@ export function MobileWordTimeline({ segment, words, fps, currentTime, activeWor
         {currentTime >= segment.start && currentTime <= segment.end && <Box sx={{ position: "absolute", top: 16, bottom: 40, left: 12 + (currentTime - segment.start) * pps, width: 2, bgcolor: "#e53935", pointerEvents: "none" }} />}
       </Box>
     </Box>
-    <Stack direction="row" alignItems="center" justifyContent="space-between" gap={0.5}>
+    <Stack direction="row" dir="ltr" alignItems="center" justifyContent="space-between" gap={0.5}>
       <Button size="small" aria-label="הזזת מילה פריים אחורה" disabled={disabled || !chosen} onClick={() => nudge(-1 / fps)} sx={{ minWidth: 40 }} dir="ltr">−1F</Button>
       <Typography variant="caption" dir="ltr" sx={{ fontVariantNumeric: "tabular-nums", fontSize: 11 }}>{chosen ? `${formatTimecode(chosen.start, fps)} – ${formatTimecode(chosen.end, fps)}` : ""}</Typography>
       <Button size="small" aria-label="הזזת מילה פריים קדימה" disabled={disabled || !chosen} onClick={() => nudge(1 / fps)} sx={{ minWidth: 40 }} dir="ltr">+1F</Button>

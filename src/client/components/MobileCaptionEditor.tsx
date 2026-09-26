@@ -54,6 +54,7 @@ import { VideoPlayer } from "./VideoPlayer";
 import { type CaptionDraft, type SubtitleTimelineProps } from "./SubtitleTimeline";
 import { MobileTimingTimeline } from "./MobileTimingTimeline";
 import { MobileWordTimeline } from "./MobileWordTimeline";
+import { MobileWordTimelineDialog } from "./MobileWordTimelineDialog";
 
 type SaveState = "idle" | "saving" | "success" | "error";
 type MobileMode = "watch" | "edit" | "timing";
@@ -186,6 +187,7 @@ export function MobileCaptionEditor({
   const [draftText, setDraftText] = useState("");
   const [draftError, setDraftError] = useState<string | null>(null);
   const [wordDraft, setWordDraft] = useState<Word[] | null>(null);
+  const [timingWordsId, setTimingWordsId] = useState<Segment["id"] | null>(null);
   const wordDraftRef = useRef<Word[] | null>(null);
   const [savingDraft, setSavingDraft] = useState(false);
   const [leaving, setLeaving] = useState(false);
@@ -210,10 +212,12 @@ export function MobileCaptionEditor({
   // A loop belongs only to this editing view, including across responsive
   // layout changes or replacing the loaded video.
   useEffect(() => () => loopChangeRef.current(false), [mode, mediaUrl]);
+  useEffect(() => { setTimingWordsId(null); }, [mode, mediaUrl]);
 
   const duration = videoDuration && Number.isFinite(videoDuration) ? videoDuration : Math.max(1, ...editableSegments.map(s => s.end), 1);
   const selectedIndex = editableSegments.findIndex(s => s.id === selectedSegmentId);
   const selected = selectedIndex >= 0 ? editableSegments[selectedIndex] : null;
+  const timingWordsSegment = editableSegments.find(segment => segment.id === timingWordsId);
   const captionWords = useMemo(() => selected ? wordsForSegment(words, selected) : [], [words, selected]);
   const editingWords = wordDraft ?? captionWords;
   draftTextRef.current = draftText;
@@ -677,6 +681,14 @@ export function MobileCaptionEditor({
               onRedo={timelineEditing.onRedo}
               canUndo={timelineEditing.canUndo}
               canRedo={timelineEditing.canRedo}
+              onEditWords={id => {
+                loopChangeRef.current(false);
+                if (isPlaying) onPlayPause?.();
+                onSegmentSelect(id);
+                const segment = editableSegments.find(item => item.id === id);
+                if (segment) onTimelineTimeChange(segment.start);
+                setTimingWordsId(id);
+              }}
             />
             </Box>
           </Stack>
@@ -700,6 +712,16 @@ export function MobileCaptionEditor({
           עוד
         </Button>
       </Stack>
+
+      {mode === "timing" && timingWordsSegment && <MobileWordTimelineDialog key={timingWordsSegment.id}
+        segment={timingWordsSegment} words={wordsForSegment(words, timingWordsSegment)} fps={preferences.fps} currentTime={currentTime}
+        activeWordEnabled={activeWordEnabled} disabled={!isEditable || saveState === "saving"}
+        onSave={nextWords => saveSegmentRef.current(timingWordsSegment, nextWords)}
+        onClose={() => setTimingWordsId(null)} onSeek={onTimelineTimeChange}
+        onInteract={() => { loopChangeRef.current(false); if (isPlaying) onPlayPause?.(); }}
+        onUndo={timelineEditing.onUndo} onRedo={timelineEditing.onRedo} canUndo={timelineEditing.canUndo} canRedo={timelineEditing.canRedo}
+        onDraftStateChange={timelineEditing.onDraftStateChange}
+      />}
 
       <Drawer
         variant="persistent"
