@@ -7,6 +7,8 @@ import { TranscriptionResultHeader } from "./TranscriptionResultHeader";
 import { TranscriptionMainContent } from "./TranscriptionMainContent";
 import { useTranscriptionState } from "../hooks/useTranscriptionState";
 import { usePreviewStyle } from "../hooks/usePreviewStyle";
+import { useAutoCaptionFontSize } from "../hooks/useAutoCaptionFontSize";
+import { AUTO_CAPTION_FONT_SIZE } from "../../captionStyle.js";
 import { useTranscriptionHandlers } from "../hooks/useTranscriptionHandlers";
 import { useVideoControls } from "../hooks/useVideoControls";
 import { useNarrowViewport } from "../hooks/useNarrowViewport";
@@ -122,9 +124,12 @@ export function TranscriptionResult({
     onSaveSegments,
   });
 
+  const autoFontSize = useAutoCaptionFontSize({ segments: editableSegments, videoDimensions, marginPercent, offsetYPercent });
+  const effectiveFontSize = fontSize === AUTO_CAPTION_FONT_SIZE ? autoFontSize : fontSize;
+
   const previewStyle = usePreviewStyle({
     fontColor,
-    fontSize,
+    fontSize: effectiveFontSize,
     offsetYPercent,
     outlineColor,
     marginPercent,
@@ -203,7 +208,7 @@ export function TranscriptionResult({
     response,
     downloadName,
     burnedVideo,
-    fontSize,
+    fontSize: effectiveFontSize,
     fontColor,
     outlineColor,
     offsetYPercent,
@@ -253,6 +258,7 @@ export function TranscriptionResult({
             selectedSegmentId={selectedSegmentId}
             activeSegmentId={activeSegment?.id ?? null}
             fontSize={fontSize}
+            autoFontSize={autoFontSize}
             fontColor={fontColor}
             outlineColor={outlineColor}
             offsetYPercent={offsetYPercent}

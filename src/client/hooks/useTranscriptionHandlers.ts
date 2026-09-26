@@ -6,7 +6,7 @@ import { findSegment } from "../utils/transcriptionUtils";
 import { serializeSubtitles } from "../utils/subtitleExport";
 import { useEditorPreferences } from "../contexts/EditorPreferences";
 import { retimeCaption, validateCaptionRange } from "../../timelineEditing.js";
-import { sanitizeCaptionFontSize } from "../../captionStyle.js";
+import { AUTO_CAPTION_FONT_SIZE, sanitizeCaptionFontSize, type CaptionFontSizeSetting } from "../../captionStyle.js";
 
 type BurnResult = {
   blob: Blob;
@@ -27,7 +27,7 @@ type UseTranscriptionHandlersProps = {
   setVideoDimensions: (dimensions: { width: number; height: number }) => void;
   setVideoDuration: (duration: number | null) => void;
   setRenderDimensions: (dimensions: { width: number; height: number }) => void;
-  setFontSize: (size: number) => void;
+  setFontSize: (size: CaptionFontSizeSetting) => void;
   setFontColor: (color: string) => void;
   setOutlineColor: (color: string) => void;
   setOffsetYPercent: (percent: number) => void;
@@ -145,6 +145,10 @@ export function useTranscriptionHandlers({
   );
 
   const handleFontSizeChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {
+    if (event.target.value === AUTO_CAPTION_FONT_SIZE) {
+      setFontSize(AUTO_CAPTION_FONT_SIZE);
+      return;
+    }
     const numeric = Number(event.target.value);
     if (Number.isFinite(numeric)) {
       setFontSize(sanitizeCaptionFontSize(numeric));

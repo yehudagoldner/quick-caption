@@ -1,3 +1,22 @@
 export const DEFAULT_CAPTION_FONT_SIZE: number;
+export const AUTO_CAPTION_FONT_SIZE: "auto";
+export type CaptionFontSizeSetting = number | typeof AUTO_CAPTION_FONT_SIZE;
 export const CAPTION_FONT_SIZES: number[];
+export const MIN_CAPTION_FONT_SIZE: number;
+export const MAX_CAPTION_FONT_SIZE: number;
+export const CAPTION_FONT_FAMILY: string;
+export const CAPTION_FONT_FILE: string;
+export const CAPTION_FONT_WEIGHT: number;
+export const CAPTION_FONT_EM_RATIO: number;
+export const CAPTION_OUTLINE_WIDTH: number;
 export function sanitizeCaptionFontSize(raw: unknown): number;
+export function captionMarginPixels(marginPercent: number, videoWidth: number): number;
+export function captionTextLines(text: unknown): string[];
+export function fitCaptionFontSize(options: {
+  maxLineEmWidth: number;
+  maxLineCount: number;
+  videoWidth: number;
+  videoHeight: number;
+  marginPercent: number;
+  offsetYPercent: number;
+}): number;

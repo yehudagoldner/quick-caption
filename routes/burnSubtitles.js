@@ -4,9 +4,11 @@ import os from "os";
 import { promises as fsp } from "fs";
 import { randomUUID } from "crypto";
 import { spawn } from "child_process";
+import { fileURLToPath } from "url";
 import { renderActiveWordSrt } from "../src/activeWordSubtitles.js";
-import { sanitizeCaptionFontSize } from "../src/captionStyle.js";
+import { CAPTION_FONT_FAMILY, CAPTION_OUTLINE_WIDTH, captionMarginPixels, sanitizeCaptionFontSize } from "../src/captionStyle.js";
 
+const CAPTION_FONTS_DIR = fileURLToPath(new URL("../public/fonts", import.meta.url));
 const TEMP_SUBTITLE_DIR = path.join(os.tmpdir(), "subtitles-api-subtitle-temp");
 const TEMP_OUTPUT_DIR = path.join(os.tmpdir(), "subtitles-api-output-temp");
 
@@ -100,6 +102,7 @@ export function createBurnSubtitlesRouter(upload) {
 function buildSubtitlesFilter(subtitlePath, { fontSize, fontColor, outlineColor, offsetYPercent, marginPercent, videoWidth, videoHeight, wholeTextLayout }) {
   const normalizedPath = subtitlePath.replace(/\\/g, "/");
   const styleParts = [
+    `Fontname=${CAPTION_FONT_FAMILY}`,
     `Fontsize=${fontSize}`,
     `PrimaryColour=${fontColor}`,
     `OutlineColour=${outlineColor}`,
@@ -109,14 +112,14 @@ function buildSubtitlesFilter(subtitlePath, { fontSize, fontColor, outlineColor,
   const playResY = typeof videoHeight === "number" ? videoHeight : 1000;
   const clampedOffset = Math.min(Math.max(offsetYPercent, 0), 100);
   const marginV = Math.round(clampedOffset * (playResY / 100));
-  const marginValue = Math.round(Math.min(Math.max(marginPercent, 0), 45) * (playResX / 100));
+  const marginValue = captionMarginPixels(marginPercent, playResX);
 
   styleParts.push(
     `PlayResX=${playResX}`,
     `PlayResY=${playResY}`,
     `Alignment=2`,
     `BorderStyle=1`,
-    `Outline=3`,
+    `Outline=${CAPTION_OUTLINE_WIDTH}`,
     `Shadow=0`,
     `MarginV=${marginV}`,
     `MarginL=${marginValue}`,
@@ -129,7 +132,8 @@ function buildSubtitlesFilter(subtitlePath, { fontSize, fontColor, outlineColor,
 
   const style = styleParts.join(",");
   const subtitlePathValue = escapeFilterPath(normalizedPath).replace(/'/g, "\\'");
-  return `subtitles='${subtitlePathValue}':charenc=UTF-8:force_style='${style}'`;
+  const fontsDirValue = escapeFilterPath(CAPTION_FONTS_DIR.replace(/\\/g, "/")).replace(/'/g, "\\'");
+  return `subtitles='${subtitlePathValue}':charenc=UTF-8:fontsdir='${fontsDirValue}':force_style='${style}'`;
 }
 
 /**

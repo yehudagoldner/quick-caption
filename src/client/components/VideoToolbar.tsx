@@ -1,6 +1,6 @@
 import { useId, useState, type ChangeEvent, type ReactNode } from "react";
 import type { Segment, Word } from "../types";
-import { CAPTION_FONT_SIZES } from "../../captionStyle.js";
+import { AUTO_CAPTION_FONT_SIZE, CAPTION_FONT_SIZES, type CaptionFontSizeSetting } from "../../captionStyle.js";
 import {
   Box,
   Button,
@@ -64,7 +64,8 @@ type VideoToolbarProps = {
   pendingEdits?: boolean;
   editorSettings: ReactNode;
   canBurn?: boolean;
-  fontSize: number;
+  fontSize: CaptionFontSizeSetting;
+  autoFontSize: number;
   fontColor: string;
   outlineColor: string;
   offsetYPercent: number;
@@ -96,6 +97,7 @@ export function VideoToolbar({
   editorSettings,
   canBurn = true,
   fontSize,
+  autoFontSize,
   fontColor,
   outlineColor,
   offsetYPercent,
@@ -470,6 +472,7 @@ export function VideoToolbar({
                 label="גודל פונט"
                 onChange={(e) => onFontSizeChange({ target: { value: String(e.target.value) } } as ChangeEvent<HTMLInputElement>)}
               >
+                <MenuItem value={AUTO_CAPTION_FONT_SIZE}>אוטומטי ({autoFontSize})</MenuItem>
                 {CAPTION_FONT_SIZES.map(size => <MenuItem key={size} value={size}>{size}</MenuItem>)}
               </Select>
             </FormControl>

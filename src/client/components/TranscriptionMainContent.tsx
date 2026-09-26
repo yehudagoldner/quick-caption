@@ -7,6 +7,7 @@ import { SubtitleEditor } from "./SubtitleEditor";
 import { VideoToolbar } from "./VideoToolbar";
 import { MobileCaptionEditor } from "./MobileCaptionEditor";
 import { useNarrowViewport } from "../hooks/useNarrowViewport";
+import type { CaptionFontSizeSetting } from "../../captionStyle.js";
 
 type SaveState = "idle" | "saving" | "success" | "error";
 
@@ -30,7 +31,8 @@ type TranscriptionMainContentProps = {
   currentTime: number;
   selectedSegmentId: Segment["id"] | null;
   activeSegmentId: Segment["id"] | null;
-  fontSize: number;
+  fontSize: CaptionFontSizeSetting;
+  autoFontSize: number;
   fontColor: string;
   outlineColor: string;
   offsetYPercent: number;
@@ -90,6 +92,7 @@ export function TranscriptionMainContent({
   selectedSegmentId,
   activeSegmentId,
   fontSize,
+  autoFontSize,
   fontColor,
   outlineColor,
   offsetYPercent,
@@ -159,6 +162,7 @@ export function TranscriptionMainContent({
         selectedSegmentId={selectedSegmentId}
         activeSegmentId={activeSegmentId}
         fontSize={fontSize}
+        autoFontSize={autoFontSize}
         fontColor={fontColor}
         outlineColor={outlineColor}
         offsetYPercent={offsetYPercent}
@@ -210,6 +214,7 @@ export function TranscriptionMainContent({
               pendingEdits={hasTimelineDrafts || saveState === "saving"}
               editorSettings={editorSettingsBlock}
               fontSize={fontSize}
+              autoFontSize={autoFontSize}
               fontColor={fontColor}
               outlineColor={outlineColor}
               offsetYPercent={offsetYPercent}

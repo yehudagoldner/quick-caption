@@ -1,6 +1,11 @@
 import { useEffect, useMemo } from "react";
 import { createOutlineShadow } from "../utils/transcriptionUtils";
 import { useEditorPreferences } from "../contexts/EditorPreferences";
+import { CAPTION_FONT_EM_RATIO, CAPTION_FONT_FAMILY, CAPTION_FONT_WEIGHT, captionMarginPixels } from "../../captionStyle.js";
+
+const CAPTION_FONT_STACK = `"${CAPTION_FONT_FAMILY}", "Assistant", sans-serif`;
+// libass advances one full Fontsize per line, which is 1 / CAPTION_FONT_EM_RATIO em.
+const CAPTION_LINE_HEIGHT = 1 / CAPTION_FONT_EM_RATIO;
 
 type UsePreviewStyleProps = {
   fontColor: string;
@@ -36,9 +41,10 @@ export function usePreviewStyle({
         bottom: `${clampedBottomPercent}%`,
         transform: "translate(-50%, 0)",
         color: fontColor,
-        fontSize: `${fontSize}px`,
-        fontWeight: 600,
-        lineHeight: 1.35,
+        fontFamily: CAPTION_FONT_STACK,
+        fontSize: `${fontSize * CAPTION_FONT_EM_RATIO}px`,
+        fontWeight: CAPTION_FONT_WEIGHT,
+        lineHeight: CAPTION_LINE_HEIGHT,
         textAlign: "center" as const,
         whiteSpace: "pre-wrap" as const,
         pointerEvents: "none" as const,
@@ -52,11 +58,11 @@ export function usePreviewStyle({
     const scaleX = renderDimensions.width / videoDimensions.width;
     const scaleY = renderDimensions.height / videoDimensions.height;
 
-    const marginValueVideo = Math.round(clampedMarginPercent * (videoDimensions.width / 100));
+    const marginValueVideo = captionMarginPixels(clampedMarginPercent, videoDimensions.width);
     const bottomVideo = (clampedBottomPercent / 100) * videoDimensions.height;
     const widthVideo = Math.max(1, videoDimensions.width - marginValueVideo * 2);
 
-    const fontSizePx = fontSize * scaleY;
+    const fontSizePx = fontSize * CAPTION_FONT_EM_RATIO * scaleY;
     const widthPx = widthVideo * scaleX;
     const bottomPx = bottomVideo * scaleY;
 
@@ -66,9 +72,10 @@ export function usePreviewStyle({
       bottom: `${bottomPx}px`,
       transform: "translate(-50%, 0)",
       color: fontColor,
+      fontFamily: CAPTION_FONT_STACK,
       fontSize: `${fontSizePx}px`,
-      fontWeight: 600,
-      lineHeight: 1.35,
+      fontWeight: CAPTION_FONT_WEIGHT,
+      lineHeight: CAPTION_LINE_HEIGHT,
       textAlign: "center" as const,
       whiteSpace: "pre-wrap" as const,
       pointerEvents: "none" as const,
@@ -89,7 +96,7 @@ export function usePreviewStyle({
         scaleX,
         scaleY,
         fontSize,
-        scaledFontSize: fontSize * scaleY,
+        scaledFontSize: fontSize * CAPTION_FONT_EM_RATIO * scaleY,
         offsetYPercent,
         marginPercent,
       });
