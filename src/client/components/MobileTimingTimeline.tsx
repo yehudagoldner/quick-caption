@@ -176,15 +176,16 @@ export function MobileTimingTimeline({
         {manualWindow == null ? "אוטומטי" : "התאם"}
       </Button>
     </Stack>
-    <Stack direction="row" alignItems="center" gap={1} sx={{ height: 24, flexShrink: 0, minWidth: 0 }}>
+    <Stack gap={0.5} sx={{ flexShrink: 0, minWidth: 0 }}>
     <Box dir="ltr" role="slider" aria-label="מיקום בהקלטה" aria-valuemin={0} aria-valuemax={Math.round(total * 1000)} aria-valuenow={Math.round(time * 1000)}
-      sx={{ flex: 1, minWidth: 0, position: "relative", height: 16, borderRadius: 99, bgcolor: "#e6ebf1", touchAction: "none" }}
+      sx={{ flexShrink: 0, width: "100%", minWidth: 0, position: "relative", height: 16, borderRadius: 99, bgcolor: "#e6ebf1", touchAction: "none", overflow: "hidden" }}
       onPointerDown={event => { event.currentTarget.setPointerCapture(event.pointerId); jump(event.clientX, event.currentTarget); }}
       onPointerMove={event => { if (event.currentTarget.hasPointerCapture(event.pointerId)) jump(event.clientX, event.currentTarget); }}>
-      <Box sx={{ position: "absolute", top: 4, bottom: 4, borderRadius: 99, bgcolor: "primary.main", opacity: 0.35, left: `${Math.max(0, (time - windowSeconds / 2) / total) * 100}%`, width: `${Math.min(100, windowSeconds / total * 100)}%` }} />
-      <Box sx={{ position: "absolute", top: 1, bottom: 1, width: 3, borderRadius: 99, bgcolor: "primary.main", left: `${time / total * 100}%`, transform: "translateX(-1.5px)" }} />
+      <Box sx={{ position: "absolute", top: 4, bottom: 4, borderRadius: 99, bgcolor: "primary.main", opacity: 0.35,
+        left: `${Math.max(0, (time - windowSeconds / 2) / total) * 100}%`, right: `${Math.max(0, 1 - (time + windowSeconds / 2) / total) * 100}%` }} />
+      <Box sx={{ position: "absolute", top: 1, bottom: 1, width: 3, borderRadius: 99, bgcolor: "primary.main", left: `calc(${time / total * 100}% - ${time / total * 3}px)` }} />
     </Box>
-    <Box sx={{ width: "36%", maxWidth: 160, flexShrink: 0 }}>
+    <Box sx={{ width: "100%", px: 0.5, boxSizing: "border-box", flexShrink: 0 }}>
       <CompactTimelineZoom label="זום ציר התזמון" value={zoomValue} min={0} max={100} step={0.1}
         valueText={`${Number(windowSeconds.toFixed(2))} שניות בתצוגה`} disabled={zoomRange === 0}
         onChange={value => { fromScroll.current = null; setManualWindow(total / Math.exp(value / 100 * zoomRange)); }} />

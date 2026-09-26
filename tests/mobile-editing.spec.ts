@@ -280,6 +280,25 @@ for (const width of [320, 390]) test(`compact timeline zoom keeps video size and
   const editor = page.getByTestId('mobile-timing-editor');
   const zoom = editor.getByRole('slider', { name: 'זום ציר התזמון', exact: true });
   expect((await zoom.boundingBox())!.height).toBeLessThanOrEqual(24);
+  const overview = editor.getByRole('slider', { name: 'מיקום בהקלטה', exact: true });
+  const overviewBounds = (await overview.boundingBox())!;
+  expect((await zoom.boundingBox())!.y).toBeGreaterThanOrEqual(overviewBounds.y + overviewBounds.height + 3);
+  // Both controls must use the existing timeline allocation, not take height from the video.
+  await overview.evaluate(el => { el.parentElement!.style.display = 'none'; });
+  const withoutControls = (await video.boundingBox())!;
+  await editor.getByRole('slider', { name: 'מיקום בהקלטה', exact: true, includeHidden: true }).evaluate(el => { el.parentElement!.style.removeProperty('display'); });
+  expect(withoutControls.height).toBeCloseTo(bounds.height, 1);
+  for (const fraction of [0, .5, 1]) {
+    await overview.click({ position: { x: Math.max(1, fraction * (overviewBounds.width - 1)), y: 8 } });
+    await expect.poll(() => video.evaluate((v: HTMLVideoElement) => v.currentTime)).toBeCloseTo(fraction * 4, 1);
+    for (const indicator of await overview.locator(':scope > div').all()) {
+      const box = (await indicator.boundingBox())!;
+      expect(box.x).toBeGreaterThanOrEqual(overviewBounds.x - 1);
+      expect(box.x + box.width).toBeLessThanOrEqual(overviewBounds.x + overviewBounds.width + 1);
+    }
+  }
+  await video.evaluate((v: HTMLVideoElement) => { v.currentTime = 1.25; });
+  await expect(page.getByTestId('playhead-timecode')).toHaveText('00:00:01:06');
   await zoom.focus();
   await page.keyboard.press('End');
   await expect(editor).toHaveAttribute('data-window-seconds', '0.50');
