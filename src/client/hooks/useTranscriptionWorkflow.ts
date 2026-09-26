@@ -4,6 +4,7 @@ import type { ManagerOptions, SocketOptions } from "socket.io-client";
 import type { BurnOptions } from "../components/TranscriptionResult";
 import type { ApiResponse, StageEvent, StageState, StageStatus, Segment, Word } from "../types";
 import { useAuth } from "../contexts/AuthContext";
+import { useUploadProtection } from "./useUploadProtection";
 
 export type AuthUser = ReturnType<typeof useAuth>["user"];
 
@@ -115,6 +116,8 @@ export function useTranscriptionWorkflow(): TranscriptionWorkflow {
   const requestRef = useRef<XMLHttpRequest | null>(null);
   const currentJobRef = useRef<{ uid: string; jobId: string } | null>(null);
   const previousUserRef = useRef(user?.uid);
+  const uploadConfirmed = stages.some(stage => stage.id === "upload" && stage.status === "done");
+  useUploadProtection(isSubmitting && !uploadConfirmed);
 
   const releaseCurrentJob = useCallback(() => {
     const job = currentJobRef.current;
@@ -218,9 +221,9 @@ export function useTranscriptionWorkflow(): TranscriptionWorkflow {
     setActiveJobId(savedJobId);
     setIsSubmitting(true);
     setUploadProgress(100);
-    setStages(cloneStages(STAGE_DEFINITIONS).map((stage) =>
-      stage.id === "upload" ? { ...stage, status: "done" } : stage,
-    ));
+    // A saved job ID may belong to an interrupted upload. Wait for the server
+    // before telling the user it is safe to leave or let the screen sleep.
+    setStages(createUploadActiveStages());
   }, [user?.uid]);
 
   useEffect(() => {
@@ -275,12 +278,13 @@ export function useTranscriptionWorkflow(): TranscriptionWorkflow {
         } else if (job.status === "failed") {
           stopWatching(job.error || "העיבוד נכשל. נסו שוב.");
         } else if (job.status === "processing") {
-          if (Array.isArray(job.stages) && job.stages.length) {
-            setStages(cloneStages(STAGE_DEFINITIONS).map(stage => {
-              const event = job.stages?.find(item => item.stage === stage.id);
-              return event ? { ...stage, status: mapStageStatus(event.status), message: event.message ?? null } : stage;
-            }));
-          }
+          // Jobs are created only after Multer has received the entire file.
+          setUploadProgress(100);
+          setStages(previous => (Array.isArray(job.stages) && job.stages.length ? cloneStages(STAGE_DEFINITIONS) : previous).map(stage => {
+            if (stage.id === "upload") return { ...stage, status: "done" };
+            const event = job.stages?.find(item => item.stage === stage.id);
+            return event ? { ...stage, status: mapStageStatus(event.status), message: event.message ?? null } : stage;
+          }));
           setError(null);
         }
       } catch {
@@ -293,6 +297,7 @@ export function useTranscriptionWorkflow(): TranscriptionWorkflow {
     const interval = window.setInterval(poll, 2500);
     document.addEventListener("visibilitychange", poll);
     window.addEventListener("online", poll);
+    window.addEventListener("pageshow", poll);
     void poll();
     return () => {
       cancelled = true;
@@ -300,6 +305,7 @@ export function useTranscriptionWorkflow(): TranscriptionWorkflow {
       window.clearInterval(interval);
       document.removeEventListener("visibilitychange", poll);
       window.removeEventListener("online", poll);
+      window.removeEventListener("pageshow", poll);
     };
   }, [activeJobId, user?.uid, releaseCurrentJob]);
 

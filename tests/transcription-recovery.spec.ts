@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { portraitVideo } from './app-fixtures';
 
 const uid = 'transcription-recovery-test';
 const storageKey = `quickcaption:transcription-job:${uid}`;
@@ -39,6 +40,127 @@ async function chooseFile(page: Page, name = 'replacement.wav') {
   });
   await expect(page.getByRole('button', { name: 'שלחו לעיבוד' })).toBeEnabled();
 }
+
+async function mockWakeLock(page: Page, mode: 'supported' | 'denied' | 'unsupported' | 'deferred' = 'supported') {
+  await page.addInitScript(mode => {
+    const state = { requests: 0, releases: 0, resolve: () => {} };
+    (window as any).__wakeLockTest = state;
+    Object.defineProperty(navigator, 'wakeLock', { configurable: true, value: mode === 'unsupported' ? undefined : {
+      request: async () => {
+        state.requests++;
+        if (mode === 'denied') throw new DOMException('Power saving', 'NotAllowedError');
+        if (mode === 'deferred') await new Promise<void>(resolve => { state.resolve = resolve; });
+        const sentinel = Object.assign(new EventTarget(), { released: false, release: async () => {
+          if (sentinel.released) return;
+          sentinel.released = true;
+          state.releases++;
+          sentinel.dispatchEvent(new Event('release'));
+        } });
+        return sentinel;
+      },
+    } });
+  }, mode);
+}
+
+async function setVisibility(page: Page, hidden: boolean) {
+  await page.evaluate(hidden => {
+    Object.defineProperty(document, 'hidden', { configurable: true, get: () => hidden });
+    Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => hidden ? 'hidden' : 'visible' });
+    document.dispatchEvent(new Event('visibilitychange'));
+  }, hidden);
+}
+
+test('mobile upload warns until server confirmation, manages screen lock and recovers after returning', async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 568 });
+  await prepare(page);
+  await mockWakeLock(page);
+  await page.addInitScript(() => {
+    const send = XMLHttpRequest.prototype.send;
+    XMLHttpRequest.prototype.send = function(body) {
+      if (body instanceof FormData && body.has('jobId')) (window as any).__uploadRequest = this;
+      return send.call(this, body);
+    };
+  });
+  let accepted = false, completed = false;
+  let releaseUpload!: () => void;
+  const pending = new Promise<void>(resolve => { releaseUpload = resolve; });
+  await page.route('**/api/transcribe', async route => { await pending; await route.fulfill({ json: result }).catch(() => {}); });
+  await page.route('**/api/transcribe/jobs/**', route => route.fulfill({
+    status: accepted ? 200 : 404,
+    json: completed ? { status: 'completed', result } : accepted ? { status: 'processing' } : { error: 'Job not found' },
+  }));
+  await page.goto('/?screen=transcription');
+  await page.locator('input[type=file]').setInputFiles({ name: 'portrait.webm', mimeType: 'video/webm', buffer: portraitVideo });
+  await page.getByRole('button', { name: 'שלחו לעיבוד' }).click();
+  const warning = page.getByRole('alert').filter({ hasText: 'אל תנעלו את המסך' });
+  await expect(warning).toBeInViewport();
+  // Playwright holds the intercepted POST before Chromium reports transfer
+  // completion. Deliver that event independently of the server's acknowledgement.
+  await page.evaluate(() => {
+    const upload = (window as any).__uploadRequest.upload;
+    upload.dispatchEvent(new ProgressEvent('progress', { lengthComputable: true, loaded: 100, total: 100 }));
+    upload.dispatchEvent(new ProgressEvent('load'));
+  });
+  await expect(page.getByText('ממתינים לאישור קליטת הסרטון בשרת...')).toBeVisible();
+  await expect(page.getByText('הסרטון נקלט בשרת.', { exact: false })).toHaveCount(0);
+  await expect.poll(() => page.evaluate(() => (window as any).__wakeLockTest.requests)).toBe(1);
+  expect(await page.evaluate(() => {
+    const event = new Event('beforeunload', { cancelable: true });
+    window.dispatchEvent(event);
+    return event.defaultPrevented;
+  })).toBe(true);
+  await expect(page.getByRole('button', { name: 'חזרה לבחירת קובץ' })).toBeInViewport();
+  await page.screenshot({ path: 'tmp/review/upload-warning-320.png' });
+  await setVisibility(page, true);
+  await expect.poll(() => page.evaluate(() => (window as any).__wakeLockTest.releases)).toBe(1);
+  await setVisibility(page, false);
+  await expect.poll(() => page.evaluate(() => (window as any).__wakeLockTest.requests)).toBe(2);
+  await expect(warning).toBeVisible();
+  accepted = true;
+  await page.evaluate(() => window.dispatchEvent(new Event('pageshow')));
+  await expect(page.getByRole('status').filter({ hasText: 'הסרטון נקלט בשרת.' })).toBeVisible();
+  await expect(warning).toHaveCount(0);
+  await expect.poll(() => page.evaluate(() => (window as any).__wakeLockTest.releases)).toBe(2);
+  expect(await page.evaluate(() => {
+    const event = new Event('beforeunload', { cancelable: true });
+    window.dispatchEvent(event);
+    return event.defaultPrevented;
+  })).toBe(false);
+  await setVisibility(page, true);
+  completed = true;
+  await setVisibility(page, false);
+  await expect(page.getByTestId('mobile-caption-editor')).toBeVisible();
+  expect(await page.evaluate(key => localStorage.getItem(key), storageKey)).toBeNull();
+  releaseUpload();
+});
+
+for (const mode of ['denied', 'unsupported'] as const) {
+  test(`mobile upload remains usable with ${mode} wake lock support`, async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await prepare(page, true);
+    await mockWakeLock(page, mode);
+    const errors: string[] = [];
+    page.on('pageerror', error => errors.push(error.message));
+    await page.route('**/api/transcribe/jobs/**', route => route.fulfill({ status: 404, json: { error: 'Job not found' } }));
+    await page.goto('/?screen=transcription');
+    await expect(page.getByRole('alert').filter({ hasText: 'אל תנעלו את המסך' })).toBeVisible();
+    await expect(page.getByText('הסרטון נקלט בשרת.', { exact: false })).toHaveCount(0);
+    await page.getByRole('button', { name: 'חזרה לבחירת קובץ' }).click();
+    await expect(page.getByTestId('media-dropzone')).toBeVisible();
+    expect(errors).toEqual([]);
+  });
+}
+
+test('a wake lock granted after cancelling an upload is released immediately', async ({ page }) => {
+  await prepare(page, true);
+  await mockWakeLock(page, 'deferred');
+  await page.route('**/api/transcribe/jobs/**', route => route.fulfill({ status: 404, json: { error: 'Job not found' } }));
+  await page.goto('/?screen=transcription');
+  await expect.poll(() => page.evaluate(() => (window as any).__wakeLockTest.requests)).toBe(1);
+  await page.getByRole('button', { name: 'חזרה לבחירת קובץ' }).click();
+  await page.evaluate(() => (window as any).__wakeLockTest.resolve());
+  await expect.poll(() => page.evaluate(() => (window as any).__wakeLockTest.releases)).toBe(1);
+});
 
 test('mobile: leave a restored processing job and stay unlocked after reload', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });

@@ -7,6 +7,7 @@ import {
   SkipNext,
 } from "@mui/icons-material";
 import type { StageState } from "../types";
+import { Alert } from "@mui/material";
 
 type UploadProgressProps = {
   progress: number;
@@ -31,13 +32,17 @@ const STATUS_LABEL: Record<StageState["status"], string> = {
 
 export function UploadProgress({ progress, stages }: UploadProgressProps) {
   const uploading = progress < 100;
+  const uploadConfirmed = stages.some(stage => stage.id === "upload" && stage.status === "done");
   return (
     <Box mt={{ xs: 0.5, sm: 2 }} display="flex" flexDirection="column" gap={{ xs: "clamp(4px, calc(3dvh - 12px), 12px)", sm: 2 }}>
-      <Typography variant="body2" color="text.secondary" role="status">
-        {uploading ? "מעלים את הקובץ — השאירו את המסך פתוח עד סיום ההעלאה." : "ההעלאה הסתיימה. הסרטון עדיין בעיבוד."}
-      </Typography>
+      <Alert severity={uploadConfirmed ? "info" : "warning"} role={uploadConfirmed ? "status" : "alert"} sx={{ py: 0.5, px: 1, fontSize: { xs: "0.8125rem", sm: "0.875rem" }, "& .MuiAlert-message": { py: 0.5 } }}>
+        {uploadConfirmed
+          ? "הסרטון נקלט בשרת. העיבוד ממשיך גם כשהמסך נעול או כשעוברים לאפליקציה אחרת. חזרו לכאן לצפייה בתוצאה."
+          : "עד לאישור קליטת הסרטון בשרת, השאירו את העמוד פתוח. אל תנעלו את המסך ואל תעברו לאפליקציה אחרת — ההעלאה עלולה להיעצר."}
+      </Alert>
+      {!uploading && !uploadConfirmed && <Typography variant="caption" color="text.secondary" role="status">ממתינים לאישור קליטת הסרטון בשרת...</Typography>}
       <Box display="flex" alignItems="center" gap={{ xs: 1, sm: 2 }}>
-        <LinearProgress aria-label={uploading ? "התקדמות העלאה" : "עיבוד הסרטון"} variant={uploading ? "determinate" : "indeterminate"} value={progress} sx={{ flexGrow: 1, height: 8, borderRadius: 999 }} />
+        <LinearProgress aria-label={uploading ? "התקדמות העלאה" : uploadConfirmed ? "עיבוד הסרטון" : "אישור קליטת הסרטון"} variant={uploading ? "determinate" : "indeterminate"} value={progress} sx={{ flexGrow: 1, height: 8, borderRadius: 999 }} />
         {uploading && <Typography variant="body2" color="text.secondary">
           {progress}%
         </Typography>}
