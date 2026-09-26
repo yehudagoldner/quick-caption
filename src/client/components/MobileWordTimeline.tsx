@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { Box, Button, IconButton, Stack, Typography } from "@mui/material";
-import { RedoRounded, UndoRounded, ZoomInRounded, ZoomOutRounded } from "@mui/icons-material";
+import { RedoRounded, UndoRounded } from "@mui/icons-material";
 import type { Segment, Word } from "../types";
 import { placeMobileWord } from "../../timelineEditing.js";
 import { formatTimecode } from "../utils/timecode";
 import { useActiveWord } from "../hooks/useActiveWord";
+import { CompactTimelineZoom } from "./CompactTimelineZoom";
 
 type DragMode = "move" | "start" | "end";
 export function MobileWordTimeline({ segment, words, fps, currentTime, activeWordEnabled, disabled, saving,
@@ -17,6 +18,7 @@ export function MobileWordTimeline({ segment, words, fps, currentTime, activeWor
   const scroller = useRef<HTMLDivElement | null>(null);
   const [width, setWidth] = useState(0);
   const [zoom, setZoom] = useState(1);
+  const zoomAnchor = useRef<{ seconds: number; x: number } | null>(null);
   const [selected, setSelected] = useState(0);
   const [preview, setPreview] = useState<Word[] | null>(null);
   const drag = useRef<{ id: number; index: number; mode: DragMode; x: number; scroll: number; words: Word[]; moved: boolean; next: Word[] } | null>(null);
@@ -27,6 +29,20 @@ export function MobileWordTimeline({ segment, words, fps, currentTime, activeWor
   const view = preview ?? words;
   const chosen = view[selected];
   const activeWord = useActiveWord({ words: view, currentTime, enabled: activeWordEnabled });
+  const changeZoom = (next: number) => {
+    const el = scroller.current;
+    if (el) {
+      const playheadX = 12 + (currentTime - segment.start) * pps - el.scrollLeft;
+      const x = playheadX >= 0 && playheadX <= el.clientWidth ? playheadX : el.clientWidth / 2;
+      zoomAnchor.current = { seconds: (el.scrollLeft + x - 12) / pps, x };
+    }
+    setZoom(next);
+  };
+  useLayoutEffect(() => {
+    const anchor = zoomAnchor.current;
+    if (anchor && scroller.current) scroller.current.scrollLeft = 12 + anchor.seconds * pps - anchor.x;
+    zoomAnchor.current = null;
+  }, [pps]);
   useEffect(() => {
     const element = scroller.current;
     if (!element) return;
@@ -79,12 +95,14 @@ export function MobileWordTimeline({ segment, words, fps, currentTime, activeWor
 
   return <Stack data-testid="mobile-word-timeline" spacing={0.5} sx={{ minWidth: 0, flexShrink: 0 }}>
     <Stack direction="row" alignItems="center" gap={0.25}>
-      <Typography variant="body2" fontWeight={600} sx={{ flex: 1 }}>תזמון מילים</Typography>
-      <Typography variant="caption" color="text.secondary" role="status">{saving ? "שומר..." : "שמירה אוטומטית"}</Typography>
+      <Typography variant="body2" fontWeight={600} sx={{ flex: 1, fontSize: 13, whiteSpace: "nowrap" }}>תזמון מילים</Typography>
+      <Typography variant="caption" color="text.secondary" role="status" sx={{ fontSize: 10, whiteSpace: "nowrap" }}>{saving ? "שומר..." : "שמירה אוטומטית"}</Typography>
       <IconButton size="small" aria-label="ביטול תזמון מילה" disabled={disabled || !canUndo} onClick={onUndo}><UndoRounded fontSize="small" /></IconButton>
       <IconButton size="small" aria-label="ביצוע חוזר של תזמון מילה" disabled={disabled || !canRedo} onClick={onRedo}><RedoRounded fontSize="small" /></IconButton>
-      <IconButton size="small" aria-label="הקטנת ציר המילים" disabled={zoom <= 1} onClick={() => setZoom(value => Math.max(1, value / 1.5))}><ZoomOutRounded fontSize="small" /></IconButton>
-      <IconButton size="small" aria-label="הגדלת ציר המילים" disabled={zoom >= 4} onClick={() => setZoom(value => Math.min(4, value * 1.5))}><ZoomInRounded fontSize="small" /></IconButton>
+      <Box sx={{ width: 72, flexShrink: 0 }}>
+        <CompactTimelineZoom label="זום ציר המילים" value={zoom} min={1} max={4} step={0.01}
+          valueText={`פי ${Number(zoom.toFixed(2))}`} onChange={changeZoom} />
+      </Box>
     </Stack>
     <Typography variant="caption" color="text.secondary">גררו מילה או את קצותיה, ללא חפיפה למילים אחרות. החליקו על הסרגל לגלילה.</Typography>
     <Box ref={scroller} data-testid="mobile-word-scroll" aria-label="מילים במקטע" dir="ltr" sx={{ overflowX: "auto", overflowY: "hidden", border: 1, borderColor: "divider", borderRadius: 2, bgcolor: "#f3f6fa", touchAction: "pan-x", overscrollBehaviorX: "contain" }}>
