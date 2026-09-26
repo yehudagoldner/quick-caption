@@ -54,6 +54,7 @@ import { useActiveWord } from "../hooks/useActiveWord";
 import { VideoPlayer } from "./VideoPlayer";
 import { type CaptionDraft, type SubtitleTimelineProps } from "./SubtitleTimeline";
 import { MobileTimingTimeline } from "./MobileTimingTimeline";
+import { MobileWordTimingDialog } from "./MobileWordTimingDialog";
 
 type SaveState = "idle" | "saving" | "success" | "error";
 type MobileMode = "watch" | "edit" | "timing";
@@ -185,6 +186,7 @@ export function MobileCaptionEditor({
   const [newEnd, setNewEnd] = useState(0);
   const [draftText, setDraftText] = useState("");
   const [draftError, setDraftError] = useState<string | null>(null);
+  const [wordTimingOpen, setWordTimingOpen] = useState(false);
   const [savingDraft, setSavingDraft] = useState(false);
   const [leaving, setLeaving] = useState(false);
   const [chromeTop, setChromeTop] = useState(56);
@@ -202,6 +204,12 @@ export function MobileCaptionEditor({
   destinationsRef.current = { onMyVideos, onBack };
   const splitSegmentRef = useRef(onSplitSegment);
   splitSegmentRef.current = onSplitSegment;
+  const loopChangeRef = useRef(timelineEditing.onLoopChange);
+  loopChangeRef.current = timelineEditing.onLoopChange;
+
+  // A loop belongs only to this editing view, including across responsive
+  // layout changes or replacing the loaded video.
+  useEffect(() => () => loopChangeRef.current(false), [mode, mediaUrl]);
 
   const duration = videoDuration && Number.isFinite(videoDuration) ? videoDuration : Math.max(1, ...editableSegments.map(s => s.end), 1);
   const selectedIndex = editableSegments.findIndex(s => s.id === selectedSegmentId);
@@ -307,14 +315,14 @@ export function MobileCaptionEditor({
     : Promise.resolve(true);
   const leave = async (destination: "onMyVideos" | "onBack") => {
     setLeaving(true);
-    try { if (await flushDraft()) destinationsRef.current[destination]?.(); }
+    try { if (await flushDraft()) { loopChangeRef.current(false); destinationsRef.current[destination]?.(); } }
     finally { setLeaving(false); }
   };
   const selectCaption = async (id: Segment["id"]) => {
     if (await flushDraft()) onSegmentSelect(id);
   };
   const openMore = async () => {
-    if (await flushDraft()) setMoreOpen(true);
+    if (await flushDraft()) { loopChangeRef.current(false); setMoreOpen(true); }
   };
 
   useEffect(() => {
@@ -639,7 +647,10 @@ export function MobileCaptionEditor({
               </Stack>
             )}
             <Stack direction="row" useFlexGap flexWrap="wrap" gap={1}>
-              <Button variant="outlined" startIcon={<RepeatRounded />} aria-pressed={timelineEditing.loopEnabled} onClick={() => timelineEditing.onLoopChange(!timelineEditing.loopEnabled)}>נגן בלולאה</Button>
+              <Button variant={timelineEditing.loopEnabled ? "contained" : "outlined"} startIcon={<RepeatRounded />} aria-pressed={timelineEditing.loopEnabled} onClick={() => timelineEditing.onLoopChange(!timelineEditing.loopEnabled)}>{timelineEditing.loopEnabled ? "לולאה פעילה · כיבוי" : "לולאה כבויה · הפעלה"}</Button>
+              <Button variant="outlined" startIcon={<AccessTimeRounded />} disabled={!isEditable || !captionWords.length} onClick={async () => {
+                if (await flushDraft()) { loopChangeRef.current(false); setWordTimingOpen(true); }
+              }}>תזמון מילים</Button>
               <Button variant="outlined" startIcon={<ContentCutRounded />} disabled={!isEditable || savingDraft || saveState === "saving" || draftText.trim().split(/\s+/).length < 2 || currentTime <= selected.start || currentTime >= selected.end} onClick={() => { void flushDraft().then(saved => { if (saved) return splitSegmentRef.current(selected.id, currentTime); }); }}>פצל</Button>
               {canUndoSplit && <Button variant="outlined" startIcon={<UndoRounded />} disabled={!isEditable || saveState === "saving"} onClick={() => void onUndoSplit()}>בטל פיצול</Button>}
             </Stack>
@@ -695,6 +706,12 @@ export function MobileCaptionEditor({
           עוד
         </Button>
       </Stack>
+
+      {wordTimingOpen && selected && <MobileWordTimingDialog
+        segment={selected} words={captionWords} fps={preferences.fps}
+        onClose={() => setWordTimingOpen(false)} onSeek={onTimelineTimeChange}
+        onSave={async nextWords => { await saveSegmentRef.current(selected, nextWords); }}
+      />}
 
       <Drawer
         variant="persistent"
