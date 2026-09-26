@@ -212,3 +212,55 @@ test('timing popup protects pending and failed saves and fits a narrow phone', a
   await page.screenshot({ path: 'tmp/review/timing-word-dialog-320.png' });
   await dialog.getByRole('button', { name: 'סיום', exact: true }).click();
 });
+
+test('caption audio preview plays from the cursor, pauses at the boundary and stops on close', async ({ page }) => {
+  await openEditor(page);
+  await page.getByRole('button', { name: 'תזמון', exact: true }).click();
+  await page.getByRole('button', { name: 'תזמון מילים: שלום עולם', exact: true }).click();
+  const dialog = page.getByRole('dialog');
+  const video = page.locator('video');
+  await expect.poll(() => video.evaluate((v: HTMLVideoElement) => v.readyState)).toBeGreaterThan(0);
+  await video.evaluate((v: HTMLVideoElement) => { v.muted = true; v.volume = 0; });
+  await dialog.getByRole('button', { name: 'השמעת הכתובית', exact: true }).click();
+  await expect(dialog.getByRole('button', { name: 'השהיה', exact: true })).toBeVisible();
+  await expect.poll(() => video.evaluate((v: HTMLVideoElement) => v.currentTime)).toBeGreaterThan(0.15);
+  expect(await video.evaluate((v: HTMLVideoElement) => !v.muted && v.volume > 0)).toBe(true);
+  await dialog.getByRole('button', { name: 'השהיה', exact: true }).click();
+  expect(await video.evaluate((v: HTMLVideoElement) => v.paused)).toBe(true);
+  await dialog.getByRole('button', { name: 'עולם', exact: true }).click();
+  await expect.poll(() => video.evaluate((v: HTMLVideoElement) => v.currentTime)).toBeCloseTo(1, 1);
+  await dialog.getByRole('button', { name: 'השמעת הכתובית', exact: true }).click();
+  await expect.poll(() => video.evaluate((v: HTMLVideoElement) => v.currentTime)).toBeGreaterThan(1.15);
+  await expect(dialog.getByRole('button', { name: 'השמעת הכתובית', exact: true })).toBeVisible();
+  expect(await video.evaluate((v: HTMLVideoElement) => v.paused)).toBe(true);
+  expect(await video.evaluate((v: HTMLVideoElement) => v.currentTime)).toBeCloseTo(2, 2);
+  await dialog.getByRole('button', { name: 'מההתחלה', exact: true }).click();
+  await expect(dialog.getByRole('button', { name: 'השהיה', exact: true })).toBeVisible();
+  expect(await video.evaluate((v: HTMLVideoElement) => v.currentTime)).toBeLessThan(1);
+  await dialog.getByRole('button', { name: 'סיום', exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  expect(await video.evaluate((v: HTMLVideoElement) => v.paused)).toBe(true);
+  await page.getByRole('button', { name: 'תזמון מילים: סרטון לבדיקה', exact: true }).click();
+  await dialog.getByRole('button', { name: 'מההתחלה', exact: true }).click();
+  await expect.poll(() => video.evaluate((v: HTMLVideoElement) => v.currentTime)).toBeGreaterThan(2.1);
+  await dialog.getByRole('button', { name: 'לבדיקה', exact: true }).click();
+  expect(await video.evaluate((v: HTMLVideoElement) => v.paused)).toBe(true);
+  await page.keyboard.press('Escape');
+  await expect(dialog).toHaveCount(0);
+});
+
+test('caption audio preview reports playback failure and can retry', async ({ page }) => {
+  await openEditor(page);
+  await page.getByRole('button', { name: 'תזמון', exact: true }).click();
+  await page.getByRole('button', { name: 'תזמון מילים: שלום עולם', exact: true }).click();
+  const dialog = page.getByRole('dialog');
+  await page.locator('video').evaluate((v: HTMLVideoElement) => {
+    const play = v.play.bind(v);
+    v.play = () => { v.play = play; return Promise.reject(new DOMException('test rejection', 'NotAllowedError')); };
+  });
+  await dialog.getByRole('button', { name: 'השמעת הכתובית', exact: true }).click();
+  await expect(dialog.getByRole('alert')).toContainText('לא ניתן להשמיע');
+  await dialog.getByRole('button', { name: 'השמעת הכתובית', exact: true }).click();
+  await expect(dialog.getByRole('alert')).toHaveCount(0);
+  await expect(dialog.getByRole('button', { name: 'השהיה', exact: true })).toBeVisible();
+});

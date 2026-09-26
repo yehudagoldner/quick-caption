@@ -718,7 +718,7 @@ export function MobileCaptionEditor({
         activeWordEnabled={activeWordEnabled} disabled={!isEditable || saveState === "saving"}
         onSave={nextWords => saveSegmentRef.current(timingWordsSegment, nextWords)}
         onClose={() => setTimingWordsId(null)} onSeek={onTimelineTimeChange}
-        onInteract={() => { loopChangeRef.current(false); if (isPlaying) onPlayPause?.(); }}
+        onInteract={() => loopChangeRef.current(false)}
         onUndo={timelineEditing.onUndo} onRedo={timelineEditing.onRedo} canUndo={timelineEditing.canUndo} canRedo={timelineEditing.canRedo}
         onDraftStateChange={timelineEditing.onDraftStateChange}
       />}
