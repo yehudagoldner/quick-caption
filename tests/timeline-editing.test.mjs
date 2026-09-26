@@ -1,6 +1,33 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { EditHistory, snapshot, retimeCaption, validateCaptionRange, validateWordRange, timelineZoomForWindow, timelineScrollForTime, mobileTimelineWindowSeconds, placeCaption, placeMobileCaption } from '../src/timelineEditing.js';
+import { placeMobileWord } from '../src/timelineEditing.js';
+
+test('mobile word dragging clamps to the caption and neighbours without moving other words', () => {
+  const segment = { id: 9, start: 4.13, end: 7.89, text: 'one two three' };
+  const input = [{ word: 'one', start: 4.3, end: 4.9 }, { word: 'two', start: 5.2, end: 5.9 }, { word: 'three', start: 6.2, end: 7.5 }];
+  for (const fps of [24, 25, 30, 60]) for (let index = 0; index < input.length; index++) {
+    for (const mode of ['move', 'start', 'end']) for (const delta of [-100, -.23, .31, 100]) {
+      const next = placeMobileWord(input, index, segment, delta, mode, fps);
+      assert.equal(validateWordRange(next[index], segment, next.filter((_, other) => other !== index)), null);
+      for (let other = 0; other < input.length; other++) if (other !== index) assert.equal(next[other], input[other]);
+      if (mode === 'move') assert.ok(Math.abs(next[index].end - next[index].start - (input[index].end - input[index].start)) < 1e-6);
+      assert.ok(next[index].end - next[index].start >= 1 / fps - 1e-6);
+    }
+  }
+  assert.equal(placeMobileWord(input, 0, segment, -100, 'move')[0].start, segment.start);
+  assert.equal(placeMobileWord(input, 2, segment, 100, 'end')[2].end, segment.end);
+  assert.equal(placeMobileWord(input, 0, segment, NaN, 'move'), input);
+  assert.equal(placeMobileWord(input, 0, segment, 0, 'move'), input);
+});
+
+test('mobile word dragging protects touching and sub-frame words', () => {
+  const segment = { id: 1, start: 0, end: 1, text: 'a b' };
+  const input = [{ word: 'a', start: 0, end: .01 }, { word: 'b', start: .01, end: 1 }];
+  assert.equal(placeMobileWord(input, 0, segment, 1, 'move'), input);
+  assert.equal(placeMobileWord(input, 0, segment, -1, 'end'), input);
+  assert.equal(placeMobileWord(input, 0, segment, 1, 'start'), input);
+});
 test('automatic zoom fits 30 seconds, or the whole shorter recording', () => {
   for (const duration of [6, 30, 90, 3600, 14400]) {
     const zoom = timelineZoomForWindow(duration);

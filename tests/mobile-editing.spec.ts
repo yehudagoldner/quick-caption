@@ -1,4 +1,4 @@
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect, type Page, type Locator } from '@playwright/test';
 import { prepareApp, segments, portraitVideo } from './app-fixtures';
 
 const words = [
@@ -47,7 +47,16 @@ test('mobile loop visibly toggles and stops on every exit from editing', async (
   }
 });
 
-test('mobile word timing validates input, retries failed saves and preserves other words with undo', async ({ page }) => {
+async function dragBy(page: Page, control: Locator, pixels: number) {
+  await control.scrollIntoViewIfNeeded();
+  const rect = (await control.boundingBox())!;
+  await page.mouse.move(rect.x + rect.width / 2, rect.y + rect.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(rect.x + rect.width / 2 + pixels, rect.y + rect.height / 2, { steps: 8 });
+  await page.mouse.up();
+}
+
+test('inline word timeline drags, retains failed changes, saves and undoes without a popup', async ({ page }) => {
   await openEditor(page);
   let failSave = true;
   const saves: any[] = [];
@@ -56,45 +65,77 @@ test('mobile word timing validates input, retries failed saves and preserves oth
     saves.push({ segments: JSON.parse(body.subtitleJson), words: JSON.parse(body.wordsJson) });
     await route.fulfill({ status: failSave ? 500 : 200, json: failSave ? { error: 'test failure' } : { success: true } });
   });
-  await page.getByRole('button', { name: 'תזמון מילים', exact: true }).click();
-  const dialog = page.getByRole('dialog');
-  const first = dialog.getByRole('region', { name: 'תזמון מילה 1: שלום' });
-  const save = dialog.getByRole('button', { name: 'שמירת תזמון' });
-  await expect(save).toBeDisabled();
-  await first.getByRole('textbox', { name: 'סיום המילה', exact: true }).fill('invalid');
-  await expect(save).toBeDisabled();
-  await first.getByRole('textbox', { name: 'סיום המילה', exact: true }).fill('00:00:01:15');
-  await expect(dialog.getByText('התזמון חופף למילה אחרת. בחרו טווח פנוי.').first()).toBeVisible();
-  await expect(save).toBeDisabled();
-  await first.getByRole('textbox', { name: 'סיום המילה', exact: true }).fill('00:00:00:20');
-  await save.click();
-  await expect(dialog.getByText('שמירת התזמון נכשלה.', { exact: false })).toBeVisible();
-  await expect(first.getByRole('textbox', { name: 'סיום המילה', exact: true })).toHaveValue('00:00:00:20');
+  const timeline = page.getByTestId('mobile-word-timeline');
+  await expect(timeline).toBeVisible();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await page.screenshot({ path: 'tmp/review/mobile-word-timeline-390.png' });
+  await dragBy(page, timeline.getByRole('slider', { name: 'סיום המילה', exact: true }), -40);
+  await expect(page.getByText('שמירת הכתובית נכשלה.', { exact: false })).toBeVisible();
+  const first = timeline.getByTestId('mobile-word-clip').first();
+  const shortenedEnd = Number(await first.getAttribute('data-end'));
+  expect(shortenedEnd).toBeLessThan(1);
+  expect(shortenedEnd).toBeGreaterThan(0);
   failSave = false;
-  await save.click();
-  await expect(dialog).toHaveCount(0);
+  await page.getByRole('button', { name: 'שמירה חוזרת', exact: true }).click();
+  await expect(page.getByText('שמירת הכתובית נכשלה.', { exact: false })).toHaveCount(0);
   expect(saves.at(-1).segments).toEqual(segments);
-  expect(saves.at(-1).words.find((word: any) => word.word === 'שלום').end).toBeCloseTo(20 / 24);
+  expect(saves.at(-1).words.find((word: any) => word.word === 'שלום').end).toBe(shortenedEnd);
   expect(saves.at(-1).words.filter((word: any) => word.word !== 'שלום').map(({ word, start, end, segmentId }: any) => ({ word, start, end, segmentId }))).toEqual(words.slice(1));
-  await page.getByRole('button', { name: 'תזמון מילים', exact: true }).click();
-  await expect(first.getByRole('textbox', { name: 'סיום המילה', exact: true })).toHaveValue('00:00:00:20');
-  await dialog.getByRole('button', { name: 'ביטול', exact: true }).click();
-  await page.getByRole('button', { name: 'תזמון', exact: true }).click();
-  await page.getByRole('button', { name: 'ביטול פעולה', exact: true }).click();
+  await dragBy(page, first, 130);
+  await expect(first).toHaveAttribute('data-end', '1');
+  expect(Number(await first.getAttribute('data-start'))).toBeCloseTo(1 - shortenedEnd);
+  await expect(timeline.getByRole('button', { name: 'ביטול תזמון מילה', exact: true })).toBeEnabled();
+  await timeline.getByRole('button', { name: 'ביטול תזמון מילה', exact: true }).click();
+  await expect(first).toHaveAttribute('data-start', '0');
+  await expect(first).toHaveAttribute('data-end', String(shortenedEnd));
+  await timeline.getByRole('button', { name: 'ביטול תזמון מילה', exact: true }).click();
   await expect.poll(() => saves.at(-1).words.find((word: any) => word.word === 'שלום').end).toBe(1);
 });
 
-test('word timing flushes edited text before opening and fits a narrow phone', async ({ page }) => {
+test('inline word timing follows edited text and stays within a narrow phone', async ({ page }) => {
   await openEditor(page);
   await page.setViewportSize({ width: 320, height: 568 });
   await page.route('**/api/videos/update-subtitles', route => route.fulfill({ json: { success: true } }));
   await page.getByRole('textbox', { name: 'טקסט המקטע' }).fill('שלום עולם חדש');
-  await page.getByRole('button', { name: 'תזמון מילים', exact: true }).click();
-  const dialog = page.getByRole('dialog');
-  await expect(dialog.getByRole('region')).toHaveCount(3);
-  const overflow = await dialog.evaluate(element => Array.from(element.querySelectorAll('section')).some(row => row.scrollWidth > row.clientWidth));
-  expect(overflow).toBe(false);
-  await expect(dialog.getByRole('button', { name: 'שמירת תזמון' })).toBeInViewport();
-  await expect(page.locator('.MuiDialog-container')).toHaveCSS('opacity', '1');
-  await page.screenshot({ path: 'tmp/review/mobile-word-timing-320.png' });
+  const timeline = page.getByTestId('mobile-word-timeline');
+  await expect(timeline.getByTestId('mobile-word-clip')).toHaveCount(3);
+  await timeline.scrollIntoViewIfNeeded();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBe(0);
+  await timeline.getByRole('button', { name: 'הגדלת ציר המילים' }).click();
+  expect(await page.getByTestId('mobile-word-scroll').evaluate(el => el.scrollWidth > el.clientWidth)).toBe(true);
+  await page.screenshot({ path: 'tmp/review/mobile-word-timeline-320.png' });
+});
+
+test('word changes finish saving before switching captions', async ({ page }) => {
+  await openEditor(page);
+  let release!: () => void;
+  const pending = new Promise<void>(resolve => { release = resolve; });
+  let saves = 0;
+  await page.route('**/api/videos/update-subtitles', async route => { saves++; await pending; await route.fulfill({ json: { success: true } }); });
+  await dragBy(page, page.getByRole('slider', { name: 'סיום המילה', exact: true }), -40);
+  await expect.poll(() => saves).toBe(1);
+  await page.getByRole('button', { name: 'המקטע הבא' }).click();
+  await expect(page.getByRole('textbox', { name: 'טקסט המקטע' })).toHaveValue('שלום עולם');
+  release();
+  await expect(page.getByRole('textbox', { name: 'טקסט המקטע' })).toHaveValue('סרטון לבדיקה');
+  expect(saves).toBe(1);
+});
+
+test('touch dragging resizes a word and pointer cancellation leaves it unchanged', async ({ page, context }) => {
+  await openEditor(page);
+  let saves = 0;
+  await page.route('**/api/videos/update-subtitles', route => { saves++; return route.fulfill({ json: { success: true } }); });
+  const handle = page.getByRole('slider', { name: 'סיום המילה', exact: true });
+  await handle.scrollIntoViewIfNeeded();
+  const rect = (await handle.boundingBox())!;
+  const client = await context.newCDPSession(page);
+  const touch = (type: 'touchStart' | 'touchMove' | 'touchEnd' | 'touchCancel', delta = 0) => client.send('Input.dispatchTouchEvent', { type, touchPoints: type === 'touchEnd' || type === 'touchCancel' ? [] : [{ x: rect.x + rect.width / 2 + delta, y: rect.y + rect.height / 2 }] });
+  await touch('touchStart'); await touch('touchMove', -45); await touch('touchCancel');
+  await expect(page.getByTestId('mobile-word-clip').first()).toHaveAttribute('data-end', '1');
+  expect(saves).toBe(0);
+  await touch('touchStart'); await touch('touchMove', -45); await touch('touchEnd');
+  await expect.poll(() => saves).toBe(1);
+  expect(Number(await page.getByTestId('mobile-word-clip').first().getAttribute('data-end'))).toBeLessThan(1);
+  await client.detach();
 });

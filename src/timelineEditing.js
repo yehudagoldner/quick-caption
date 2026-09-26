@@ -140,6 +140,34 @@ export function validateWordRange(word, segment, others = []) {
   return null;
 }
 
+// Move a word without changing its duration; trim only the chosen edge.
+// Neighbouring words and the caption boundaries are hard limits.
+export function placeMobileWord(words, index, segment, delta, mode, fps = 30) {
+  const word = words[index];
+  if (!word || !Number.isFinite(delta) || delta === 0) return words;
+  const rate = fps > 0 ? fps : 30;
+  const lower = Math.max(segment.start, words[index - 1]?.end ?? segment.start);
+  const upper = Math.min(segment.end, words[index + 1]?.start ?? segment.end);
+  const length = word.end - word.start;
+  const minimum = Math.min(length, 1 / rate);
+  if (length <= 0 || upper - lower < minimum) return words;
+  const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
+  let { start, end } = word;
+  if (mode === "move") {
+    if (upper - lower < length - 1e-6) return words;
+    start = clamp(snapFrame(start + delta, rate), lower, upper - length);
+    end = start + length;
+  } else if (mode === "start") {
+    start = clamp(snapFrame(start + delta, rate), lower, end - minimum);
+  } else if (mode === "end") {
+    end = clamp(snapFrame(end + delta, rate), start + minimum, upper);
+  } else return words;
+  if (Math.abs(start - word.start) < 1e-6 && Math.abs(end - word.end) < 1e-6) return words;
+  const next = { ...word, start, end, timingSource: "aligned" };
+  if (validateWordRange(next, segment, words.filter((_, i) => i !== index))) return words;
+  return words.map((item, i) => i === index ? next : item);
+}
+
 export function snapshot(segments, words) {
   return { segments: segments.map(s => ({ ...s })), words: words.map(w => ({ ...w })) };
 }

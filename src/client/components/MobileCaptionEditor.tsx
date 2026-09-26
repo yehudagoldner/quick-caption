@@ -50,11 +50,10 @@ import { wordsForSegment } from "../../timelineEditing.js";
 import { synchronizeWords } from "../../wordAlignment.js";
 import { formatTimecode } from "../utils/timecode";
 import { useEditorPreferences } from "../contexts/EditorPreferences";
-import { useActiveWord } from "../hooks/useActiveWord";
 import { VideoPlayer } from "./VideoPlayer";
 import { type CaptionDraft, type SubtitleTimelineProps } from "./SubtitleTimeline";
 import { MobileTimingTimeline } from "./MobileTimingTimeline";
-import { MobileWordTimingDialog } from "./MobileWordTimingDialog";
+import { MobileWordTimeline } from "./MobileWordTimeline";
 
 type SaveState = "idle" | "saving" | "success" | "error";
 type MobileMode = "watch" | "edit" | "timing";
@@ -186,7 +185,8 @@ export function MobileCaptionEditor({
   const [newEnd, setNewEnd] = useState(0);
   const [draftText, setDraftText] = useState("");
   const [draftError, setDraftError] = useState<string | null>(null);
-  const [wordTimingOpen, setWordTimingOpen] = useState(false);
+  const [wordDraft, setWordDraft] = useState<Word[] | null>(null);
+  const wordDraftRef = useRef<Word[] | null>(null);
   const [savingDraft, setSavingDraft] = useState(false);
   const [leaving, setLeaving] = useState(false);
   const [chromeTop, setChromeTop] = useState(56);
@@ -215,10 +215,12 @@ export function MobileCaptionEditor({
   const selectedIndex = editableSegments.findIndex(s => s.id === selectedSegmentId);
   const selected = selectedIndex >= 0 ? editableSegments[selectedIndex] : null;
   const captionWords = useMemo(() => selected ? wordsForSegment(words, selected) : [], [words, selected]);
-  const activeWord = useActiveWord({ words: captionWords, currentTime, enabled: activeWordEnabled });
+  const editingWords = wordDraft ?? captionWords;
   draftTextRef.current = draftText;
 
   useEffect(() => {
+    wordDraftRef.current = null;
+    setWordDraft(null);
     if (!selected) {
       setDraftText("");
       savedTextRef.current = "";
@@ -284,22 +286,25 @@ export function MobileCaptionEditor({
     const nextText = text.trim();
     if (!isEditable) return true;
     if (!nextText) { setDraftError("הכתובית ריקה. הקלידו טקסט לפני היציאה."); return false; }
-    const flightKey = `${segment.id}:${nextText}`;
+    // Text saves regenerate word alignment optimistically. Only explicit timing
+    // drafts belong in the key, so blur and navigation still await one save.
+    const flightKey = `${segment.id}:${nextText}:${wordDraftRef.current ? JSON.stringify(segmentWords) : ""}`;
     while (saveFlight.current) {
       const flight = saveFlight.current;
       const saved = await flight.promise;
       if (flight.key === flightKey) return saved;
     }
-    if (nextText === segment.text.trim() && !draftError) return true;
+    if (nextText === segment.text.trim() && !wordDraftRef.current && !draftError) return true;
     setSavingDraft(true);
     setDraftError(null);
     const promise = (async () => {
       try {
         await saveSegmentRef.current({ ...segment, text: nextText }, synchronizeWords([{ ...segment, text: nextText }], segmentWords));
         savedTextRef.current = nextText;
+        if (wordDraftRef.current === segmentWords) { wordDraftRef.current = null; setWordDraft(null); }
         return true;
       } catch {
-        setDraftError("שמירת הכתובית נכשלה. הטקסט נשאר כאן; נסו לשמור שוב.");
+        setDraftError("שמירת הכתובית נכשלה. השינויים נשארו כאן; נסו לשמור שוב.");
         return false;
       } finally {
         saveFlight.current = null;
@@ -311,7 +316,7 @@ export function MobileCaptionEditor({
   };
 
   const flushDraft = () => mode === "edit" && selected
-    ? persistCaption(selected, draftTextRef.current, captionWords)
+    ? persistCaption(selected, draftTextRef.current, wordDraftRef.current ?? captionWords)
     : Promise.resolve(true);
   const leave = async (destination: "onMyVideos" | "onBack") => {
     setLeaving(true);
@@ -329,7 +334,7 @@ export function MobileCaptionEditor({
     if (mode !== "edit" || !selected || !isEditable || draftError) return;
     const segment = selected;
     const text = draftText;
-    const segmentWords = captionWords;
+    const segmentWords = wordDraftRef.current ?? captionWords;
     if (!text.trim() || text.trim() === segment.text.trim()) return;
     const timer = window.setTimeout(() => {
       void persistCaption(segment, text, segmentWords);
@@ -392,7 +397,7 @@ export function MobileCaptionEditor({
   const playerSlot = (kind: "watch" | "edit") => (
     <Box sx={{
       flex: 1,
-      minHeight: kind === "edit" ? 180 : 0,
+      minHeight: kind === "edit" ? 120 : 0,
       width: "100%",
       maxHeight: "100%",
       display: "flex",
@@ -402,7 +407,7 @@ export function MobileCaptionEditor({
     </Box>
   );
 
-  const hasCaptionDraft = mode === "edit" && selected !== null && draftText.trim() !== selected.text.trim();
+  const hasCaptionDraft = mode === "edit" && selected !== null && (draftText.trim() !== selected.text.trim() || wordDraft !== null);
   const canShareVideo = canBurn && Boolean(mediaUrl) && !hasTimelineDrafts && !hasCaptionDraft && !savingDraft && !isBurning && !sharing;
 
   const shareBurnedFile = async (file: { url: string; name: string }) => {
@@ -605,7 +610,7 @@ export function MobileCaptionEditor({
         {mode === "edit" && (
           <Stack spacing={1} sx={{ minWidth: 0, width: "100%", flex: 1, minHeight: 0, height: "100%", overflow: "hidden" }}>
             {playerSlot("edit")}
-            {selected && <Stack spacing={1} sx={{ flexShrink: 0, minHeight: 0, maxHeight: "48%", overflow: "auto" }}>
+            {selected && <Stack spacing={1} sx={{ flexShrink: 0, minHeight: 0, maxHeight: "64%", overflow: "auto" }}>
             <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ flexShrink: 0 }}>
               <IconButton aria-label="המקטע הקודם" disabled={selectedIndex <= 0 || leaving} onClick={() => void selectCaption(editableSegments[selectedIndex - 1].id)}><ChevronLeftRounded /></IconButton>
               <Typography variant="body2" color="text.secondary">מקטע {selectedIndex + 1} מתוך {editableSegments.length}</Typography>
@@ -619,38 +624,27 @@ export function MobileCaptionEditor({
               fullWidth
               value={draftText}
               disabled={!isEditable || leaving}
-              onBlur={() => { if (selected) void persistCaption(selected, draftText, captionWords); }}
+              onBlur={() => { if (selected) void persistCaption(selected, draftText, wordDraftRef.current ?? captionWords); }}
               onChange={event => { setDraftText(event.target.value); setDraftError(null); }}
               inputProps={{ dir: preferences.direction, "aria-label": "טקסט המקטע" }}
               sx={{ maxWidth: "100%" }}
             />
             {draftError && <Alert severity="error" action={<Button onClick={() => void flushDraft()}>שמירה חוזרת</Button>}>{draftError}</Alert>}
-            <Stack direction="row" justifyContent="space-between">
-              <Typography variant="caption" color="text.secondary" dir="ltr">{formatTimecode(selected.start, preferences.fps)}</Typography>
-              <Typography variant="caption" color="text.secondary" dir="ltr">{formatTimecode(selected.end, preferences.fps)}</Typography>
-            </Stack>
-            {captionWords.length > 0 && (
-              <Stack direction="row" useFlexGap flexWrap="wrap" gap={0.75} aria-label="מילים במקטע">
-                {captionWords.map((word, index) => {
-                  const active = activeWord === word;
-                  return (
-                    <Button key={`${word.start}-${index}`} size="small" aria-pressed={active} onClick={() => {
-                      // Seek just inside the word: media timestamps can round down
-                      // at an exact boundary and highlight the previous word again.
-                      onTimelineTimeChange(word.start + Math.min(0.001, (word.end - word.start) / 2));
-                    }}
-                      sx={{ minWidth: 0, bgcolor: active ? "primary.main" : "#9b5700", color: "#fff", borderRadius: 999, px: 1.25, "&:hover": { bgcolor: active ? "primary.dark" : "#7a4500" } }}>
-                      {word.word}
-                    </Button>
-                  );
-                })}
-              </Stack>
-            )}
+            {editingWords.length > 0 && <MobileWordTimeline key={selected.id}
+              segment={selected} words={editingWords} fps={preferences.fps} currentTime={currentTime} activeWordEnabled={activeWordEnabled}
+              disabled={!isEditable || leaving || savingDraft || saveState === "saving" || draftText.trim() !== selected.text.trim()} saving={savingDraft}
+              onInteract={() => { loopChangeRef.current(false); if (isPlaying) onPlayPause?.(); }}
+              onSeek={onTimelineTimeChange}
+              onChange={nextWords => {
+                wordDraftRef.current = nextWords;
+                setWordDraft(nextWords);
+                void persistCaption(selected, draftTextRef.current, nextWords);
+              }}
+              onUndo={timelineEditing.onUndo} onRedo={timelineEditing.onRedo}
+              canUndo={timelineEditing.canUndo && !wordDraft} canRedo={timelineEditing.canRedo && !wordDraft}
+            />}
             <Stack direction="row" useFlexGap flexWrap="wrap" gap={1}>
               <Button variant={timelineEditing.loopEnabled ? "contained" : "outlined"} startIcon={<RepeatRounded />} aria-pressed={timelineEditing.loopEnabled} onClick={() => timelineEditing.onLoopChange(!timelineEditing.loopEnabled)}>{timelineEditing.loopEnabled ? "לולאה פעילה · כיבוי" : "לולאה כבויה · הפעלה"}</Button>
-              <Button variant="outlined" startIcon={<AccessTimeRounded />} disabled={!isEditable || !captionWords.length} onClick={async () => {
-                if (await flushDraft()) { loopChangeRef.current(false); setWordTimingOpen(true); }
-              }}>תזמון מילים</Button>
               <Button variant="outlined" startIcon={<ContentCutRounded />} disabled={!isEditable || savingDraft || saveState === "saving" || draftText.trim().split(/\s+/).length < 2 || currentTime <= selected.start || currentTime >= selected.end} onClick={() => { void flushDraft().then(saved => { if (saved) return splitSegmentRef.current(selected.id, currentTime); }); }}>פצל</Button>
               {canUndoSplit && <Button variant="outlined" startIcon={<UndoRounded />} disabled={!isEditable || saveState === "saving"} onClick={() => void onUndoSplit()}>בטל פיצול</Button>}
             </Stack>
@@ -706,12 +700,6 @@ export function MobileCaptionEditor({
           עוד
         </Button>
       </Stack>
-
-      {wordTimingOpen && selected && <MobileWordTimingDialog
-        segment={selected} words={captionWords} fps={preferences.fps}
-        onClose={() => setWordTimingOpen(false)} onSeek={onTimelineTimeChange}
-        onSave={async nextWords => { await saveSegmentRef.current(selected, nextWords); }}
-      />}
 
       <Drawer
         variant="persistent"
