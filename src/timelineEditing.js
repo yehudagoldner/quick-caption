@@ -1,4 +1,4 @@
-// Editing must never silently change a neighbouring caption or stretch speech.
+// Desktop editing keeps strict word bounds; mobile timing supports bounded trims.
 export function timelineZoomForWindow(duration, seconds = 30) {
   return 25 * Math.log2(Math.max(1, duration / seconds));
 }
@@ -16,6 +16,39 @@ export function mobileTimelineWindowSeconds(segments, viewportWidth, duration) {
 function snapFrame(seconds, fps) {
   const rate = fps > 0 ? fps : 30;
   return Math.round(seconds * rate) / rate;
+}
+
+// Half a second is the editing floor, rounded up to a whole frame. Existing
+// shorter captions stay editable, but cannot be shortened any further.
+export const MIN_MOBILE_CAPTION_SECONDS = 0.5;
+export function placeMobileCaption(segment, segments, duration, deltaSeconds, mode, fps = 30) {
+  const rate = fps > 0 ? fps : 30;
+  const minimum = item => Math.min(item.end - item.start, Math.ceil(MIN_MOBILE_CAPTION_SECONDS * rate) / rate);
+  const ordered = [...segments].sort((a, b) => a.start - b.start || a.end - b.end);
+  const index = ordered.findIndex(item => item.id === segment.id);
+  if (index < 0 || !Number.isFinite(deltaSeconds)) return segments;
+  const previous = ordered[index - 1];
+  const next = ordered[index + 1];
+  const lower = previous ? previous.start + minimum(previous) : 0;
+  const upper = Math.min(duration, next ? next.end - minimum(next) : duration);
+  const clamp = (value, low, high) => Math.min(high, Math.max(low, value));
+  let { start, end } = segment;
+  if (mode === "move") {
+    const length = end - start;
+    if (upper - lower < length - 1e-6) return segments;
+    start = clamp(snapFrame(start + deltaSeconds, rate), lower, upper - length);
+    end = start + length;
+  } else if (mode === "start") {
+    start = clamp(snapFrame(start + deltaSeconds, rate), lower, end - minimum(segment));
+  } else {
+    end = clamp(snapFrame(end + deltaSeconds, rate), start + minimum(segment), upper);
+  }
+  return segments.map(item => {
+    if (item.id === segment.id) return { ...item, start, end };
+    if (item.id === previous?.id && item.end > start) return { ...item, end: start };
+    if (item.id === next?.id && item.start < end) return { ...item, start: end };
+    return item;
+  });
 }
 
 // Shift or trim one caption without touching a neighbour or a timed word.
@@ -77,13 +110,21 @@ export function wordsForSegment(words, segment) {
   return words.filter(w => w.segmentId !== undefined ? String(w.segmentId) === String(segment.id) : w.start >= segment.start - .001 && w.end <= segment.end + .001);
 }
 
-export function retimeCaption(original, next, words) {
+export function retimeCaption(original, next, words, fitWords = false) {
   const ownWords = wordsForSegment(words, original);
   const moving = Math.abs((next.end - next.start) - (original.end - original.start)) < .000001;
   const offset = moving ? next.start - original.start : 0;
   const shifted = ownWords.map(w => ({ ...w, start: w.start + offset, end: w.end + offset }));
   if (shifted.some(w => w.start < next.start - .000001 || w.end > next.end + .000001)) {
-    throw new Error("הקצה חוצה מילה מתוזמנת. התאימו קודם את תזמון המילה בציר הפנימי; שאר המילים לא הוזזו.");
+    if (!fitWords) throw new Error("הקצה חוצה מילה מתוזמנת. התאימו קודם את תזמון המילה בציר הפנימי; שאר המילים לא הוזזו.");
+    // Preserve internal spacing/order, compressing only when speech no longer fits.
+    const first = Math.min(...ownWords.map(w => w.start));
+    const last = Math.max(...ownWords.map(w => w.end));
+    const scale = Math.min(1, (next.end - next.start) / (last - first));
+    const origin = Math.max(next.start, Math.min(first, next.end - (last - first) * scale));
+    ownWords.forEach((word, index) => {
+      shifted[index] = { ...word, segmentId: next.id, start: origin + (word.start - first) * scale, end: origin + (word.end - first) * scale };
+    });
   }
   const owned = new Set(ownWords);
   let i = 0;

@@ -125,7 +125,7 @@ export function useTranscriptionHandlers({
   }, [videoPlayer, setCurrentTime, editableSegments, setActiveSegmentId]);
 
   const handleTimelineSegmentsChange = useCallback(
-    async (nextSegments: Segment[]) => {
+    async (nextSegments: Segment[], options?: { fitWords?: boolean }) => {
       const newSegments = nextSegments.map((segment) => ({ ...segment }));
       let words = editableWords;
       for (const target of newSegments) {
@@ -133,7 +133,10 @@ export function useTranscriptionHandlers({
         if (!source || (source.start === target.start && source.end === target.end)) continue;
         const error = validateCaptionRange(target, newSegments, videoPlayer?.duration || Infinity);
         if (error) throw new Error(error);
-        words = retimeCaption(source, target, words);
+        // Always resolve ownership against the original times: adjacent captions
+        // can both change in one mobile drag, including legacy words without IDs.
+        const retimed = retimeCaption(source, target, editableWords, options?.fitWords);
+        words = words.map((word, index) => retimed[index] !== editableWords[index] ? retimed[index] : word);
       }
       await persistSegments(newSegments, words);
     },

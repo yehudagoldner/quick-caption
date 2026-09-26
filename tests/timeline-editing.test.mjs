@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { EditHistory, snapshot, retimeCaption, validateCaptionRange, validateWordRange, timelineZoomForWindow, timelineScrollForTime, mobileTimelineWindowSeconds, placeCaption } from '../src/timelineEditing.js';
+import { EditHistory, snapshot, retimeCaption, validateCaptionRange, validateWordRange, timelineZoomForWindow, timelineScrollForTime, mobileTimelineWindowSeconds, placeCaption, placeMobileCaption } from '../src/timelineEditing.js';
 test('automatic zoom fits 30 seconds, or the whole shorter recording', () => {
   for (const duration of [6, 30, 90, 3600, 14400]) {
     const zoom = timelineZoomForWindow(duration);
@@ -74,4 +74,58 @@ test('history snapshots do not retain mutable references and are bounded', () =>
   assert.equal(history.past.length, 100);
   words[0].word = 'changed';
   assert.equal(history.past[0].words[0].word, 'שלום');
+});
+
+
+test('mobile trims timed speech down to half a second and protects both neighbours', () => {
+  const clips = [{ id: 1, start: 0, end: 2, text: 'a' }, { id: 2, start: 2, end: 4, text: 'b' }, { id: 3, start: 4, end: 6, text: 'c' }];
+  for (const fps of [24, 25, 30, 60]) {
+    const minimum = Math.ceil(.5 * fps) / fps;
+    const trim = placeMobileCaption(clips[1], clips, 6, 100, 'start', fps);
+    assert.ok(Math.abs(trim[1].end - trim[1].start - minimum) < 1e-6);
+    const right = placeMobileCaption(clips[1], clips, 6, 100, 'end', fps);
+    assert.equal(right[1].end, right[2].start);
+    assert.ok(Math.abs(right[2].end - right[2].start - minimum) < 1e-6);
+    assert.deepEqual(right[0], clips[0]);
+    const left = placeMobileCaption(clips[1], clips, 6, -100, 'start', fps);
+    assert.equal(left[0].end, left[1].start);
+    assert.ok(Math.abs(left[0].end - left[0].start - minimum) < 1e-6);
+    assert.deepEqual(left[2], clips[2]);
+    for (const delta of [-100, -.4, .4, 100]) {
+      const moved = placeMobileCaption(clips[1], clips, 6, delta, 'move', fps);
+      assert.ok(Math.abs(moved[1].end - moved[1].start - 2) < 1e-6);
+      for (const item of moved) assert.equal(validateCaptionRange(item, moved, 6), null);
+    }
+  }
+  assert.equal(clips[0].end, 2);
+  assert.equal(clips[2].start, 4);
+});
+
+test('mobile protects existing short captions and the recording edges', () => {
+  const clips = [{ id: 1, start: 0, end: 1, text: 'a' }, { id: 2, start: 1, end: 1.2, text: 'b' }];
+  assert.deepEqual(placeMobileCaption(clips[0], clips, 1.2, 5, 'end'), clips);
+  assert.deepEqual(placeMobileCaption(clips[1], clips, 1.2, -5, 'end'), clips);
+  assert.deepEqual(placeMobileCaption(clips[0], clips, 1.2, -5, 'move'), clips);
+  const last = placeMobileCaption(clips[1], clips, 2, 5, 'end');
+  assert.equal(last[1].end, 2);
+});
+
+test('mobile fits words without losing text and undo restores the whole boundary edit', () => {
+  const clips = [{ id: 1, start: 0, end: 2, text: 'a b' }, { id: 2, start: 2, end: 4, text: 'c d' }];
+  const originalWords = [{ word: 'a', start: 0, end: 1, segmentId: 1 }, { word: 'b', start: 1, end: 2, segmentId: 1 }, { word: 'c', start: 2, end: 3, segmentId: 2 }, { word: 'd', start: 3, end: 4, segmentId: 2 }];
+  const next = placeMobileCaption(clips[0], clips, 4, 10, 'end');
+  const fitted = retimeCaption(clips[1], next[1], originalWords, true);
+  assert.deepEqual(fitted.slice(0, 2), originalWords.slice(0, 2));
+  assert.deepEqual(fitted.map(w => w.word), ['a', 'b', 'c', 'd']);
+  assert.equal(fitted[2].start, 3.5);
+  assert.equal(fitted[3].end, 4);
+  assert.ok(fitted[2].end <= fitted[3].start);
+  const history = new EditHistory();
+  const before = snapshot(clips, originalWords), after = snapshot(next, fitted);
+  history.push(before, after);
+  assert.deepEqual(history.undo(after), before);
+  assert.deepEqual(history.redo(before), after);
+  const trimmed = retimeCaption(clips[0], { ...clips[0], end: .5 }, originalWords, true);
+  assert.equal(trimmed[0].start, 0);
+  assert.equal(trimmed[1].end, .5);
 });

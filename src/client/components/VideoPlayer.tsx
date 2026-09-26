@@ -21,6 +21,7 @@ type VideoPlayerProps = {
 };
 
 const SIZE_DVH = { full: 48, mid: 28, mini: 16 } as const;
+const VIDEO_PLAYER_CHANGED = "quickcaption:video-player-changed";
 
 export function VideoPlayer({ compact, size, fill, hideMeta, mediaUrl, activeSegmentText, activeSegmentId, previewStyle, words, currentTime, activeWordEnabled, onTimeUpdate, onLoadedMetadata, onResize }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -64,7 +65,12 @@ export function VideoPlayer({ compact, size, fill, hideMeta, mediaUrl, activeSeg
     const video = videoRef.current;
     if (!video) return;
     (window as any).__videoPlayerRef = video;
-    return () => { if ((window as any).__videoPlayerRef === video) (window as any).__videoPlayerRef = null; };
+    window.dispatchEvent(new Event(VIDEO_PLAYER_CHANGED));
+    return () => {
+      if ((window as any).__videoPlayerRef !== video) return;
+      (window as any).__videoPlayerRef = null;
+      window.dispatchEvent(new Event(VIDEO_PLAYER_CHANGED));
+    };
   }, [mediaUrl]);
 
   useEffect(() => {
@@ -134,8 +140,11 @@ export function useVideoPlayer() {
   const [element, setElement] = useState<HTMLVideoElement | null>(null);
   useEffect(() => {
     const update = () => setElement((window as any).__videoPlayerRef ?? null);
-    update(); const interval = setInterval(update, 100);
-    return () => clearInterval(interval);
+    // Switching mobile modes mounts a new player. Publish it immediately so
+    // the first word tap cannot seek the detached player from the old mode.
+    window.addEventListener(VIDEO_PLAYER_CHANGED, update);
+    update();
+    return () => window.removeEventListener(VIDEO_PLAYER_CHANGED, update);
   }, []);
   return element;
 }

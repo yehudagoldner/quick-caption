@@ -4,7 +4,7 @@ import { DragIndicator, PauseRounded, PlayArrowRounded, RedoRounded, UndoRounded
 import type { Segment, Word } from "../types";
 import { useEditorPreferences } from "../contexts/EditorPreferences";
 import { formatTimecode } from "../utils/timecode";
-import { mobileTimelineWindowSeconds, placeCaption } from "../../timelineEditing.js";
+import { mobileTimelineWindowSeconds, placeMobileCaption } from "../../timelineEditing.js";
 
 function clock(seconds: number) {
   const whole = Math.max(0, Math.floor(seconds + 1e-4));
@@ -12,7 +12,7 @@ function clock(seconds: number) {
 }
 
 type DragMode = "move" | "start" | "end";
-type Preview = { id: Segment["id"]; start: number; end: number };
+type Preview = Segment[];
 
 export function MobileTimingTimeline({
   segments, words = [], disabled, duration, currentTime = 0, mediaUrl,
@@ -28,7 +28,7 @@ export function MobileTimingTimeline({
   selectedSegmentId?: Segment["id"] | null;
   onSegmentSelect: (id: Segment["id"] | null) => void;
   onRequestTimeChange: (time: number) => void;
-  onSegmentsChange: (segments: Segment[]) => void | Promise<void>;
+  onSegmentsChange: (segments: Segment[], options?: { fitWords?: boolean }) => void | Promise<void>;
   isPlaying?: boolean;
   onPlayPause?: () => void;
   onUndo: () => void;
@@ -120,21 +120,15 @@ export function MobileTimingTimeline({
     if (disabled) return;
     event.stopPropagation();
     event.preventDefault();
-    dragRef.current = { pointerId: event.pointerId, originX: event.clientX, mode, segment: { ...segment, start: previewRef.current?.id === segment.id ? previewRef.current.start : segment.start, end: previewRef.current?.id === segment.id ? previewRef.current.end : segment.end } };
+    dragRef.current = { pointerId: event.pointerId, originX: event.clientX, mode, segment: { ...segment } };
     try { event.currentTarget.setPointerCapture(event.pointerId); } catch { /* The pointer is already owned by the gesture. */ }
   };
   const moveDrag = (event: ReactPointerEvent) => {
     const drag = dragRef.current;
     if (!drag || event.pointerId !== drag.pointerId) return;
     const delta = (event.clientX - drag.originX) / latest.current.pps;
-    const placed = placeCaption(drag.segment, latest.current.segments, latest.current.words, latest.current.total, delta, drag.mode, latest.current.fps);
-    if (drag.mode !== "move") {
-      const requested = drag.mode === "end" ? drag.segment.end + delta : drag.segment.start + delta;
-      const actual = drag.mode === "end" ? placed.end : placed.start;
-      const blocked = drag.mode === "end" ? actual > requested + 1 / latest.current.fps : actual < requested - 1 / latest.current.fps;
-      if (blocked && latest.current.words.length > 0) setError("הקצה נעצר לפני מילה מתוזמנת. אפשר לקצר רק את השקט שמחוץ למילים.");
-    }
-    showPreview({ id: drag.segment.id, start: placed.start, end: placed.end });
+    const placed = placeMobileCaption(drag.segment, latest.current.segments, latest.current.total, delta, drag.mode, latest.current.fps);
+    showPreview(placed);
   };
   const endDrag = (event: ReactPointerEvent) => {
     const drag = dragRef.current;
@@ -142,9 +136,9 @@ export function MobileTimingTimeline({
     dragRef.current = null;
     const current = previewRef.current;
     showPreview(null);
-    if (!current || (Math.abs(current.start - drag.segment.start) < 1e-4 && Math.abs(current.end - drag.segment.end) < 1e-4)) return;
-    const next = latest.current.segments.map(item => item.id === current.id ? { ...item, start: current.start, end: current.end } : item);
-    Promise.resolve(latest.current.onSegmentsChange(next)).then(() => setError(null)).catch(reason => {
+    if (event.type === "pointercancel") return;
+    if (!current || current.every((item, index) => item.start === latest.current.segments[index].start && item.end === latest.current.segments[index].end)) return;
+    Promise.resolve(latest.current.onSegmentsChange(current, { fitWords: true })).then(() => setError(null)).catch(reason => {
       setError(reason instanceof Error ? reason.message : "השינוי נחסם");
     });
   };
@@ -154,7 +148,7 @@ export function MobileTimingTimeline({
   const step = [0.5, 1, 2, 5, 10, 15, 30].find(value => value * pps >= 64) ?? 30;
   const ticks = pps > 0 ? Array.from({ length: Math.floor(total / step) + 1 }, (_, index) => index * step) : [];
   const pad = width / 2;
-  const view = segments.map(segment => preview?.id === segment.id ? { ...segment, start: preview.start, end: preview.end } : segment);
+  const view = preview ?? segments;
   const choose = (segment: Segment) => {
     onSegmentSelect(segment.id);
     if (time < segment.start || time >= segment.end) onRequestTimeChange(segment.start);
@@ -212,7 +206,7 @@ export function MobileTimingTimeline({
               }}>
               <Box sx={{ height: "100%", px: showChrome ? 4.5 : 1.5, display: "flex", flexDirection: "column", justifyContent: "center", pt: 0.5, pb: showChrome ? "40px" : 0.5, overflow: "hidden" }}>
                 <Typography dir={preferences.direction} sx={{ flexShrink: 0, fontSize: 15, fontWeight: 600, lineHeight: 1.3, overflowWrap: "anywhere", display: "-webkit-box", WebkitLineClamp: 4, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{segment.text}</Typography>
-                <Typography dir="ltr" variant="caption" color="text.secondary" sx={{ flexShrink: 0, mt: 0.25, textAlign: preferences.direction === "rtl" ? "right" : "left" }}>{clock(segment.start)}–{clock(segment.end)}</Typography>
+                <Typography dir="ltr" variant="caption" color="text.secondary" sx={{ flexShrink: 0, mt: 0.25, textAlign: preferences.direction === "rtl" ? "right" : "left" }}>{formatTimecode(segment.start, fps)}–{formatTimecode(segment.end, fps)}</Typography>
               </Box>
               {showChrome && <>
                 <Handle label="הזזת התחלה" edge="start" onDown={event => beginDrag(event, segment, "start")} onMove={moveDrag} onUp={endDrag} />
@@ -243,7 +237,7 @@ function Handle({ label, edge, onDown, onMove, onUp }: {
   onUp: (event: ReactPointerEvent) => void;
 }) {
   return <Box data-timing-handle role="slider" aria-label={label} onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp}
-    sx={{ position: "absolute", top: "50%", [edge === "start" ? "left" : "right"]: 0, transform: "translateY(-50%)", width: 36, height: 72, display: "flex", alignItems: "center", justifyContent: "center", touchAction: "none", zIndex: 2 }}>
+    sx={{ position: "absolute", top: "50%", [edge === "start" ? "left" : "right"]: 0, transform: "translateY(-50%)", width: "min(36px, 50%)", height: 72, display: "flex", alignItems: "center", justifyContent: "center", touchAction: "none", zIndex: 2 }}>
     <Box sx={{ width: 6, height: 36, borderRadius: 99, bgcolor: "primary.main" }} />
   </Box>;
 }

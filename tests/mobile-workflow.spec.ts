@@ -135,3 +135,103 @@ test('refresh recovers the actual processing stage', async ({ page }) => {
   await expect(page.getByText('restored-correction')).toBeVisible();
   await expect(page.getByText('תמלול מתוזמן').locator('..').locator('..')).toContainText('הושלם');
 });
+
+
+test('the arrow itself returns to videos after saving the draft', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await prepareApp(page);
+  let savedText = '';
+  await page.route('**/api/videos/update-subtitles', async route => {
+    savedText = JSON.parse(route.request().postDataJSON().subtitleJson)[0].text;
+    await route.fulfill({ json: { success: true } });
+  });
+  await page.goto('/?screen=edit&video=review-token');
+  await page.getByRole('button', { name: 'עריכה', exact: true }).click();
+  await page.getByRole('textbox', { name: 'טקסט המקטע' }).fill('נשמר דרך החץ');
+  const arrow = page.getByTestId('my-videos-back-arrow');
+  await arrow.click();
+  await expect(page).toHaveURL(/screen=videos/);
+  expect(savedText).toBe('נשמר דרך החץ');
+});
+
+test('mobile timing trims speech and adjacent captions, saves words and undoes together', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await prepareApp(page);
+  const clips = [{ id: 1, start: 0, end: 2, text: 'שלום עולם' }, { id: 2, start: 2, end: 4, text: 'סרטון לבדיקה' }];
+  const words = [{ word: 'שלום', start: 0, end: 1, segmentId: 1 }, { word: 'עולם', start: 1, end: 2, segmentId: 1 }, { word: 'סרטון', start: 2, end: 3, segmentId: 2 }, { word: 'לבדיקה', start: 3, end: 4, segmentId: 2 }];
+  await page.route('**/api/videos/load?**', route => route.fulfill({ json: { video: { id: 42, subtitle_json: clips, words_json: words, format: '.srt', stored_path: 'portrait.mp4' } } }));
+  const saves: { clips: typeof clips; words: typeof words }[] = [];
+  await page.route('**/api/videos/update-subtitles', route => {
+    const body = route.request().postDataJSON();
+    saves.push({ clips: JSON.parse(body.subtitleJson), words: JSON.parse(body.wordsJson) });
+    return route.fulfill({ json: { success: true } });
+  });
+  await page.goto('/?screen=edit&video=review-token');
+  await page.getByRole('button', { name: 'תזמון', exact: true }).click();
+  const timeline = page.getByTestId('mobile-timing-editor');
+  const first = page.getByTestId('mobile-timing-clip').first();
+  await first.click();
+  // Seek near the edge so the handle stays inside the mobile viewport.
+  const overview = page.getByRole('slider', { name: 'מיקום בהקלטה' });
+  const overviewRect = (await overview.boundingBox())!;
+  await overview.click({ position: { x: overviewRect.width / 2, y: overviewRect.height / 2 } });
+  const dragEnd = async (delta: number) => {
+    const handle = first.getByRole('slider', { name: 'הזזת סיום', exact: true });
+    const rect = (await handle.boundingBox())!;
+    const track = (await page.getByTestId('mobile-timing-track').boundingBox())!;
+    const seconds = Number(await timeline.getAttribute('data-window-seconds'));
+    await page.mouse.move(rect.x + rect.width / 2, rect.y + rect.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(rect.x + rect.width / 2 + delta * track.width / seconds, rect.y + rect.height / 2, { steps: 12 });
+    await page.mouse.up();
+  };
+  await dragEnd(-2);
+  await expect.poll(() => saves.at(-1)?.clips[0].end).toBe(.5);
+  expect(saves.at(-1)!.words[1].end).toBe(.5);
+  await timeline.getByRole('button', { name: 'ביטול פעולה', exact: true }).click();
+  await expect(first).toHaveAttribute('data-end', '2');
+  await dragEnd(2);
+  await expect.poll(() => saves.at(-1)?.clips[0].end).toBe(3.5);
+  expect(saves.at(-1)!.clips[1].start).toBe(3.5);
+  expect(saves.at(-1)!.words[2].start).toBe(3.5);
+  await timeline.getByRole('button', { name: 'ביטול פעולה', exact: true }).click();
+  await expect.poll(() => saves.at(-1)?.clips).toEqual(clips);
+  expect(saves.at(-1)!.words.map(({ word, start, end, segmentId }) => ({ word, start, end, segmentId }))).toEqual(words);
+});
+
+
+test.describe('mobile word selection', () => {
+  test.use({ hasTouch: true, viewport: { width: 390, height: 844 } });
+
+  test('a single tap highlights a word after fractional-time seeking settles', async ({ page }) => {
+    await prepareApp(page);
+    await page.addInitScript(() => localStorage.setItem('activeWordEnabled', 'true'));
+    await page.route('**/api/videos/42/media?**', route => {
+      const range = route.request().headers().range?.match(/bytes=(\d+)-(\d*)/);
+      const start = range ? Number(range[1]) : 0;
+      const end = range?.[2] ? Math.min(Number(range[2]), portraitVideo.length - 1) : portraitVideo.length - 1;
+      return route.fulfill({ status: range ? 206 : 200, contentType: 'video/webm',
+        headers: { 'Accept-Ranges': 'bytes', ...(range ? { 'Content-Range': `bytes ${start}-${end}/${portraitVideo.length}` } : {}) },
+        body: portraitVideo.subarray(start, end + 1) });
+    });
+    const clips = [{ id: 1, start: 0, end: 2, text: 'אז תודה רבה' }];
+    const words = [
+      { word: 'אז', start: 0, end: 7 / 9, segmentId: 1 },
+      { word: 'תודה', start: 7 / 9, end: 4 / 3, segmentId: 1 },
+      { word: 'רבה', start: 4 / 3, end: 2, segmentId: 1 },
+    ];
+    await page.route('**/api/videos/load?**', route => route.fulfill({ json: { video: { id: 42, subtitle_json: clips, words_json: words, format: '.srt', stored_path: 'portrait.mp4' } } }));
+    await page.goto('/?screen=edit&video=review-token');
+    await page.getByRole('button', { name: 'עריכה', exact: true }).tap();
+    const video = page.locator('video');
+    await expect.poll(() => video.evaluate((v: HTMLVideoElement) => v.readyState)).toBe(4);
+    const wordButtons = page.locator('[aria-label="מילים במקטע"]');
+    for (const text of ['תודה', 'רבה', 'אז', 'רבה', 'תודה']) {
+      await wordButtons.getByRole('button', { name: text, exact: true }).tap();
+      await expect.poll(() => video.evaluate((v: HTMLVideoElement) => v.seeking)).toBe(false);
+      await expect(page.locator('[data-active-word="true"]')).toHaveText(text);
+      await expect(wordButtons.getByRole('button', { name: text, exact: true })).toHaveCSS('background-color', /rgb\((25, 118, 210|21, 101, 192)\)/);
+      await expect(wordButtons.getByRole('button', { pressed: true })).toHaveText(text);
+    }
+  });
+});

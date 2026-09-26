@@ -94,7 +94,7 @@ export type MobileCaptionEditorProps = {
   onVideoTimeUpdate: (nextTime: number) => void;
   onVideoLoadedMetadata: (dimensions: { width: number; height: number }, duration: number) => void;
   onVideoResize: (dimensions: { width: number; height: number }) => void;
-  onTimelineSegmentsChange: (segments: Segment[]) => void;
+  onTimelineSegmentsChange: (segments: Segment[], options?: { fitWords?: boolean }) => void | Promise<void>;
   onTimelineTimeChange: (time: number) => void;
   onSegmentSelect: (segmentId: Segment["id"] | null) => void;
   onFontSizeChange: (event: ChangeEvent<HTMLInputElement>) => void;
@@ -460,8 +460,8 @@ export function MobileCaptionEditor({
       pb: "env(safe-area-inset-bottom, 0px)",
     }}>
       <Stack direction="row" alignItems="center" sx={{ flexShrink: 0, px: 0.5, py: 0.25, minHeight: 56, borderBottom: 1, borderColor: "#e8edf3", bgcolor: "#ffffff" }}>
-        <IconButton size="small" aria-label="חזרה לצפייה" onClick={() => { void goMode("watch"); }} sx={{ width: 44, height: 44 }}><ChevronRightRounded /></IconButton>
         <ButtonBase onClick={() => void leave("onMyVideos")} disabled={backDisabled || leaving} sx={{ flex: 1, minHeight: 44, justifyContent: "flex-start", fontWeight: 500, fontSize: 15, color: "text.primary", minWidth: 0 }}>
+          <ChevronLeftRounded data-testid="my-videos-back-arrow" sx={{ width: 44, height: 44, p: 1.25, flexShrink: 0 }} />
           לסרטונים שלי
         </ButtonBase>
         <IconButton size="small" aria-label="שיתוף סרטון עם כתוביות" disabled={!canShareVideo} onClick={() => { void shareVideo(); }} sx={{ width: 44, height: 44, bgcolor: "primary.main", color: "#fff", "&:hover": { bgcolor: "primary.dark" }, "&.Mui-disabled": { bgcolor: "action.disabledBackground", color: "action.disabled" } }}>
@@ -624,9 +624,13 @@ export function MobileCaptionEditor({
             {captionWords.length > 0 && (
               <Stack direction="row" useFlexGap flexWrap="wrap" gap={0.75} aria-label="מילים במקטע">
                 {captionWords.map((word, index) => {
-                  const active = Boolean(activeWord && Math.abs(activeWord.start - word.start) < 0.001);
+                  const active = activeWord === word;
                   return (
-                    <Button key={`${word.start}-${index}`} size="small" onClick={() => onTimelineTimeChange(word.start)}
+                    <Button key={`${word.start}-${index}`} size="small" aria-pressed={active} onClick={() => {
+                      // Seek just inside the word: media timestamps can round down
+                      // at an exact boundary and highlight the previous word again.
+                      onTimelineTimeChange(word.start + Math.min(0.001, (word.end - word.start) / 2));
+                    }}
                       sx={{ minWidth: 0, bgcolor: active ? "primary.main" : "#9b5700", color: "#fff", borderRadius: 999, px: 1.25, "&:hover": { bgcolor: active ? "primary.dark" : "#7a4500" } }}>
                       {word.word}
                     </Button>
