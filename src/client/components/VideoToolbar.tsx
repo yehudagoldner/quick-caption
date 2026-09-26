@@ -1,5 +1,6 @@
 import { useId, useState, type ChangeEvent, type ReactNode } from "react";
 import type { Segment, Word } from "../types";
+import { CAPTION_FONT_SIZES } from "../../captionStyle.js";
 import {
   Box,
   Button,
@@ -469,15 +470,7 @@ export function VideoToolbar({
                 label="גודל פונט"
                 onChange={(e) => onFontSizeChange({ target: { value: String(e.target.value) } } as ChangeEvent<HTMLInputElement>)}
               >
-                <MenuItem value={24}>24 - קטן מאוד</MenuItem>
-                <MenuItem value={32}>32 - קטן</MenuItem>
-                <MenuItem value={40}>40 - בינוני קטן</MenuItem>
-                <MenuItem value={48}>48 - בינוני</MenuItem>
-                <MenuItem value={56}>56 - בינוני גדול</MenuItem>
-                <MenuItem value={64}>64 - גדול</MenuItem>
-                <MenuItem value={72}>72 - גדול מאוד</MenuItem>
-                <MenuItem value={80}>80 - ענק</MenuItem>
-                <MenuItem value={96}>96 - ענק מאוד</MenuItem>
+                {CAPTION_FONT_SIZES.map(size => <MenuItem key={size} value={size}>{size}</MenuItem>)}
               </Select>
             </FormControl>
           </Stack>

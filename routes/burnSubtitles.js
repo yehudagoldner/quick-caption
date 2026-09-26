@@ -5,6 +5,7 @@ import { promises as fsp } from "fs";
 import { randomUUID } from "crypto";
 import { spawn } from "child_process";
 import { renderActiveWordSrt } from "../src/activeWordSubtitles.js";
+import { sanitizeCaptionFontSize } from "../src/captionStyle.js";
 
 const TEMP_SUBTITLE_DIR = path.join(os.tmpdir(), "subtitles-api-subtitle-temp");
 const TEMP_OUTPUT_DIR = path.join(os.tmpdir(), "subtitles-api-output-temp");
@@ -38,7 +39,7 @@ export function createBurnSubtitlesRouter(upload) {
       }
     }
 
-    const fontSize = sanitizeFontSize(req.body?.fontSize);
+    const fontSize = sanitizeCaptionFontSize(req.body?.fontSize);
     const fontColor = sanitizeColor(req.body?.fontColor);
     const outlineColor = sanitizeColor(req.body?.outlineColor);
     const offsetYPercent = sanitizePercent(req.body?.offsetYPercent, 12);
@@ -163,14 +164,6 @@ function escapeFilterPath(value) {
   return value.replace(/:/g, "\\:");
 }
 
-function sanitizeFontSize(raw) {
-  const numeric = Number(raw);
-  if (!Number.isFinite(numeric)) {
-    return 36;
-  }
-  return Math.min(96, Math.max(12, Math.round(numeric)));
-}
-
 function sanitizeDimension(raw) {
   const numeric = Number(raw);
   if (!Number.isFinite(numeric)) {
@@ -246,7 +239,6 @@ function truncate(value, maxLength) {
   }
   return `${value.slice(0, maxLength)}...`;
 }
-
 
 
 

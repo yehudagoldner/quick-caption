@@ -47,6 +47,7 @@ import {
 } from "@mui/icons-material";
 import type { Segment, Word } from "../types";
 import { wordsForSegment } from "../../timelineEditing.js";
+import { CAPTION_FONT_SIZES } from "../../captionStyle.js";
 import { synchronizeWords } from "../../wordAlignment.js";
 import { formatTimecode } from "../utils/timecode";
 import { useEditorPreferences } from "../contexts/EditorPreferences";
@@ -758,7 +759,7 @@ export function MobileCaptionEditor({
             <FormControl fullWidth size="small">
               <InputLabel id="mobile-caption-font-size">גודל פונט</InputLabel>
               <Select labelId="mobile-caption-font-size" value={fontSize} label="גודל פונט" onChange={event => onFontSizeChange({ target: { value: String(event.target.value) } } as ChangeEvent<HTMLInputElement>)}>
-                {[24, 32, 40, 48, 56, 60, 64, 72, 80, 96].map(size => <MenuItem key={size} value={size} sx={{ fontSize: "0.9rem" }}>{size}</MenuItem>)}
+                {CAPTION_FONT_SIZES.map(size => <MenuItem key={size} value={size} sx={{ fontSize: "0.9rem" }}>{size}</MenuItem>)}
               </Select>
             </FormControl>
             <TextField label="צבע טקסט" type="color" value={fontColor} onChange={onFontColorChange} fullWidth size="small" InputLabelProps={{ shrink: true }} />

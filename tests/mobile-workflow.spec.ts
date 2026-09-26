@@ -69,6 +69,17 @@ test('mobile styles drawer keeps a large, interactive video and restores normal 
   const drawer = page.getByRole('region', { name: 'עיצוב כתוביות' });
   await expect(drawer).toBeVisible();
   await expect(drawer).toHaveCSS('transform', 'none');
+  const fontSize = drawer.getByRole('combobox', { name: 'גודל פונט', exact: true });
+  await expect(fontSize).toHaveText('105');
+  const overlay = page.getByTestId('subtitle-overlay');
+  const defaultSize = await overlay.evaluate(el => parseFloat(getComputedStyle(el).fontSize));
+  await fontSize.click();
+  await page.getByRole('option', { name: '240', exact: true }).click();
+  await expect(fontSize).toHaveText('240');
+  await expect.poll(() => overlay.evaluate(el => parseFloat(getComputedStyle(el).fontSize))).toBeCloseTo(defaultSize * 240 / 105, 1);
+  await fontSize.click();
+  await page.getByRole('option', { name: '105', exact: true }).click();
+  await expect(page.getByRole('listbox', { includeHidden: true })).toHaveCount(0);
   const rect = await page.getByTestId('media-stage').boundingBox();
   expect(rect!.height).toBeGreaterThan(280);
   expect(rect!.y + rect!.height).toBeLessThanOrEqual((await drawer.boundingBox())!.y + 2);

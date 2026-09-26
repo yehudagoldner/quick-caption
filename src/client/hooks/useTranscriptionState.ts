@@ -3,6 +3,7 @@ import type { Segment, Word } from "../types";
 import { segmentsToSrt, cleanSegmentText, fixSegmentOverlaps } from "../utils/transcriptionUtils";
 import { reflowSubtitleCharacters } from "../../subtitleSegmentation.js";
 import { synchronizeWords } from "../../wordAlignment.js";
+import { DEFAULT_CAPTION_FONT_SIZE } from "../../captionStyle.js";
 import { EditHistory, snapshot, validateCaptionRange, wordsForSegment } from "../../timelineEditing.js";
 
 type BurnedVideo = {
@@ -40,7 +41,7 @@ export function useTranscriptionState({
   const saveQueue = useRef<Promise<void>>(Promise.resolve());
   const [historyVersion, setHistoryVersion] = useState(0);
   const [activeSegmentId, setActiveSegmentId] = useState<Segment["id"] | null>(null);
-  const [fontSize, setFontSize] = useState(60);
+  const [fontSize, setFontSize] = useState(DEFAULT_CAPTION_FONT_SIZE);
   const [fontColor, setFontColor] = useState("#ffffff");
   const [outlineColor, setOutlineColor] = useState("#000000");
   const [offsetYPercent, setOffsetYPercent] = useState(20);

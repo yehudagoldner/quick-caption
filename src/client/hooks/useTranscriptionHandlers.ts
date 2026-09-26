@@ -6,6 +6,7 @@ import { findSegment } from "../utils/transcriptionUtils";
 import { serializeSubtitles } from "../utils/subtitleExport";
 import { useEditorPreferences } from "../contexts/EditorPreferences";
 import { retimeCaption, validateCaptionRange } from "../../timelineEditing.js";
+import { sanitizeCaptionFontSize } from "../../captionStyle.js";
 
 type BurnResult = {
   blob: Blob;
@@ -146,7 +147,7 @@ export function useTranscriptionHandlers({
   const handleFontSizeChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {
     const numeric = Number(event.target.value);
     if (Number.isFinite(numeric)) {
-      setFontSize(Math.min(96, Math.max(12, Math.round(numeric))));
+      setFontSize(sanitizeCaptionFontSize(numeric));
     }
   }, [setFontSize]);
 
