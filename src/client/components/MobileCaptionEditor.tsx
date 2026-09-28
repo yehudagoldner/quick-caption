@@ -25,6 +25,8 @@ import {
   Switch,
   TextField,
   Typography,
+  Paper,
+  Snackbar,
 } from "@mui/material";
 import {
   AccessTimeRounded,
@@ -44,9 +46,12 @@ import {
   ShareRounded,
   UndoRounded,
   SubtitlesRounded,
+  DeleteOutlineRounded,
+  JoinFullRounded,
 } from "@mui/icons-material";
 import type { Segment, Word } from "../types";
 import { wordsForSegment } from "../../timelineEditing.js";
+import { canMergeCaptions } from "../../captionBatchEditing.js";
 import { AUTO_CAPTION_FONT_SIZE, CAPTION_FONT_SIZES, type CaptionFontSizeSetting } from "../../captionStyle.js";
 import { synchronizeWords } from "../../wordAlignment.js";
 import { formatTimecode } from "../utils/timecode";
@@ -107,6 +112,7 @@ export type MobileCaptionEditorProps = {
   onMarginChange: (event: Event, value: number | number[]) => void;
   onBurnVideo: (options?: { download?: boolean; reuse?: boolean }) => Promise<{ url: string; name: string } | null | void>;
   onAddSubtitle: (text: string, startTime: number, endTime: number) => void;
+  onCaptionBatch: (ids: Segment["id"][], action: "merge" | "delete") => Promise<void>;
   onSplitSegment: (segmentId: Segment["id"], splitTime: number, draft?: CaptionDraft) => Promise<void>;
   onUndoSplit: () => Promise<void>;
   canUndoSplit: boolean;
@@ -162,6 +168,7 @@ export function MobileCaptionEditor({
   onMarginChange,
   onBurnVideo,
   onAddSubtitle,
+  onCaptionBatch,
   onSplitSegment,
   onUndoSplit,
   canUndoSplit,
@@ -191,6 +198,55 @@ export function MobileCaptionEditor({
   const [draftError, setDraftError] = useState<string | null>(null);
   const [wordDraft, setWordDraft] = useState<Word[] | null>(null);
   const [timingWordsId, setTimingWordsId] = useState<Segment["id"] | null>(null);
+  const [checkedIds, setCheckedIds] = useState<Segment["id"][]>([]);
+  const [batchBusy, setBatchBusy] = useState(false);
+  const batchFlight = useRef(false);
+  const [batchError, setBatchError] = useState<string | null>(null);
+  const [batchNotice, setBatchNotice] = useState<string | null>(null);
+  const selectionMode = mode === "timing" && checkedIds.length > 0;
+  useEffect(() => { setCheckedIds([]); setBatchError(null); setBatchNotice(null); }, [mode, mediaUrl]);
+  useEffect(() => {
+    // A later edit owns Undo now; do not leave the previous batch's toast active.
+    if (saveState === "saving" && !batchFlight.current) setBatchNotice(null);
+  }, [saveState]);
+  useEffect(() => {
+    const cancel = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && selectionMode && !batchFlight.current) {
+        event.preventDefault(); setCheckedIds([]); setBatchError(null);
+      }
+    };
+    window.addEventListener("keydown", cancel);
+    return () => window.removeEventListener("keydown", cancel);
+  }, [selectionMode]);
+  useEffect(() => {
+    if (!batchBusy) setCheckedIds(ids => ids.filter(id => editableSegments.some(segment => segment.id === id)));
+  }, [editableSegments, batchBusy]);
+  const toggleChecked = (id: Segment["id"]) => {
+    if (batchFlight.current || saveState === "saving" || !isEditable) return;
+    loopChangeRef.current(false);
+    if (isPlaying) onPlayPause?.();
+    setBatchError(null);
+    setBatchNotice(null);
+    setCheckedIds(ids => ids.includes(id) ? ids.filter(item => item !== id) : [...ids, id]);
+  };
+  const runBatch = async (action: "merge" | "delete") => {
+    if (batchFlight.current || !checkedIds.length || saveState === "saving") return;
+    batchFlight.current = true;
+    setBatchBusy(true);
+    setBatchError(null);
+    timelineEditing.onDraftStateChange(true);
+    try {
+      await onCaptionBatch(checkedIds, action);
+      setBatchNotice(action === "merge" ? `חוברו ${checkedIds.length} כתוביות` : `נמחקו ${checkedIds.length} כתוביות`);
+      setCheckedIds([]);
+    } catch {
+      setBatchError("שמירת הפעולה נכשלה. הבחירה נשמרה; נסו שוב.");
+    } finally {
+      batchFlight.current = false;
+      setBatchBusy(false);
+      timelineEditing.onDraftStateChange(false);
+    }
+  };
   const wordDraftRef = useRef<Word[] | null>(null);
   const [savingDraft, setSavingDraft] = useState(false);
   const [leaving, setLeaving] = useState(false);
@@ -671,7 +727,9 @@ export function MobileCaptionEditor({
               mediaUrl={mediaUrl}
               segments={editableSegments}
               words={words}
-              disabled={!isEditable}
+              disabled={!isEditable || saveState === "saving" || batchBusy}
+              checkedIds={checkedIds}
+              onToggleChecked={toggleChecked}
               duration={videoDuration}
               currentTime={currentTime}
               onRequestTimeChange={onTimelineTimeChange}
@@ -685,6 +743,7 @@ export function MobileCaptionEditor({
               canUndo={timelineEditing.canUndo}
               canRedo={timelineEditing.canRedo}
               onEditWords={id => {
+                setBatchNotice(null);
                 loopChangeRef.current(false);
                 if (isPlaying) onPlayPause?.();
                 onSegmentSelect(id);
@@ -699,7 +758,22 @@ export function MobileCaptionEditor({
 
       </Box>
 
-      <Stack direction="row" component="nav" aria-label="מצבי עריכה" sx={{ flexShrink: 0, borderTop: 1, borderColor: "#e8edf3", bgcolor: "#ffffff", pb: 0.75, pt: 0.5, zIndex: 8, position: "relative" }}>
+      <Box sx={{ position: "relative", flexShrink: 0 }}>
+      {selectionMode && <Paper role="toolbar" aria-label="פעולות על כתוביות נבחרות" elevation={8} dir="rtl"
+        sx={{ position: "absolute", inset: "4px 8px 6px", zIndex: 9, borderRadius: 3, bgcolor: "background.paper", display: "flex", alignItems: "center", px: 0.5, gap: 0.25 }}>
+        <IconButton aria-label="ביטול בחירת כתוביות" disabled={batchBusy} onClick={() => { setCheckedIds([]); setBatchError(null); }} sx={{ width: 44, height: 44 }}><CloseRounded /></IconButton>
+        <Typography role="status" variant="body2" sx={{ flex: 1, whiteSpace: "nowrap", fontSize: 12 }}>{batchBusy ? "שומר..." : `${checkedIds.length} נבחרו`}</Typography>
+        <Button aria-label="חיבור כתוביות נבחרות" disabled={batchBusy || saveState === "saving" || !canMergeCaptions(editableSegments, checkedIds)} onClick={() => void runBatch("merge")}
+          sx={{ minHeight: 44, minWidth: 64, gap: 0.5, px: 0.75 }}><JoinFullRounded fontSize="small" />חיבור</Button>
+        <Button aria-label="מחיקת כתוביות נבחרות" color="error" disabled={batchBusy || saveState === "saving"} onClick={() => void runBatch("delete")}
+          sx={{ minHeight: 44, minWidth: 64, gap: 0.5, px: 0.75 }}><DeleteOutlineRounded fontSize="small" />מחיקה</Button>
+      </Paper>}
+      {selectionMode && (batchError || (checkedIds.length > 1 && !canMergeCaptions(editableSegments, checkedIds))) &&
+        <Alert severity={batchError ? "error" : "info"} sx={{ position: "absolute", bottom: "100%", mx: 1, mb: 0.5, left: 0, right: 0, zIndex: 9, py: 0 }}>
+          {batchError ?? "לחיבור בחרו כתוביות רצופות. אפשר למחוק כל בחירה."}
+        </Alert>}
+      <Stack direction="row" component="nav" aria-label="מצבי עריכה" aria-hidden={selectionMode || undefined}
+        sx={{ visibility: selectionMode ? "hidden" : "visible", flexShrink: 0, borderTop: 1, borderColor: "#e8edf3", bgcolor: "#ffffff", pb: 0.75, pt: 0.5, zIndex: 8, position: "relative" }}>
         {[
           { id: "timing" as const, label: "תזמון", icon: <AccessTimeRounded /> },
           { id: "style" as const, label: "עיצוב", icon: <SettingsRounded /> },
@@ -715,6 +789,10 @@ export function MobileCaptionEditor({
           עוד
         </Button>
       </Stack>
+      </Box>
+      <Snackbar open={batchNotice !== null} autoHideDuration={6000} onClose={(_, reason) => { if (reason !== "clickaway") setBatchNotice(null); }}
+        sx={{ bottom: "calc(72px + env(safe-area-inset-bottom, 0px)) !important" }} message={batchNotice}
+        action={<Button color="inherit" disabled={saveState === "saving" || !timelineEditing.canUndo} onClick={() => { setBatchNotice(null); timelineEditing.onUndo(); }}>ביטול</Button>} />
 
       {mode === "timing" && timingWordsSegment && <MobileWordTimelineDialog key={timingWordsSegment.id}
         segment={timingWordsSegment} words={wordsForSegment(words, timingWordsSegment)} fps={preferences.fps} currentTime={currentTime}

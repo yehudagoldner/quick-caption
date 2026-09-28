@@ -7,7 +7,7 @@ const words = [
   { word: 'סרטון', start: 2, end: 3, segmentId: 2 },
   { word: 'לבדיקה', start: 3, end: 4, segmentId: 2 },
 ];
-async function openEditor(page: Page) {
+async function openEditor(page: Page, testSegments = segments, testWords = words) {
   await page.setViewportSize({ width: 390, height: 844 });
   await prepareApp(page);
   await page.route('**/api/videos/42/media?**', route => {
@@ -18,7 +18,7 @@ async function openEditor(page: Page) {
       headers: { 'Accept-Ranges': 'bytes', ...(range ? { 'Content-Range': `bytes ${start}-${end}/${portraitVideo.length}` } : {}) },
       body: portraitVideo.subarray(start, end + 1) });
   });
-  await page.route('**/api/videos/load?**', route => route.fulfill({ json: { video: { id: 42, subtitle_json: segments, words_json: words, format: '.srt', stored_path: 'portrait.mp4' } } }));
+  await page.route('**/api/videos/load?**', route => route.fulfill({ json: { video: { id: 42, subtitle_json: testSegments, words_json: testWords, format: '.srt', stored_path: 'portrait.mp4' } } }));
   await page.goto('/?screen=edit&video=review-token');
   await expect.poll(() => page.locator('video').evaluate((v: HTMLVideoElement) => v.readyState)).toBeGreaterThan(0);
   await page.getByRole('button', { name: 'עריכה', exact: true }).click();
@@ -337,4 +337,122 @@ for (const width of [320, 390]) test(`compact timeline zoom keeps video size and
   await expect(dialog.getByRole('button', { name: 'סיום', exact: true })).toBeInViewport();
   await page.screenshot({ path: `tmp/review/word-zoom-${width}.png` });
   expect(saves).toBe(0);
+});
+
+for (const width of [320, 390]) test(`mobile selection merges captions once, retains word times and undoes at ${width}px`, async ({ page }) => {
+  await openEditor(page);
+  await page.setViewportSize({ width, height: width === 320 ? 568 : 844 });
+  const saves: any[] = [];
+  await page.route('**/api/videos/update-subtitles', route => {
+    const body = route.request().postDataJSON();
+    saves.push({ segments: JSON.parse(body.subtitleJson), words: JSON.parse(body.wordsJson) });
+    return route.fulfill({ json: { success: true } });
+  });
+  await page.getByRole('button', { name: 'תזמון', exact: true }).click();
+  const videoHeight = (await page.locator('video').boundingBox())!.height;
+  const toolbar = page.getByRole('toolbar', { name: 'פעולות על כתוביות נבחרות' });
+  await page.getByRole('checkbox', { name: 'בחירת כתובית: שלום עולם', exact: true }).check();
+  await expect(toolbar).toBeVisible();
+  await expect(toolbar.getByRole('status')).toHaveText('1 נבחרו');
+  await expect(toolbar.getByRole('button', { name: 'חיבור כתוביות נבחרות' })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'תזמון', exact: true })).toBeHidden();
+  const other = page.getByRole('checkbox', { name: 'בחירת כתובית: סרטון לבדיקה', exact: true });
+  await other.scrollIntoViewIfNeeded();
+  await other.check();
+  await expect(toolbar.getByRole('status')).toHaveText('2 נבחרו');
+  await expect(toolbar.getByRole('button', { name: 'חיבור כתוביות נבחרות' })).toBeEnabled();
+  expect(saves).toHaveLength(0);
+  expect((await page.locator('video').boundingBox())!.height).toBeCloseTo(videoHeight, 1);
+  await expect(toolbar).toBeInViewport();
+  expect(await toolbar.evaluate(el => el.scrollWidth > el.clientWidth)).toBe(false);
+  await page.screenshot({ path: `tmp/review/caption-selection-${width}.png` });
+  await toolbar.getByRole('button', { name: 'חיבור כתוביות נבחרות' }).click();
+  await expect(toolbar).toHaveCount(0);
+  expect(saves).toHaveLength(1);
+  expect(saves[0].segments).toEqual([{ id: 1, start: 0, end: 4, text: 'שלום עולם סרטון לבדיקה' }]);
+  expect(saves[0].words.map(({ word, start, end }: any) => ({ word, start, end }))).toEqual(words.map(({ word, start, end }) => ({ word, start, end })));
+  expect(saves[0].words.map((word: any) => word.segmentId)).toEqual([1, 1, 1, 1]);
+  await expect(page.getByText('חוברו 2 כתוביות', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'ביטול', exact: true }).click();
+  await expect(page.getByTestId('mobile-timing-clip')).toHaveCount(2);
+  await expect.poll(() => saves.length).toBe(2);
+  expect(saves[1].segments).toEqual(segments);
+  expect(saves[1].words.map(({ word, start, end, segmentId }: any) => ({ word, start, end, segmentId }))).toEqual(words);
+});
+
+test('mobile batch deletion retains selection after failure, locks pending actions and undoes deleting all', async ({ page }) => {
+  await openEditor(page);
+  let fail = true;
+  let release!: () => void;
+  const pending = new Promise<void>(resolve => { release = resolve; });
+  const saves: any[] = [];
+  await page.route('**/api/videos/update-subtitles', async route => {
+    const body = route.request().postDataJSON();
+    saves.push({ segments: JSON.parse(body.subtitleJson), words: JSON.parse(body.wordsJson) });
+    await pending;
+    await route.fulfill({ status: fail ? 500 : 200, json: fail ? { error: 'שמירת הפעולה נכשלה. נסו שוב.' } : { success: true } });
+  });
+  await page.getByRole('button', { name: 'תזמון', exact: true }).click();
+  await page.getByRole('checkbox', { name: 'בחירת כתובית: שלום עולם', exact: true }).check();
+  await page.getByRole('checkbox', { name: 'בחירת כתובית: סרטון לבדיקה', exact: true }).check();
+  const toolbar = page.getByRole('toolbar', { name: 'פעולות על כתוביות נבחרות' });
+  const remove = toolbar.getByRole('button', { name: 'מחיקת כתוביות נבחרות' });
+  await remove.click();
+  await expect.poll(() => saves.length).toBe(1);
+  await expect(remove).toBeDisabled();
+  await expect(toolbar.getByRole('button', { name: 'ביטול בחירת כתוביות' })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'לסרטונים שלי', exact: true })).toBeDisabled();
+  release();
+  await expect(remove).toBeEnabled();
+  await expect(toolbar.getByRole('status')).toHaveText('2 נבחרו');
+  await expect(page.getByRole('checkbox', { name: 'בחירת כתובית: שלום עולם', exact: true })).toBeChecked();
+  await expect(page.getByRole('checkbox', { name: 'בחירת כתובית: סרטון לבדיקה', exact: true })).toBeChecked();
+  await expect(page.getByText('שמירת הפעולה נכשלה. הבחירה נשמרה; נסו שוב.', { exact: true })).toBeVisible();
+  fail = false;
+  await remove.click();
+  await expect(toolbar).toHaveCount(0);
+  expect(saves[1]).toEqual({ segments: [], words: [] });
+  await expect(page.getByTestId('mobile-timing-clip')).toHaveCount(0);
+  await page.getByRole('button', { name: 'ביטול', exact: true }).click();
+  await expect(page.getByTestId('mobile-timing-clip')).toHaveCount(2);
+  await expect.poll(() => saves.length).toBe(3);
+  expect(saves[2].segments).toEqual(segments);
+});
+
+test('nonadjacent mobile selection allows deletion, blocks merge and can be cancelled', async ({ page }) => {
+  const clips = [{ id: 1, start: 0, end: 1, text: 'ראשונה' }, { id: 2, start: 1, end: 2, text: 'שנייה' }, { id: 3, start: 2, end: 4, text: 'שלישית' }];
+  await openEditor(page, clips, []);
+  await page.getByRole('button', { name: 'תזמון', exact: true }).click();
+  await page.getByRole('checkbox', { name: 'בחירת כתובית: ראשונה', exact: true }).check();
+  await page.getByRole('checkbox', { name: 'בחירת כתובית: שלישית', exact: true }).check();
+  const toolbar = page.getByRole('toolbar', { name: 'פעולות על כתוביות נבחרות' });
+  await expect(toolbar.getByRole('button', { name: 'חיבור כתוביות נבחרות' })).toBeDisabled();
+  await expect(toolbar.getByRole('button', { name: 'מחיקת כתוביות נבחרות' })).toBeEnabled();
+  await expect(page.getByText('לחיבור בחרו כתוביות רצופות. אפשר למחוק כל בחירה.')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(toolbar).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'תזמון', exact: true })).toBeVisible();
+  await expect(page.getByRole('checkbox', { name: 'בחירת כתובית: ראשונה', exact: true })).not.toBeChecked();
+});
+
+test.describe('touch caption selection', () => {
+  test.use({ hasTouch: true });
+  test('checkbox starts selection and tapping another card adds it without opening word timing', async ({ page }) => {
+    await openEditor(page);
+    await page.getByRole('button', { name: 'תזמון', exact: true }).tap();
+    const first = page.getByRole('checkbox', { name: 'בחירת כתובית: שלום עולם', exact: true });
+    expect((await first.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+    await first.tap();
+    await expect(first).toBeChecked();
+    const other = page.getByRole('button', { name: 'כתובית: סרטון לבדיקה', exact: true });
+    await other.scrollIntoViewIfNeeded();
+    await other.tap();
+    await expect(page.getByRole('checkbox', { name: 'בחירת כתובית: סרטון לבדיקה', exact: true })).toBeChecked();
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    const toolbar = page.getByRole('toolbar', { name: 'פעולות על כתוביות נבחרות' });
+    await expect(toolbar.getByRole('status')).toHaveText('2 נבחרו');
+    await toolbar.getByRole('button', { name: 'ביטול בחירת כתוביות' }).tap();
+    await expect(toolbar).toHaveCount(0);
+    await expect(first).not.toBeChecked();
+  });
 });

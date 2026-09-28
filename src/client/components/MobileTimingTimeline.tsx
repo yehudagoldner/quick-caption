@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
-import { Alert, Box, Button, IconButton, Stack, Typography } from "@mui/material";
+import { Alert, Box, Button, Checkbox, IconButton, Stack, Typography } from "@mui/material";
 import { DragIndicator, PauseRounded, PlayArrowRounded, RedoRounded, UndoRounded, TuneRounded } from "@mui/icons-material";
 import type { Segment, Word } from "../types";
 import { useEditorPreferences } from "../contexts/EditorPreferences";
@@ -19,6 +19,7 @@ export function MobileTimingTimeline({
   segments, words = [], disabled, duration, currentTime = 0, mediaUrl,
   selectedSegmentId, onSegmentSelect, onRequestTimeChange, onSegmentsChange,
   isPlaying, onPlayPause, onUndo, onRedo, canUndo, canRedo, onEditWords,
+  checkedIds, onToggleChecked,
 }: {
   segments: Segment[];
   words?: Word[];
@@ -37,9 +38,12 @@ export function MobileTimingTimeline({
   canUndo: boolean;
   canRedo: boolean;
   onEditWords: (id: Segment["id"]) => void;
+  checkedIds: Segment["id"][];
+  onToggleChecked: (id: Segment["id"]) => void;
 }) {
   const { preferences } = useEditorPreferences();
   const fps = preferences.fps;
+  const selecting = checkedIds.length > 0;
   const total = duration && Number.isFinite(duration) && duration > 0 ? duration : Math.max(1, ...segments.map(segment => segment.end), 1);
   const time = Math.max(0, Math.min(total, currentTime ?? 0));
   const scrollerRef = useRef<HTMLDivElement | null>(null);
@@ -154,6 +158,7 @@ export function MobileTimingTimeline({
   const pad = width / 2;
   const view = preview ?? segments;
   const choose = (segment: Segment) => {
+    if (selecting) { onToggleChecked(segment.id); return; }
     onSegmentSelect(segment.id);
     if (time < segment.start || time >= segment.end) onRequestTimeChange(segment.start);
   };
@@ -166,12 +171,12 @@ export function MobileTimingTimeline({
 
   return <Stack spacing={0.5} data-testid="mobile-timing-editor" data-window-seconds={windowSeconds.toFixed(2)} sx={{ flex: "1 1 auto", minWidth: 0, minHeight: 0, width: "100%", maxWidth: "100%", height: "100%", overflow: "hidden", userSelect: "none" }}>
     <Stack direction="row" alignItems="center" dir="ltr" sx={{ flexShrink: 0, minHeight: 40 }}>
-      <IconButton aria-label={isPlaying ? "השהה" : "נגן"} onClick={onPlayPause}>{isPlaying ? <PauseRounded /> : <PlayArrowRounded />}</IconButton>
+      <IconButton aria-label={isPlaying ? "השהה" : "נגן"} disabled={selecting || disabled} onClick={onPlayPause}>{isPlaying ? <PauseRounded /> : <PlayArrowRounded />}</IconButton>
       <Button size="small" aria-label="פריים אחורה" onClick={() => onRequestTimeChange(Math.max(0, time - 1 / fps))} sx={{ minWidth: 40, px: 0.5 }}>−1F</Button>
       <Typography variant="body2" dir="ltr" data-testid="playhead-timecode" sx={{ flex: 1, textAlign: "center", fontVariantNumeric: "tabular-nums" }}>{formatTimecode(time, fps)}</Typography>
       <Button size="small" aria-label="פריים קדימה" onClick={() => onRequestTimeChange(Math.min(total, time + 1 / fps))} sx={{ minWidth: 40, px: 0.5 }}>+1F</Button>
-      <IconButton size="small" aria-label="ביטול פעולה" onClick={onUndo} disabled={!canUndo || disabled}><UndoRounded /></IconButton>
-      <IconButton size="small" aria-label="ביצוע חוזר" onClick={onRedo} disabled={!canRedo || disabled}><RedoRounded /></IconButton>
+      <IconButton size="small" aria-label="ביטול פעולה" onClick={onUndo} disabled={!canUndo || disabled || selecting}><UndoRounded /></IconButton>
+      <IconButton size="small" aria-label="ביצוע חוזר" onClick={onRedo} disabled={!canRedo || disabled || selecting}><RedoRounded /></IconButton>
       <Button size="small" aria-label="התאמת זום לעריכה" aria-pressed={manualWindow == null} onClick={() => setManualWindow(null)} sx={{ minWidth: 0, px: 0.75, fontSize: 11, whiteSpace: "nowrap", color: manualWindow == null ? "primary.main" : "text.secondary" }}>
         {manualWindow == null ? "אוטומטי" : "התאם"}
       </Button>
@@ -204,24 +209,30 @@ export function MobileTimingTimeline({
           </Box>)}
           {pps > 0 && view.map(segment => {
             const focused = segment.id === focusedId;
-            const showChrome = focused && !disabled && !isPlaying;
+            const checked = checkedIds.includes(segment.id);
+            const showChrome = focused && !disabled && !isPlaying && !selecting;
             const left = pad + segment.start * pps + 2;
             const cardWidth = Math.max(8, (segment.end - segment.start) * pps - 4);
             return <Box key={segment.id} data-testid="mobile-timing-clip" data-start={segment.start} data-end={segment.end} role="button" tabIndex={0}
-              aria-label={`כתובית: ${segment.text}`} aria-pressed={focused}
-              onClick={event => { if ((event.target as HTMLElement).closest("[data-timing-handle], [data-word-timing-button]")) return; choose(segments.find(item => item.id === segment.id) ?? segment); }}
+              aria-label={`כתובית: ${segment.text}`} aria-pressed={selecting ? checked : focused}
+              onClick={event => { if ((event.target as HTMLElement).closest("[data-timing-handle], [data-word-timing-button], [data-caption-checkbox]")) return; choose(segments.find(item => item.id === segment.id) ?? segment); }}
               onKeyDown={event => { if (event.target !== event.currentTarget) return; if (event.key === "Enter" || event.key === " ") { event.preventDefault(); choose(segment); } }}
               sx={{
-                position: "absolute", top: 22, bottom: 8, left, width: cardWidth, borderRadius: "8px", bgcolor: "#fff",
-                border: 1, borderColor: focused ? "primary.main" : "#e4e8ee", boxShadow: focused ? "0 0 0 1px #1976d2" : "none",
+                position: "absolute", top: 22, bottom: 8, left, width: cardWidth, borderRadius: "8px", bgcolor: checked ? "#e8f1fc" : "#fff",
+                border: 1, borderColor: (selecting ? checked : focused) ? "primary.main" : "#e4e8ee", boxShadow: (selecting ? checked : focused) ? "0 0 0 1px #1976d2" : "none",
                 overflow: "hidden", zIndex: focused ? 2 : 1, touchAction: "pan-x",
               }}>
-              <IconButton data-word-timing-button size="small" aria-label={`תזמון מילים: ${segment.text}`} title="תזמון מילים" disabled={disabled}
+              <Checkbox data-caption-checkbox checked={checked} disabled={disabled} size="small"
+                slotProps={{ input: { "aria-label": `בחירת כתובית: ${segment.text}` } }}
+                onPointerDown={event => event.stopPropagation()} onClick={event => event.stopPropagation()}
+                onChange={() => onToggleChecked(segment.id)}
+                sx={{ position: "absolute", top: 0, left: 0, width: "min(44px, 100%)", height: 44, p: 0, zIndex: 3 }} />
+              {!selecting && <IconButton data-word-timing-button size="small" aria-label={`תזמון מילים: ${segment.text}`} title="תזמון מילים" disabled={disabled}
                 onPointerDown={event => event.stopPropagation()}
                 onClick={event => { event.stopPropagation(); onEditWords(segment.id); }}
-                sx={{ position: "absolute", top: 2, right: 2, width: 32, height: 32, zIndex: 3, color: "primary.main", bgcolor: "#e8f1fc", "&:hover": { bgcolor: "#d7e8fc" } }}>
+                sx={{ position: "absolute", top: cardWidth >= 76 ? 2 : 44, right: 2, width: 32, height: 32, zIndex: 3, color: "primary.main", bgcolor: "#e8f1fc", "&:hover": { bgcolor: "#d7e8fc" } }}>
                 <TuneRounded sx={{ fontSize: 18 }} />
-              </IconButton>
+              </IconButton>}
               <Box sx={{ height: "100%", px: showChrome ? 4.5 : 1.5, display: "flex", flexDirection: "column", justifyContent: "center", pt: 4.5, pb: showChrome ? "40px" : 0.5, overflow: "hidden" }}>
                 <Typography dir={preferences.direction} sx={{ flexShrink: 0, fontSize: 15, fontWeight: 600, lineHeight: 1.3, overflowWrap: "anywhere", display: "-webkit-box", WebkitLineClamp: 4, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{segment.text}</Typography>
                 <Typography dir="ltr" variant="caption" color="text.secondary" sx={{ flexShrink: 0, mt: 0.25, textAlign: preferences.direction === "rtl" ? "right" : "left" }}>{formatTimecode(segment.start, fps)}–{formatTimecode(segment.end, fps)}</Typography>

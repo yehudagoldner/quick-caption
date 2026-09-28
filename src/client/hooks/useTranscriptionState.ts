@@ -3,6 +3,7 @@ import type { Segment, Word } from "../types";
 import { segmentsToSrt, cleanSegmentText, fixSegmentOverlaps } from "../utils/transcriptionUtils";
 import { reflowSubtitleCharacters } from "../../subtitleSegmentation.js";
 import { synchronizeWords } from "../../wordAlignment.js";
+import { editCaptionBatch } from "../../captionBatchEditing.js";
 import { AUTO_CAPTION_FONT_SIZE, type CaptionFontSizeSetting } from "../../captionStyle.js";
 import { EditHistory, snapshot, validateCaptionRange, wordsForSegment } from "../../timelineEditing.js";
 
@@ -364,6 +365,14 @@ export function useTranscriptionState({
     [editableSegments, editableWords, persistSegments]
   );
 
+  const handleCaptionBatch = async (ids: Segment["id"][], action: "merge" | "delete") => {
+    if (!isEditable || pendingSaves.current) throw new Error("יש להמתין לסיום השמירה לפני הפעולה.");
+    const next = editCaptionBatch(revision.current.segments, revision.current.words, ids, action);
+    await persistSegments(next.segments, next.words, { throwOnError: true });
+    setSelectedSegmentId(null);
+    setActiveSegmentId(null);
+  };
+
   const handleDeleteSegment = useCallback(
     async (segmentId: Segment["id"]) => {
       const newSegments = editableSegments.filter((segment) => segment.id !== segmentId);
@@ -515,6 +524,7 @@ export function useTranscriptionState({
     handleSegmentBlur,
     handleAddSubtitle,
     handleDeleteSegment,
+    handleCaptionBatch,
     handleSplitSegment,
     handleUndoSplit,
     canUndoSplit,

@@ -63,6 +63,7 @@ type TranscriptionMainContentProps = {
   onBurnVideo: (options?: { download?: boolean; reuse?: boolean }) => Promise<{ url: string; name: string } | null | void>;
   onAddSubtitle: (text: string, startTime: number, endTime: number) => void;
   onDeleteSegment: (segmentId: Segment["id"]) => Promise<void>;
+  onCaptionBatch: (ids: Segment["id"][], action: "merge" | "delete") => Promise<void>;
   onSplitSegment: (segmentId: Segment["id"], splitTime: number, draft?: CaptionDraft) => Promise<void>;
   onUndoSplit: () => Promise<void>;
   canUndoSplit: boolean;
@@ -124,6 +125,7 @@ export function TranscriptionMainContent({
   onBurnVideo,
   onAddSubtitle,
   onDeleteSegment,
+  onCaptionBatch,
   onSplitSegment,
   onUndoSplit,
   canUndoSplit,
@@ -191,6 +193,7 @@ export function TranscriptionMainContent({
         onMarginChange={onMarginChange}
         onBurnVideo={onBurnVideo}
         onAddSubtitle={onAddSubtitle}
+        onCaptionBatch={onCaptionBatch}
         onSplitSegment={onSplitSegment}
         onUndoSplit={onUndoSplit}
         canUndoSplit={canUndoSplit}

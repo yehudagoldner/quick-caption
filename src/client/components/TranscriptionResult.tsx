@@ -99,6 +99,7 @@ export function TranscriptionResult({
     handleSegmentBlur,
     handleAddSubtitle,
     handleDeleteSegment,
+    handleCaptionBatch,
     handleSplitSegment,
     handleUndoSplit,
     canUndoSplit,
@@ -296,6 +297,7 @@ export function TranscriptionResult({
             onBurnVideo={handleBurnVideo}
             onAddSubtitle={handleAddSubtitle}
             onDeleteSegment={handleDeleteSegment}
+            onCaptionBatch={handleCaptionBatch}
             onSplitSegment={handleSplitSegment}
             onUndoSplit={handleUndoSplit}
             canUndoSplit={canUndoSplit}
