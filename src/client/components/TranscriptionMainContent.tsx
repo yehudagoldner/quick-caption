@@ -8,6 +8,7 @@ import { VideoToolbar } from "./VideoToolbar";
 import { MobileCaptionEditor } from "./MobileCaptionEditor";
 import { useNarrowViewport } from "../hooks/useNarrowViewport";
 import type { CaptionFontSizeSetting } from "../../captionStyle.js";
+import type { CaptionBatchAction } from "../../captionBatchEditing.js";
 
 type SaveState = "idle" | "saving" | "success" | "error";
 
@@ -63,7 +64,7 @@ type TranscriptionMainContentProps = {
   onBurnVideo: (options?: { download?: boolean; reuse?: boolean }) => Promise<{ url: string; name: string } | null | void>;
   onAddSubtitle: (text: string, startTime: number, endTime: number) => void;
   onDeleteSegment: (segmentId: Segment["id"]) => Promise<void>;
-  onCaptionBatch: (ids: Segment["id"][], action: "merge" | "delete") => Promise<void>;
+  onCaptionBatch: (ids: Segment["id"][], action: CaptionBatchAction, splitTime?: number) => Promise<void>;
   onSplitSegment: (segmentId: Segment["id"], splitTime: number, draft?: CaptionDraft) => Promise<void>;
   onUndoSplit: () => Promise<void>;
   canUndoSplit: boolean;

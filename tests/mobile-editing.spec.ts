@@ -354,7 +354,7 @@ for (const width of [320, 390]) test(`mobile selection merges captions once, ret
   await page.getByRole('checkbox', { name: 'בחירת כתובית: שלום עולם', exact: true }).check();
   await expect(toolbar).toBeVisible();
   await expect(toolbar.getByRole('status')).toHaveText('1 נבחרו');
-  await expect(toolbar.getByRole('button', { name: 'חיבור כתוביות נבחרות' })).toBeDisabled();
+  await expect(toolbar.getByRole('button', { name: 'פיצול כתובית בנקודת הקו' })).toBeDisabled();
   await expect(page.getByRole('button', { name: 'תזמון', exact: true })).toBeHidden();
   const other = page.getByRole('checkbox', { name: 'בחירת כתובית: סרטון לבדיקה', exact: true });
   await other.scrollIntoViewIfNeeded();
@@ -455,4 +455,87 @@ test.describe('touch caption selection', () => {
     await expect(toolbar).toHaveCount(0);
     await expect(first).not.toBeChecked();
   });
+});
+
+for (const width of [320, 390]) test(`selected caption splits at the exact cursor and undoes at ${width}px`, async ({ page }) => {
+  await openEditor(page);
+  await page.setViewportSize({ width, height: width === 320 ? 568 : 844 });
+  const saves: any[] = [];
+  await page.route('**/api/videos/update-subtitles', route => {
+    const body = route.request().postDataJSON();
+    saves.push({ segments: JSON.parse(body.subtitleJson), words: JSON.parse(body.wordsJson) });
+    return route.fulfill({ json: { success: true } });
+  });
+  await page.getByRole('button', { name: 'תזמון', exact: true }).click();
+  const video = page.locator('video');
+  await expect.poll(() => video.evaluate((v: HTMLVideoElement) => v.readyState)).toBeGreaterThan(0);
+  const videoHeight = (await video.boundingBox())!.height;
+  await page.getByRole('checkbox', { name: 'בחירת כתובית: שלום עולם', exact: true }).check();
+  const toolbar = page.getByRole('toolbar', { name: 'פעולות על כתוביות נבחרות' });
+  const split = toolbar.getByRole('button', { name: 'פיצול כתובית בנקודת הקו' });
+  await expect(split).toBeDisabled();
+  for (const time of [2, 3]) {
+    await video.evaluate((v: HTMLVideoElement, time) => { v.currentTime = time; }, time);
+    await expect(split).toBeDisabled();
+  }
+  await video.evaluate((v: HTMLVideoElement) => { v.currentTime = 1.25; });
+  await expect(split).toBeEnabled();
+  expect((await video.boundingBox())!.height).toBeCloseTo(videoHeight, 1);
+  expect(await toolbar.evaluate(el => el.scrollWidth > el.clientWidth)).toBe(false);
+  await expect(split).toBeInViewport();
+  await page.screenshot({ path: `tmp/review/caption-split-${width}.png` });
+  await split.click();
+  await expect(toolbar).toHaveCount(0);
+  await expect(page.getByTestId('mobile-timing-clip')).toHaveCount(3);
+  expect(saves).toHaveLength(1);
+  expect(saves[0].segments).toEqual([
+    { id: 1, start: 0, end: 1.25, text: 'שלום' },
+    { id: '1-split', start: 1.25, end: 2, text: 'עולם' },
+    segments[1],
+  ]);
+  expect(saves[0].words.map(({ word, start, end, segmentId }: any) => ({ word, start, end, segmentId }))).toEqual([
+    words[0], { word: 'עולם', start: 1.25, end: 2, segmentId: '1-split' }, ...words.slice(2),
+  ]);
+  await expect(page.getByText('הכתובית פוצלה בנקודת הקו', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'ביטול', exact: true }).click();
+  await expect(page.getByTestId('mobile-timing-clip')).toHaveCount(2);
+  await expect.poll(() => saves.length).toBe(2);
+  expect(saves[1].segments).toEqual(segments);
+  expect(saves[1].words.map(({ word, start, end, segmentId }: any) => ({ word, start, end, segmentId }))).toEqual(words);
+});
+
+test('split failure retains the selected caption and supports a retry at a new cursor', async ({ page }) => {
+  await openEditor(page);
+  let fail = true;
+  let release!: () => void;
+  const pending = new Promise<void>(resolve => { release = resolve; });
+  const saves: any[] = [];
+  await page.route('**/api/videos/update-subtitles', async route => {
+    saves.push(JSON.parse(route.request().postDataJSON().subtitleJson));
+    await pending;
+    await route.fulfill({ status: fail ? 500 : 200, json: fail ? { error: 'failed' } : { success: true } });
+  });
+  await page.getByRole('button', { name: 'תזמון', exact: true }).click();
+  const video = page.locator('video');
+  await expect.poll(() => video.evaluate((v: HTMLVideoElement) => v.readyState)).toBeGreaterThan(0);
+  await page.getByRole('checkbox', { name: 'בחירת כתובית: שלום עולם', exact: true }).check();
+  await video.evaluate((v: HTMLVideoElement) => { v.currentTime = 1.25; });
+  const toolbar = page.getByRole('toolbar', { name: 'פעולות על כתוביות נבחרות' });
+  const split = toolbar.getByRole('button', { name: 'פיצול כתובית בנקודת הקו' });
+  await split.click();
+  await expect.poll(() => saves.length).toBe(1);
+  await expect(split).toBeDisabled();
+  await expect(toolbar.getByRole('button', { name: 'ביטול בחירת כתוביות' })).toBeDisabled();
+  release();
+  await expect(page.getByRole('checkbox', { name: 'בחירת כתובית: שלום עולם', exact: true })).toBeChecked();
+  await expect(page.getByText('שמירת הפעולה נכשלה. הבחירה נשמרה; נסו שוב.', { exact: true })).toBeVisible();
+  fail = false;
+  await video.evaluate((v: HTMLVideoElement) => { v.currentTime = 1.5; });
+  await expect(page.getByTestId('playhead-timecode')).toHaveText('00:00:01:12');
+  await split.click();
+  await expect(toolbar).toHaveCount(0);
+  expect(saves).toHaveLength(2);
+  expect(saves[1][0].end).toBe(1.5);
+  expect(saves[1][1].start).toBe(1.5);
+  await expect(page.getByTestId('mobile-timing-clip')).toHaveCount(3);
 });
