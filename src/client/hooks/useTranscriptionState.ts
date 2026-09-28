@@ -167,14 +167,22 @@ export function useTranscriptionState({
     [isEditable, videoId, onSaveSegments, editableWords],
   );
 
-  const handleUndo = async () => {
-    const next = history.current.undo(revision.current);
-    if (next) await persistSegments(next.segments, next.words, { history: false });
+  const restoreHistory = async (direction: "undo" | "redo") => {
+    if (pendingSaves.current) return;
+    const before = { past: [...history.current.past], future: [...history.current.future] };
+    const next = history.current[direction](revision.current);
+    if (!next) return;
+    try { await persistSegments(next.segments, next.words, { history: false, throwOnError: true }); }
+    catch {
+      // A failed Undo/Redo must remain available to retry, with the original
+      // revision and both history stacks restored together.
+      history.current.past = before.past;
+      history.current.future = before.future;
+      setHistoryVersion(v => v + 1);
+    }
   };
-  const handleRedo = async () => {
-    const next = history.current.redo(revision.current);
-    if (next) await persistSegments(next.segments, next.words, { history: false });
-  };
+  const handleUndo = () => restoreHistory("undo");
+  const handleRedo = () => restoreHistory("redo");
   const handleSaveSegment = async (segment: Segment, words: Word[]) => {
     const error = validateCaptionRange(segment, editableSegments, videoDuration ?? Infinity);
     if (error) throw new Error(error);

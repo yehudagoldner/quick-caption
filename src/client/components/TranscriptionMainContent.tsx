@@ -265,7 +265,7 @@ export function TranscriptionMainContent({
               />
             </Box>
 
-          {editableSegments.length > 0 && (
+          {(isEditable || editableSegments.length > 0) && (
             <SubtitleTimeline
               compactDesktop={desktop}
               activeWordEnabled={activeWordEnabled}
@@ -278,6 +278,7 @@ export function TranscriptionMainContent({
               currentTime={currentTime}
               onRequestTimeChange={onTimelineTimeChange}
               onSegmentsChange={onTimelineSegmentsChange}
+              onCaptionBatch={onCaptionBatch}
               selectedSegmentId={selectedSegmentId}
               onSegmentSelect={onSegmentSelect}
               onSplitSegment={onSplitSegment}

@@ -35,7 +35,7 @@ type UseTranscriptionHandlersProps = {
   setBurnError: (error: string | null) => void;
   setIsBurning: (burning: boolean) => void;
   setBurnedVideo: (video: BurnedVideo | null) => void;
-  persistSegments: (segments: Segment[], words?: Word[]) => Promise<void>;
+  persistSegments: (segments: Segment[], words?: Word[], options?: { throwOnError?: boolean }) => Promise<void>;
   videoPlayer: HTMLVideoElement | null;
   response: ApiResponse;
   downloadName: string;
@@ -139,7 +139,7 @@ export function useTranscriptionHandlers({
         const retimed = retimeCaption(source, target, editableWords, options?.fitWords);
         words = words.map((word, index) => retimed[index] !== editableWords[index] ? retimed[index] : word);
       }
-      await persistSegments(newSegments, words);
+      await persistSegments(newSegments, words, { throwOnError: true });
     },
     [persistSegments, editableSegments, editableWords, videoPlayer],
   );

@@ -10,6 +10,9 @@ import { formatTimecode, snapToFrame } from "../utils/timecode";
 import { retimeCaption, validateCaptionRange, wordsForSegment, timelineZoomForWindow, timelineScrollForTime } from "../../timelineEditing.js";
 import { synchronizeWords } from "../../wordAlignment.js";
 import { WordTimeline } from "./WordTimeline";
+import { CaptionSelectionToolbar } from "./CaptionSelectionToolbar";
+import { moveCaptionSelection } from "../../captionSelection.js";
+import { canMergeCaptions, canSplitCaptionAtTime, type CaptionBatchAction } from "../../captionBatchEditing.js";
 import { AudioWaveform } from "./AudioWaveform";
 
 export type CaptionDraft = { segment: Segment; words: Word[] };
@@ -20,6 +23,7 @@ export type SubtitleTimelineProps = {
   selectedSegmentId?: Segment["id"] | null;
   onSegmentSelect: (id: Segment["id"] | null) => void;
   onRequestTimeChange: (time: number) => void;
+  onCaptionBatch: (ids: Segment["id"][], action: CaptionBatchAction, splitTime?: number) => Promise<void>;
   onSegmentsChange: (segments: Segment[]) => void | Promise<void>;
   onSaveSegment: (segment: Segment, words: Word[]) => Promise<void>;
   onSplitSegment: (id: Segment["id"], time: number, draft?: CaptionDraft) => Promise<void>;
@@ -32,7 +36,7 @@ export type SubtitleTimelineProps = {
 };
 
 export function SubtitleTimeline({ activeWordEnabled, segments, words = [], disabled, busy, duration, currentTime = 0, mediaUrl,
-  selectedSegmentId, onSegmentSelect, onRequestTimeChange, onSegmentsChange, onSaveSegment, onSplitSegment,
+  selectedSegmentId, onSegmentSelect, onRequestTimeChange, onSegmentsChange, onCaptionBatch, onSaveSegment, onSplitSegment,
   isPlaying, onPlayPause, onPlayFrom, loopEnabled, onLoopChange,   onUndo, onRedo, canUndo, canRedo, onDraftStateChange, layout = "full", compactDesktop = false,
 }: SubtitleTimelineProps) {
   const { preferences } = useEditorPreferences();
@@ -41,6 +45,13 @@ export function SubtitleTimeline({ activeWordEnabled, segments, words = [], disa
   const ltrTheme = useMemo(() => createTheme(theme, { direction: "ltr" }), [theme]);
   const total = duration && Number.isFinite(duration) ? duration : Math.max(1, ...segments.map(s => s.end));
   const time = Math.max(0, Math.min(total, currentTime ?? 0));
+  const root = useRef<HTMLDivElement | null>(null);
+  const [selection, setSelection] = useState<Segment["id"][]>([]);
+  const selectionAnchor = useRef<Segment["id"] | null>(null);
+  const localFocus = useRef<Segment["id"] | null | undefined>(undefined);
+  const [movePreview, setMovePreview] = useState<Segment[] | null>(null);
+  const dragging = useRef<{ x: number; scroll: number; ids: Segment["id"][]; source: Segment[]; next: Segment[]; moved: boolean } | null>(null);
+  const suppressClick = useRef(false);
   const timeline = useRef<TimelineState | null>(null);
   const container = useRef<HTMLDivElement | null>(null);
   const scrollLeft = useRef(0);
@@ -58,7 +69,35 @@ export function SubtitleTimeline({ activeWordEnabled, segments, words = [], disa
   }, [selectedSegmentId, expandedSegmentId]);
   const locked = disabled || busy || saving;
   const dirty = Object.keys(drafts).length > 0;
-  useEffect(() => { onDraftStateChange(dirty); }, [dirty, onDraftStateChange]);
+  const groupLocked = !!locked || dirty || movePreview !== null;
+  useEffect(() => { setSelection([]); selectionAnchor.current = null; setMovePreview(null); dragging.current = null; }, [mediaUrl]);
+  useEffect(() => {
+    if (selectedSegmentId === localFocus.current) { localFocus.current = undefined; return; }
+    setSelection(selectedSegmentId == null ? [] : [selectedSegmentId]);
+  }, [selectedSegmentId]);
+  useEffect(() => {
+    if (!saving) setSelection(ids => ids.filter(id => segments.some(s => s.id === id)));
+  }, [segments, saving]);
+  const applySelection = (ids: Segment["id"][]) => {
+    setSelection(ids);
+    const focus = ids.length === 1 ? ids[0] : null;
+    localFocus.current = focus;
+    onSegmentSelect(focus);
+    if (isPlaying) onPlayPause?.();
+    onLoopChange(false);
+  };
+  const choose = (id: Segment["id"], event: { ctrlKey: boolean; metaKey: boolean; shiftKey: boolean }) => {
+    if (groupLocked) return;
+    if (event.shiftKey && selectionAnchor.current != null) {
+      const ordered = [...segments].sort((a, b) => a.start - b.start);
+      const a = ordered.findIndex(s => s.id === selectionAnchor.current), b = ordered.findIndex(s => s.id === id);
+      if (a >= 0 && b >= 0) applySelection(ordered.slice(Math.min(a, b), Math.max(a, b) + 1).map(s => s.id));
+    } else if (event.ctrlKey || event.metaKey) {
+      applySelection(selection.includes(id) ? selection.filter(value => value !== id) : [...selection, id]);
+      selectionAnchor.current = id;
+    } else { applySelection([id]); selectionAnchor.current = id; }
+  };
+  useEffect(() => { onDraftStateChange(dirty || saving || movePreview !== null); }, [dirty, saving, movePreview, onDraftStateChange]);
   useEffect(() => {
     if (!dirty) return;
     const warn = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = ""; };
@@ -83,10 +122,11 @@ export function SubtitleTimeline({ activeWordEnabled, segments, words = [], disa
     }
   }, [time, pixelsPerSecond, width]);
   const seek = (value: number) => { onRequestTimeChange(Math.max(0, Math.min(total, snapToFrame(value, fps)))); return true; };
-  const trackStructure = segments.map(segment => `${segment.id}:${segment.start}:${segment.end}`).join("|");
-  const rows = useMemo<TimelineRow[]>(() => [{ id: "captions", actions: segments.map(s => ({
-    id: String(s.id), effectId: String(s.id), start: s.start, end: s.end, movable: !locked, flexible: !locked,
-  })) }], [trackStructure, locked]);
+  const displaySegments = movePreview ?? segments;
+  const trackStructure = displaySegments.map(segment => `${segment.id}:${segment.start}:${segment.end}`).join("|");
+  const rows = useMemo<TimelineRow[]>(() => [{ id: "captions", actions: displaySegments.map(s => ({
+    id: String(s.id), effectId: String(s.id), start: s.start, end: s.end, movable: false, flexible: !locked && !dirty && selection.length <= 1,
+  })) }], [trackStructure, locked, dirty, selection.length]);
   const effects = useMemo(() => Object.fromEntries(segments.map(s => [String(s.id), { id: String(s.id), name: String(s.id) }])), [trackStructure]);
   const selected = segments.find(s => s.id === selectedSegmentId);
   // Playback changes time each frame, not the track data. Keep the word array stable
@@ -175,25 +215,64 @@ export function SubtitleTimeline({ activeWordEnabled, segments, words = [], disa
     } catch (e) { setError((e as Error).message || "השמירה נכשלה; הטיוטה נשמרה בעורך."); return false; }
     finally { flight.current = false; setSaving(false); }
   };
+  const runSelectionAction = async (action: CaptionBatchAction) => {
+    if (groupLocked || flight.current || !selection.length) return;
+    root.current?.focus({ preventScroll: true });
+    flight.current = true; setSaving(true); setError(null);
+    try {
+      await onCaptionBatch(selection, action, time);
+      clearSelection();
+    } catch (e) { setError((e as Error).message || "שמירת הפעולה נכשלה. הבחירה נשמרה; נסו שוב."); }
+    finally { flight.current = false; setSaving(false); }
+  };
+  const commitMove = async (next: Segment[]) => {
+    if (flight.current || next === segments || next.every((s, i) => s.start === segments[i]?.start && s.end === segments[i]?.end)) return;
+    flight.current = true; setSaving(true); setError(null);
+    try { await onSegmentsChange(next); }
+    catch (e) { setError((e as Error).message || "שמירת ההזזה נכשלה. נסו שוב."); }
+    finally { flight.current = false; setSaving(false); }
+  };
+  const nudge = (frames: number) => {
+    if (!groupLocked && !flight.current) void commitMove(moveCaptionSelection(segments, selection, frames / fps, total, fps));
+  };
+  const clearSelection = () => { applySelection([]); selectionAnchor.current = null; };
+  const cancelDrag = () => { dragging.current = null; setMovePreview(null); suppressClick.current = true; };
+  const selectedCaption = selection.length === 1 ? segments.find(s => s.id === selection[0]) : undefined;
   useEffect(() => {
     const keys = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement;
-      if (target.closest('input,textarea,[contenteditable="true"],[role="dialog"]') || locked || dirty) return;
-      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "z") {
+      if (event.defaultPrevented || event.isComposing || !root.current?.contains(target)
+        || target.closest('input,textarea,select,[contenteditable="true"],[role="dialog"],[role="slider"],[data-testid="segment-inspector"]')) return;
+      const command = event.ctrlKey || event.metaKey;
+      if (event.code === "Escape" && dragging.current) { event.preventDefault(); cancelDrag(); return; }
+      if (locked || dirty || dragging.current || flight.current) return;
+      if (command && event.code === "KeyA") { event.preventDefault(); applySelection(segments.map(s => s.id)); }
+      else if (event.code === "Escape") { event.preventDefault(); clearSelection(); }
+      else if (command && event.code === "KeyZ") {
         event.preventDefault(); if (event.shiftKey) { if (canRedo) onRedo(); } else if (canUndo) onUndo();
-      } else if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "y") {
-        event.preventDefault(); if (canRedo) onRedo();
-      }
+      } else if (command && event.code === "KeyY") { event.preventDefault(); if (canRedo) onRedo(); }
+      else if (command && event.code === "KeyM") { event.preventDefault(); if (canMergeCaptions(segments, selection)) void runSelectionAction("merge"); }
+      else if (command && event.code === "KeyK") { event.preventDefault(); if (canSplitCaptionAtTime(selectedCaption, time)) void runSelectionAction("split"); }
+      else if (!command && !event.altKey && (event.code === "Delete" || event.code === "Backspace")) { event.preventDefault(); if (selection.length) void runSelectionAction("delete"); }
+      else if ((!command || event.metaKey) && (event.code === "ArrowLeft" || event.code === "ArrowRight")) {
+        event.preventDefault(); const frames = (event.code === "ArrowLeft" ? -1 : 1) * (event.shiftKey ? 5 : 1);
+        if (selection.length) nudge(frames); else seek(time + frames / fps);
+      } else if (!command && !event.altKey && event.code === "Space" && !target.closest('button')) { event.preventDefault(); onPlayPause?.(); }
+      else if (!command && (event.code === "Home" || event.code === "End")) { event.preventDefault(); seek(event.code === "Home" ? 0 : total); }
+      else if (!command && (event.code === "Equal" || event.code === "Minus" || event.code === "NumpadAdd" || event.code === "NumpadSubtract")) {
+        event.preventDefault(); setZoom(Math.max(0, Math.min(Math.max(200, Math.ceil(timelineZoomForWindow(total, 1))), effectiveZoom + (event.code === "Equal" || event.code === "NumpadAdd" ? 10 : -10))));
+      } else if (command && event.code === "Digit0") { event.preventDefault(); setZoom(0); scrollLeft.current = 0; timeline.current?.setScrollLeft(0); }
+      else if (event.code === "F2" && selectedCaption) { event.preventDefault(); openExpandedEditor(selectedCaption.id); }
     };
     window.addEventListener("keydown", keys); return () => window.removeEventListener("keydown", keys);
-  }, [locked, dirty, canUndo, canRedo, onUndo, onRedo]);
+  });
   const compactTiming = layout === "timing";
   const canSplit = draft && draft.segment.text.trim().split(/\s+/).length > 1 && time > draft.segment.start && time < draft.segment.end;
 
-  return <Stack spacing={compactTiming || compactDesktop ? .75 : 1.5} className="subtitle-timeline" sx={{ width: "100%", minWidth: 0, flexShrink: 0 }}>
+  return <Stack ref={root} tabIndex={-1} onPointerDownCapture={event => { if (!(event.target as HTMLElement).closest('input,textarea,button,[role="slider"],[data-testid="segment-inspector"]')) root.current?.focus({ preventScroll: true }); }} spacing={compactTiming || compactDesktop ? .75 : 1.5} className="subtitle-timeline" sx={{ width: "100%", minWidth: 0, flexShrink: 0, outline: "none" }}>
     {!compactTiming && !compactDesktop && <>
     <Typography variant="subtitle1" fontWeight={700}>ציר הזמן הראשי — כל ההקלטה</Typography>
-    <Typography variant="caption">גררו גוף מקטע להזזה וקצה לשינוי משך. חפיפות וחיתוך מילים מתוזמנות נחסמים. לחצו על מקטע לעריכה.</Typography>
+    <Typography variant="caption">גררו גוף מקטע להזזה וקצה לשינוי משך. Ctrl לבחירה מרובה, Shift לבחירת טווח. חפיפות נחסמות.</Typography>
     <Stack direction="row" useFlexGap flexWrap="wrap" gap={1} alignItems="center">
       <Button startIcon={<UndoRounded />} onClick={onUndo} disabled={!canUndo || locked || dirty}>ביטול פעולה</Button>
       <Button startIcon={<RedoRounded />} onClick={onRedo} disabled={!canRedo || locked || dirty}>ביצוע חוזר</Button>
@@ -222,9 +301,11 @@ export function SubtitleTimeline({ activeWordEnabled, segments, words = [], disa
       </Box></ThemeProvider>
       <Button size="small" aria-label="תצוגת 30 שניות" aria-pressed={zoom === null} variant={zoom === null ? "contained" : "text"} onClick={() => setZoom(null)} sx={{ whiteSpace: "nowrap", minWidth: 0 }}>30 שנ׳</Button>
       <Button size="small" aria-label="התאם את כל ההקלטה" aria-pressed={zoom === 0} onClick={() => { setZoom(0); scrollLeft.current = 0; timeline.current?.setScrollLeft(0); }} sx={{ whiteSpace: "nowrap", minWidth: 0 }}>הכול</Button>
+      <CaptionSelectionToolbar count={selection.length} disabled={groupLocked} canMerge={canMergeCaptions(segments, selection)} canSplit={canSplitCaptionAtTime(selectedCaption, time)}
+        selectAll={() => applySelection(segments.map(s => s.id))} clear={clearSelection} merge={() => void runSelectionAction("merge")} split={() => void runSelectionAction("split")} remove={() => void runSelectionAction("delete")} move={nudge} />
     </Stack>
     <Box ref={container} data-testid="caption-track" sx={{ minWidth: 0, direction: "ltr", "& *": { direction: "ltr !important" } }}>
-      <Timeline ref={timeline} editorData={rows} effects={effects} disableDrag={locked} gridSnap={false} dragLine
+      <Timeline ref={timeline} editorData={rows} effects={effects} disableDrag={locked || dirty || movePreview !== null} gridSnap={false} dragLine
         scale={scale} scaleWidth={scaleWidth} scaleSplitCount={4} minScaleCount={Math.max(2, Math.ceil(total / scale) + 1)}
         getScaleRender={value => <span>{formatTimecode(value, fps)}</span>}
         onCursorDrag={seek} onCursorDragEnd={seek} onClickTimeArea={seek}
@@ -251,7 +332,7 @@ export function SubtitleTimeline({ activeWordEnabled, segments, words = [], disa
               }
             }
             setError(null);
-            Promise.resolve(onSegmentsChange(next)).catch(e => setError(e.message));
+            void commitMove(next);
           } catch (e) { setError((e as Error).message); return false; }
         }}
         getActionRender={action => {
@@ -259,16 +340,49 @@ export function SubtitleTimeline({ activeWordEnabled, segments, words = [], disa
           const segment = segments.find(s => String(s.id) === action.id);
           if (!segment) return null;
           return <Box className="subtitle-timeline-action" data-testid="subtitle-clip" role="button" tabIndex={0}
-            aria-label={`עריכת כתובית: ${segment.text}`} aria-pressed={selectedSegmentId === segment.id}
+            aria-label={`עריכת כתובית: ${segment.text}`} aria-pressed={selection.includes(segment.id)} data-start={action.start} data-end={action.end}
             title={`${segment.text} · ${formatTimecode(segment.start, fps)} – ${formatTimecode(segment.end, fps)}. לחצו לעריכה; לחיצה כפולה או F2 לפתיחה בחלון. גררו להזזה.`}
-            onClick={() => { if (!locked) onSegmentSelect(segment.id); }}
+            onMouseDown={e => e.stopPropagation()}
+            onPointerDown={e => {
+              if (groupLocked || e.button !== 0) return;
+              e.preventDefault(); e.stopPropagation();
+              suppressClick.current = false;
+              if (e.ctrlKey || e.metaKey || e.shiftKey) return;
+              const ids = selection.includes(segment.id) ? selection : [segment.id];
+              if (!selection.includes(segment.id)) { applySelection(ids); selectionAnchor.current = segment.id; }
+              e.currentTarget.setPointerCapture(e.pointerId);
+              dragging.current = { x: e.clientX, scroll: scrollLeft.current, ids, source: segments, next: segments, moved: false };
+            }}
+            onPointerMove={e => {
+              const drag = dragging.current;
+              if (!drag) return;
+              if (!drag.moved && Math.abs(e.clientX - drag.x) < 4) return;
+              drag.moved = true; suppressClick.current = true;
+              const rect = container.current?.getBoundingClientRect();
+              if (rect && (e.clientX < rect.left + 24 || e.clientX > rect.right - 24)) {
+                scrollLeft.current = Math.max(0, Math.min(total * pixelsPerSecond, scrollLeft.current + (e.clientX < rect.left + 24 ? -12 : 12)));
+                timeline.current?.setScrollLeft(scrollLeft.current);
+              }
+              drag.next = moveCaptionSelection(drag.source, drag.ids, (e.clientX - drag.x + scrollLeft.current - drag.scroll) / pixelsPerSecond, total, fps);
+              setMovePreview(drag.next);
+            }}
+            onPointerUp={e => {
+              const drag = dragging.current;
+              dragging.current = null;
+              if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId);
+              setMovePreview(null);
+              if (drag?.moved) void commitMove(drag.next);
+            }}
+            onPointerCancel={cancelDrag}
+            onLostPointerCapture={() => { if (dragging.current) cancelDrag(); }}
+            onClick={e => { e.stopPropagation(); if (suppressClick.current) { suppressClick.current = false; return; } choose(segment.id, e); }}
             onDoubleClick={e => { e.preventDefault(); e.stopPropagation(); openExpandedEditor(segment.id); }}
             onKeyDown={e => {
               if (locked) return;
               if (e.key === "F2") { e.preventDefault(); openExpandedEditor(segment.id); }
-              else if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onSegmentSelect(segment.id); }
+              else if (e.key === "Enter") { e.preventDefault(); choose(segment.id, e); }
             }}
-            sx={{ bgcolor: selectedSegmentId === segment.id ? "primary.main" : "#9b5700", color: "white", height: "100%", px: 1, display: "flex", alignItems: "center", borderRadius: 1, overflow: "hidden" }}>
+            sx={{ touchAction: "none", userSelect: "none", bgcolor: selection.includes(segment.id) ? "primary.main" : "#9b5700", color: "white", height: "100%", px: 1, display: "flex", alignItems: "center", borderRadius: 1, overflow: "hidden" }}>
             <Typography noWrap variant="caption" sx={{ direction: `${preferences.direction} !important`, unicodeBidi: "plaintext" }}>{segment.text}</Typography>
           </Box>;
         }} style={{ height: compactTiming || compactDesktop ? 88 : 130, width: "100%" }} />
