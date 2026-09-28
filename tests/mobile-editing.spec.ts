@@ -372,8 +372,8 @@ for (const width of [320, 390]) test(`mobile selection merges captions once, ret
   expect(saves[0].segments).toEqual([{ id: 1, start: 0, end: 4, text: 'שלום עולם סרטון לבדיקה' }]);
   expect(saves[0].words.map(({ word, start, end }: any) => ({ word, start, end }))).toEqual(words.map(({ word, start, end }) => ({ word, start, end })));
   expect(saves[0].words.map((word: any) => word.segmentId)).toEqual([1, 1, 1, 1]);
-  await expect(page.getByText('חוברו 2 כתוביות', { exact: true })).toBeVisible();
-  await page.getByRole('button', { name: 'ביטול', exact: true }).click();
+  await expect(page.getByText('חוברו 2 כתוביות', { exact: true })).toHaveCount(0);
+  await page.getByRole('button', { name: 'ביטול פעולה', exact: true }).click();
   await expect(page.getByTestId('mobile-timing-clip')).toHaveCount(2);
   await expect.poll(() => saves.length).toBe(2);
   expect(saves[1].segments).toEqual(segments);
@@ -496,8 +496,8 @@ for (const width of [320, 390]) test(`selected caption splits at the exact curso
   expect(saves[0].words.map(({ word, start, end, segmentId }: any) => ({ word, start, end, segmentId }))).toEqual([
     words[0], { word: 'עולם', start: 1.25, end: 2, segmentId: '1-split' }, ...words.slice(2),
   ]);
-  await expect(page.getByText('הכתובית פוצלה בנקודת הקו', { exact: true })).toBeVisible();
-  await page.getByRole('button', { name: 'ביטול', exact: true }).click();
+  await expect(page.getByText('הכתובית פוצלה בנקודת הקו', { exact: true })).toHaveCount(0);
+  await page.getByRole('button', { name: 'ביטול פעולה', exact: true }).click();
   await expect(page.getByTestId('mobile-timing-clip')).toHaveCount(2);
   await expect.poll(() => saves.length).toBe(2);
   expect(saves[1].segments).toEqual(segments);

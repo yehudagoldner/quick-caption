@@ -243,7 +243,7 @@ export function MobileCaptionEditor({
     timelineEditing.onDraftStateChange(true);
     try {
       await onCaptionBatch(checkedIds, action, currentTime);
-      setBatchNotice(action === "split" ? "הכתובית פוצלה בנקודת הקו" : action === "merge" ? `חוברו ${checkedIds.length} כתוביות` : `נמחקו ${checkedIds.length} כתוביות`);
+      setBatchNotice(action === "delete" ? `נמחקו ${checkedIds.length} כתוביות` : null);
       setCheckedIds([]);
     } catch {
       setBatchError("שמירת הפעולה נכשלה. הבחירה נשמרה; נסו שוב.");
