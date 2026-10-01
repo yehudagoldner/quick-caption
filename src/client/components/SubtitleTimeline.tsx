@@ -282,8 +282,18 @@ export function SubtitleTimeline({ activeWordEnabled, segments, words = [], disa
         event.preventDefault(); clearSelection(); return;
       }
       if (event.defaultPrevented || event.isComposing || !root.current?.contains(target)
-        || target.closest('input,textarea,select,[contenteditable="true"],[role="dialog"],[role="slider"],[data-testid="segment-inspector"]')) return;
+        || target.closest('input,textarea,select,[contenteditable="true"],[role="dialog"],[role="menu"],[role="listbox"],[role="slider"]')) return;
       const command = event.ctrlKey || event.metaKey;
+      if (!command && !event.altKey && !event.shiftKey && (event.code === "ArrowUp" || event.code === "ArrowDown")) {
+        if (selectedCaption && !dragging.current) {
+          event.preventDefault();
+          // Navigation also works from the word track and while a text draft is
+          // pending. Keep the caption's stored boundary, without rounding it.
+          onRequestTimeChange(Math.max(0, Math.min(total, event.code === "ArrowUp" ? selectedCaption.end : selectedCaption.start)));
+        }
+        return;
+      }
+      if (target.closest('[data-testid="segment-inspector"]')) return;
       if (event.code === "Escape" && dragging.current) { event.preventDefault(); cancelDrag(); return; }
       if (locked || dirty || dragging.current || flight.current) return;
       if (command && event.code === "KeyA") { event.preventDefault(); applySelection(segments.map(s => s.id)); }

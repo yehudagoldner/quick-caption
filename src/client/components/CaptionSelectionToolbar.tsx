@@ -30,13 +30,14 @@ export function CaptionSelectionToolbar({ count, disabled, canAdd, canMerge, can
           ['Ctrl / ⌘ + לחיצה', 'הוספה לבחירה או הסרה ממנה'], ['Shift + לחיצה', 'בחירת טווח כתוביות'],
           ['Ctrl / ⌘ + A', 'בחירת כל הכתוביות'], ['Esc', 'ניקוי הבחירה או ביטול גרירה'],
           ['← / →', 'הזזת הבחירה בפריים אחד; ללא בחירה — הזזת הקו'], ['Shift + ← / →', 'הזזה בחמישה פריימים'],
+          ['↑ / ↓', 'מעבר לסוף / לתחילת הכתובית הנבחרת'],
           ['Delete / Backspace', 'מחיקת הכתוביות המסומנות'], ['Ctrl / ⌘ + M', 'חיבור כתוביות רצופות'],
           ['Ctrl / ⌘ + K', 'פיצול הכתובית המסומנת בנקודת הקו'], ['Ctrl / ⌘ + Z', 'ביטול פעולה'],
           ['Ctrl / ⌘ + Shift + Z / Ctrl + Y', 'ביצוע חוזר'], ['Space', 'ניגון / השהיה'],
           ['Home / End', 'מעבר לתחילת הסרטון / לסופו'], ['+ / −', 'קירוב / הרחקת ציר הזמן'],
           ['Ctrl / ⌘ + 0', 'הצגת כל ההקלטה'], ['F2 / לחיצה כפולה', 'פתיחת עריכת הכתובית'],
         ].map(([key, label]) => <Box key={key} sx={{ display: 'flex', justifyContent: 'space-between', gap: 2, py: .6, borderBottom: '1px solid #eee' }}><Typography variant="body2">{label}</Typography><Typography component="kbd" variant="body2" dir="ltr" sx={{ whiteSpace: 'nowrap' }}>{key}</Typography></Box>)}
-        <Typography variant="caption" sx={{ display: 'block', mt: 2 }}>הקיצורים פעילים כשהמיקוד בציר הראשי, ואינם משנים כתוביות בעת הקלדה בשדה או עבודה בציר המילים. גררו כתובית מסומנת כדי להזיז את כל הבחירה יחד.</Typography>
+        <Typography variant="caption" sx={{ display: 'block', mt: 2 }}>הקיצורים פעילים כשהמיקוד בציר הראשי. ↑ / ↓ פועלים גם בציר המילים. בעת הקלדה בשדה הקיצורים אינם פעילים. גררו כתובית מסומנת כדי להזיז את כל הבחירה יחד.</Typography>
       </DialogContent>
       <DialogActions><Button onClick={() => setHelp(false)}>סגירה</Button></DialogActions>
     </Dialog>

@@ -7,7 +7,7 @@ const segments = [
   { id: 3, start: 3, end: 3.8, text: 'סיום סרטון' },
 ];
 const words = segments.flatMap(s => s.text.split(' ').map((word, index) => ({ word, segmentId: s.id, start: s.start + index * .4, end: Math.min(s.end, s.start + (index + 1) * .4) })));
-async function open(page: Page) {
+async function open(page: Page, loadedSegments = segments, loadedWords = words) {
   await page.setViewportSize({ width: 1366, height: 768 });
   await prepareApp(page);
   await page.route('**/api/videos/42/media?**', route => {
@@ -19,7 +19,7 @@ async function open(page: Page) {
       body: portraitVideo.subarray(start, end + 1) });
   });
   await page.addInitScript(() => localStorage.setItem("caption-editor-preferences", JSON.stringify({ fps: 25 })));
-  await page.route('**/api/videos/load?**', route => route.fulfill({ json: { video: { id: 42, subtitle_json: segments, words_json: words, format: '.srt', stored_path: 'portrait.mp4' } } }));
+  await page.route('**/api/videos/load?**', route => route.fulfill({ json: { video: { id: 42, subtitle_json: loadedSegments, words_json: loadedWords, format: '.srt', stored_path: 'portrait.mp4' } } }));
   const saves: { segments: typeof segments; words: typeof words }[] = [];
   await page.route('**/api/videos/update-subtitles', async route => {
     const body = route.request().postDataJSON();
@@ -33,6 +33,78 @@ async function open(page: Page) {
 }
 const selected = (page: Page) => page.locator('[data-testid="subtitle-clip"][aria-pressed="true"]');
 const toolbar = (page: Page) => page.getByRole('toolbar', { name: 'פעולות בחירת כתוביות' });
+
+test('Up jumps to the selected caption end and Down to its exact start without changing data', async ({ page }) => {
+  const preciseSegments = segments.map((segment, i) => i === 0 ? { ...segment, start: .413, end: 1.237 } : segment);
+  const preciseWords = words.map(word => word.segmentId === 1 ? { ...word, start: Math.max(word.start, .413) } : word);
+  const saves = await open(page, preciseSegments, preciseWords);
+  for (const index of [0, 2, 1]) {
+    const clip = page.getByTestId('subtitle-clip').nth(index);
+    await clip.click();
+    for (const [key, time] of [['ArrowUp', preciseSegments[index].end], ['ArrowDown', preciseSegments[index].start]] as const) {
+      await page.keyboard.press(key);
+      await expect.poll(() => page.locator('video').evaluate((video: HTMLVideoElement) => video.currentTime)).toBeCloseTo(time, 3);
+      await expect(clip).toHaveAttribute('aria-pressed', 'true');
+      expect(Number(await clip.getAttribute('data-start'))).toBeCloseTo(preciseSegments[index].start, 6);
+      expect(Number(await clip.getAttribute('data-end'))).toBeCloseTo(preciseSegments[index].end, 6);
+    }
+  }
+  expect(saves).toHaveLength(0);
+});
+
+test('caption boundary shortcuts work from the word track and preserve multiple word selections', async ({ page }) => {
+  const saves = await open(page);
+  await page.getByTestId('subtitle-clip').nth(1).click();
+  await page.getByRole('button', { name: 'מילה אקטיבית', exact: true }).click();
+  const words = page.getByTestId('word-clip');
+  await words.first().click();
+  await words.last().click({ modifiers: ['Control'] });
+  for (const [key, time] of [['ArrowUp', 2.4], ['ArrowDown', 1.6]] as const) {
+    await page.keyboard.press(key);
+    await expect.poll(() => page.locator('video').evaluate((video: HTMLVideoElement) => video.currentTime)).toBeCloseTo(time, 3);
+    await expect(page.locator('[data-testid="word-clip"][aria-pressed="true"]')).toHaveCount(2);
+    await expect(page.getByTestId('subtitle-clip').nth(1)).toHaveAttribute('aria-pressed', 'true');
+  }
+  expect(saves).toHaveLength(0);
+  await page.keyboard.press('Delete');
+  await expect(page.getByTestId('subtitle-clip')).toHaveCount(2);
+  expect(saves[0].segments).toEqual([segments[0], segments[2]]);
+});
+
+test('boundary shortcuts respect fields, dialogs, sliders, modifiers and absent or multiple caption selection', async ({ page }) => {
+  const saves = await open(page);
+  await page.getByTestId('subtitle-clip').first().click();
+  await page.keyboard.press('ArrowDown');
+  const currentTime = () => page.locator('video').evaluate((video: HTMLVideoElement) => video.currentTime);
+  await expect.poll(currentTime).toBeCloseTo(.4, 3);
+  await page.getByRole('textbox', { name: 'טקסט המקטע' }).focus();
+  await page.keyboard.press('ArrowUp');
+  await expect.poll(currentTime).toBeCloseTo(.4, 3);
+  await page.getByRole('slider', { name: 'זום ציר ראשי' }).focus();
+  await page.keyboard.press('ArrowUp');
+  await expect(page.getByRole('slider', { name: 'זום ציר ראשי' })).toHaveValue('1');
+  await expect.poll(currentTime).toBeCloseTo(.4, 3);
+  await page.getByRole('button', { name: 'סרטון חדש', exact: true }).focus();
+  await page.keyboard.press('ArrowUp');
+  await expect.poll(currentTime).toBeCloseTo(.4, 3);
+  await toolbar(page).getByRole('button', { name: 'קיצורי מקלדת' }).click();
+  await expect(page.getByRole('dialog').getByText('מעבר לסוף / לתחילת הכתובית הנבחרת', { exact: true })).toBeVisible();
+  await page.keyboard.press('ArrowUp');
+  await expect.poll(currentTime).toBeCloseTo(.4, 3);
+  await page.keyboard.press('Escape');
+  await page.getByTestId('subtitle-clip').first().click();
+  for (const modifier of ['Control', 'Meta', 'Alt', 'Shift']) {
+    await page.keyboard.press(`${modifier}+ArrowUp`);
+    await expect.poll(currentTime).toBeCloseTo(.4, 3);
+  }
+  await page.getByTestId('subtitle-clip').nth(1).click({ modifiers: ['Control'] });
+  await page.keyboard.press('ArrowUp');
+  await expect.poll(currentTime).toBeCloseTo(.4, 3);
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('ArrowUp');
+  await expect.poll(currentTime).toBeCloseTo(.4, 3);
+  expect(saves).toHaveLength(0);
+});
 
 async function trackPoint(page: Page, time: number, y: number) {
   const track = (await page.getByTestId('caption-track').boundingBox())!;
