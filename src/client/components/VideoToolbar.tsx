@@ -5,10 +5,6 @@ import {
   Box,
   Button,
   IconButton,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
   FormLabel,
   Menu,
   MenuItem,
@@ -33,7 +29,6 @@ import {
   ViewSidebarRounded,
   MovieFilterRounded,
   SubtitlesRounded,
-  AddRounded,
   RecordVoiceOverRounded,
   AutoFixHighRounded,
   SettingsRounded,
@@ -77,7 +72,6 @@ type VideoToolbarProps = {
   downloadUrl: string | null;
   downloadName: string;
   sidebarOpen: boolean;
-  currentTime: number;
   activeWordEnabled: boolean;
   onFontSizeChange: (event: ChangeEvent<HTMLInputElement>) => void;
   onFontColorChange: (event: ChangeEvent<HTMLInputElement>) => void;
@@ -86,7 +80,6 @@ type VideoToolbarProps = {
   onMarginChange: (event: Event, value: number | number[]) => void;
   onBurnVideo: () => void;
   onToggleSidebar: () => void;
-  onAddSubtitle: (text: string, startTime: number, endTime: number) => void;
   onToggleActiveWord: () => void;
   onResegment?: (maxWords: number, customInstructions?: string) => Promise<void>;
   onAIEdit?: (instructions: string) => Promise<void>;
@@ -109,7 +102,6 @@ export function VideoToolbar({
   downloadUrl,
   downloadName,
   sidebarOpen,
-  currentTime,
   activeWordEnabled,
   onFontSizeChange,
   onFontColorChange,
@@ -118,7 +110,6 @@ export function VideoToolbar({
   onMarginChange,
   onBurnVideo,
   onToggleSidebar,
-  onAddSubtitle,
   onToggleActiveWord,
   onAIEdit,
 }: VideoToolbarProps) {
@@ -134,15 +125,9 @@ export function VideoToolbar({
   const [marginAnchorEl, setMarginAnchorEl] = useState<null | HTMLElement>(null);
   const [fontAnchorEl, setFontAnchorEl] = useState<null | HTMLElement>(null);
   const [colorAnchorEl, setColorAnchorEl] = useState<null | HTMLElement>(null);
-  const [addSubtitleDialogOpen, setAddSubtitleDialogOpen] = useState(false);
   const [aiEditAnchorEl, setAiEditAnchorEl] = useState<null | HTMLElement>(null);
   const [aiEditInstructions, setAiEditInstructions] = useState("");
   const [isAIEditing, setIsAIEditing] = useState(false);
-
-  // Add subtitle form state
-  const [newSubtitleText, setNewSubtitleText] = useState("");
-  const [newSubtitleStart, setNewSubtitleStart] = useState(0);
-  const [newSubtitleEnd, setNewSubtitleEnd] = useState(0);
 
   const handleDownloadClick = (event: React.MouseEvent<HTMLElement>) => {
     setDownloadAnchorEl(event.currentTarget);
@@ -155,21 +140,6 @@ export function VideoToolbar({
   const handleBurnAndDownload = async () => {
     handleDownloadClose();
     onBurnVideo();
-  };
-
-  const handleOpenAddSubtitleDialog = () => {
-    setNewSubtitleText("");
-    setNewSubtitleStart(currentTime);
-    setNewSubtitleEnd(currentTime + 2); // Default 2 seconds duration
-    setAddSubtitleDialogOpen(true);
-  };
-
-  const handleAddSubtitle = () => {
-    if (newSubtitleText.trim()) {
-      onAddSubtitle(newSubtitleText.trim(), newSubtitleStart, newSubtitleEnd);
-      setAddSubtitleDialogOpen(false);
-      setNewSubtitleText("");
-    }
   };
 
   const handleApplyAIEdit = async () => {
@@ -281,18 +251,6 @@ export function VideoToolbar({
         </Button>
 
         <Box sx={{ height: { xs: 24, md: 1 }, width: { xs: 1, md: "100%" }, bgcolor: "divider", my: { xs: 0, md: 0.5 }, mx: { xs: 0.5, md: 0 } }} />
-
-        {/* Add Subtitle Button */}
-        <Button
-          variant="text"
-          startIcon={<AddRounded />}
-          onClick={handleOpenAddSubtitleDialog}
-          disabled={pendingEdits}
-          size="small"
-          sx={{ justifyContent: "flex-start", minWidth: "fit-content" }}
-        >
-          הוסף כתובית
-        </Button>
 
         {/* Active Word Toggle */}
         <Button
@@ -559,55 +517,6 @@ export function VideoToolbar({
         </Paper>
       </Popover>
 
-      {/* Add Subtitle Dialog */}
-      <Dialog
-        open={addSubtitleDialogOpen}
-        onClose={() => setAddSubtitleDialogOpen(false)}
-        maxWidth="sm"
-        fullWidth
-      >
-        <DialogTitle>הוסף כתובית חדשה</DialogTitle>
-        <DialogContent>
-          <Stack spacing={3} sx={{ pt: 2 }}>
-            <TextField
-              label="טקסט הכתובית"
-              multiline
-              rows={3}
-              value={newSubtitleText}
-              onChange={(e) => setNewSubtitleText(e.target.value)}
-              fullWidth
-              autoFocus
-              placeholder="הקלד את הטקסט של הכתובית..."
-            />
-            <TextField
-              label="זמן התחלה (שניות)"
-              type="number"
-              value={newSubtitleStart}
-              onChange={(e) => setNewSubtitleStart(Number(e.target.value))}
-              inputProps={{ min: 0, step: 0.1 }}
-              fullWidth
-            />
-            <TextField
-              label="זמן סיום (שניות)"
-              type="number"
-              value={newSubtitleEnd}
-              onChange={(e) => setNewSubtitleEnd(Number(e.target.value))}
-              inputProps={{ min: 0, step: 0.1 }}
-              fullWidth
-            />
-          </Stack>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setAddSubtitleDialogOpen(false)}>ביטול</Button>
-          <Button
-            onClick={handleAddSubtitle}
-            variant="contained"
-            disabled={!newSubtitleText.trim() || newSubtitleEnd <= newSubtitleStart}
-          >
-            הוסף
-          </Button>
-        </DialogActions>
-      </Dialog>
     </>
   );
 }

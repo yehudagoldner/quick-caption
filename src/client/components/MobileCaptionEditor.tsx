@@ -888,7 +888,7 @@ export function MobileCaptionEditor({
               <ListItemText primary="הורד סרטון צרוב מוכן" />
             </ListItemButton>
           )}
-          <ListItemButton disabled={hasTimelineDrafts} onClick={() => { setMoreOpen(false); setNewText(""); setNewStart(currentTime); setNewEnd(currentTime + 2); setAddOpen(true); }}>
+          <ListItemButton disabled={!isEditable || hasTimelineDrafts || saveState === "saving" || currentTime >= duration} onClick={() => { setMoreOpen(false); setNewText(""); setNewStart(currentTime); setNewEnd(Math.min(duration, currentTime + 0.5)); setAddOpen(true); }}>
             <ListItemIcon><AddRounded /></ListItemIcon>
             <ListItemText primary="הוסף כתובית" />
           </ListItemButton>

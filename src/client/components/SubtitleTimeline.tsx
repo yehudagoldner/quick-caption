@@ -2,7 +2,7 @@ import "react-virtualized/styles.css";
 import "./SubtitleTimeline.css";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Alert, Box, Button, Dialog, DialogActions, DialogContent, DialogTitle, IconButton, InputAdornment, Slider, Stack, TextField, ThemeProvider, Tooltip, Typography, createTheme, useTheme } from "@mui/material";
-import { PlayArrowRounded, PauseRounded, UndoRounded, RedoRounded, RepeatRounded, ContentCutRounded, CloseRounded, RestartAltRounded, EditOutlined, OpenInFullRounded } from "@mui/icons-material";
+import { AddRounded, PlayArrowRounded, PauseRounded, UndoRounded, RedoRounded, RepeatRounded, ContentCutRounded, CloseRounded, RestartAltRounded, EditOutlined, OpenInFullRounded } from "@mui/icons-material";
 import { Timeline, type TimelineRow, type TimelineState } from "@xzdarcy/react-timeline-editor";
 import type { Segment, Word } from "../types";
 import { useEditorPreferences } from "../contexts/EditorPreferences";
@@ -25,6 +25,7 @@ export type SubtitleTimelineProps = {
   onRequestTimeChange: (time: number) => void;
   onCaptionBatch: (ids: Segment["id"][], action: CaptionBatchAction, splitTime?: number) => Promise<void>;
   onSegmentsChange: (segments: Segment[]) => void | Promise<void>;
+  onAddSubtitle: (text: string, startTime: number, endTime: number) => void;
   onSaveSegment: (segment: Segment, words: Word[]) => Promise<void>;
   onSplitSegment: (id: Segment["id"], time: number, draft?: CaptionDraft) => Promise<void>;
   isPlaying?: boolean; onPlayPause?: () => void; onPlayFrom: (time: number) => void;
@@ -36,7 +37,7 @@ export type SubtitleTimelineProps = {
 };
 
 export function SubtitleTimeline({ activeWordEnabled, segments, words = [], disabled, busy, duration, currentTime = 0, mediaUrl,
-  selectedSegmentId, onSegmentSelect, onRequestTimeChange, onSegmentsChange, onCaptionBatch, onSaveSegment, onSplitSegment,
+  selectedSegmentId, onSegmentSelect, onRequestTimeChange, onSegmentsChange, onAddSubtitle, onCaptionBatch, onSaveSegment, onSplitSegment,
   isPlaying, onPlayPause, onPlayFrom, loopEnabled, onLoopChange,   onUndo, onRedo, canUndo, canRedo, onDraftStateChange, layout = "full", compactDesktop = false,
 }: SubtitleTimelineProps) {
   const { preferences } = useEditorPreferences();
@@ -281,6 +282,8 @@ export function SubtitleTimeline({ activeWordEnabled, segments, words = [], disa
     {error && !expanded && <Alert severity="warning" onClose={() => setError(null)}>{error}</Alert>}
     <Stack direction="row" alignItems="center" gap={1}>
       <IconButton aria-label={isPlaying ? "השהה" : "נגן"} onClick={onPlayPause}>{isPlaying ? <PauseRounded /> : <PlayArrowRounded />}</IconButton>
+      <Tooltip title="הוסף כתובית"><span><IconButton aria-label="הוסף כתובית" disabled={groupLocked || time >= total}
+        onClick={() => { if (isPlaying) onPlayPause?.(); onLoopChange(false); onAddSubtitle("הכנס טקסט כאן", time, Math.min(total, time + 0.5)); }}><AddRounded /></IconButton></span></Tooltip>
       <Button size="small" aria-label="פריים אחורה" onClick={() => seek(time - 1 / fps)}>−1F</Button>
       <Typography variant="body2" dir="ltr" data-testid="playhead-timecode" sx={{ whiteSpace: "nowrap" }}>{formatTimecode(time, fps)}</Typography>
       <Button size="small" aria-label="פריים קדימה" onClick={() => seek(time + 1 / fps)}>+1F</Button>

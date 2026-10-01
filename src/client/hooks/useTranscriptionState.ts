@@ -245,6 +245,7 @@ export function useTranscriptionState({
 
       const newSegments = [...editableSegments, newSegment].sort((a, b) => a.start - b.start);
       setEditableSegments(newSegments);
+      setSelectedSegmentId(newSegment.id);
       await persistSegments(newSegments);
     },
     [editableSegments, persistSegments],

@@ -231,7 +231,6 @@ export function TranscriptionMainContent({
               downloadUrl={downloadUrl}
               downloadName={downloadName}
               sidebarOpen={sidebarOpen}
-              currentTime={currentTime}
               activeWordEnabled={activeWordEnabled}
               onFontSizeChange={onFontSizeChange}
               onFontColorChange={onFontColorChange}
@@ -240,7 +239,6 @@ export function TranscriptionMainContent({
               onMarginChange={onMarginChange}
               onBurnVideo={onBurnVideo}
               onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
-              onAddSubtitle={onAddSubtitle}
               onToggleActiveWord={onToggleActiveWord}
               onResegment={onResegment}
               onAIEdit={onAIEdit}
@@ -278,6 +276,7 @@ export function TranscriptionMainContent({
               currentTime={currentTime}
               onRequestTimeChange={onTimelineTimeChange}
               onSegmentsChange={onTimelineSegmentsChange}
+              onAddSubtitle={onAddSubtitle}
               onCaptionBatch={onCaptionBatch}
               selectedSegmentId={selectedSegmentId}
               onSegmentSelect={onSegmentSelect}
