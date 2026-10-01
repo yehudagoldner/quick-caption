@@ -3,6 +3,22 @@
   cursor: grab;
 }
 
+.subtitle-timeline .timeline-editor {
+  touch-action: none;
+}
+
+.subtitle-timeline .timeline-editor-cursor {
+  top: 0;
+  height: 100%;
+  z-index: 5;
+}
+
+.subtitle-timeline .timeline-editor-cursor-area {
+  /* The library scales by 0.5 horizontally: 40px gives a 20px grip. */
+  width: 40px;
+  touch-action: none;
+}
+
 .subtitle-timeline .action:active,
 .subtitle-timeline [class*="action"].dragging {
   cursor: grabbing;

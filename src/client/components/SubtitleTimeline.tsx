@@ -14,6 +14,7 @@ import { CaptionSelectionToolbar } from "./CaptionSelectionToolbar";
 import { moveCaptionSelection } from "../../captionSelection.js";
 import { canMergeCaptions, canSplitCaptionAtTime, type CaptionBatchAction } from "../../captionBatchEditing.js";
 import { AudioWaveform } from "./AudioWaveform";
+import { useTimelineScrubbing } from "../hooks/useTimelineScrubbing";
 
 export type CaptionDraft = { segment: Segment; words: Word[] };
 export type SubtitleTimelineProps = {
@@ -114,15 +115,17 @@ export function SubtitleTimeline({ activeWordEnabled, segments, words = [], disa
   const pixelsPerSecond = Math.max(.01, (width - 40) / total) * 2 ** (effectiveZoom / 25);
   const scale = Math.max(1, Math.ceil(100 / pixelsPerSecond));
   const scaleWidth = pixelsPerSecond * scale;
+  const seek = (value: number) => { onRequestTimeChange(Math.max(0, Math.min(total, snapToFrame(value, fps)))); return true; };
+  const { handlers: scrubbing, active: scrubbingActive } = useTimelineScrubbing(timeline, pixelsPerSecond, seek);
   useLayoutEffect(() => {
     if (timeline.current?.getTime() !== time) timeline.current?.setTime(time);
+    if (scrubbingActive.current) return;
     const nextScroll = timelineScrollForTime(time, pixelsPerSecond, width, scrollLeft.current);
     if (nextScroll !== scrollLeft.current) {
       scrollLeft.current = nextScroll;
       timeline.current?.setScrollLeft(scrollLeft.current);
     }
   }, [time, pixelsPerSecond, width]);
-  const seek = (value: number) => { onRequestTimeChange(Math.max(0, Math.min(total, snapToFrame(value, fps)))); return true; };
   const displaySegments = movePreview ?? segments;
   const trackStructure = displaySegments.map(segment => `${segment.id}:${segment.start}:${segment.end}`).join("|");
   const rows = useMemo<TimelineRow[]>(() => [{ id: "captions", actions: displaySegments.map(s => ({
@@ -306,7 +309,7 @@ export function SubtitleTimeline({ activeWordEnabled, segments, words = [], disa
         canAdd={time < total} add={() => { if (isPlaying) onPlayPause?.(); onLoopChange(false); onAddSubtitle("הכנס טקסט כאן", time, Math.min(total, time + 0.5)); }}
         selectAll={() => applySelection(segments.map(s => s.id))} clear={clearSelection} merge={() => void runSelectionAction("merge")} split={() => void runSelectionAction("split")} remove={() => void runSelectionAction("delete")} move={nudge} />
     </Stack>
-    <Box ref={container} data-testid="caption-track" sx={{ minWidth: 0, direction: "ltr", "& *": { direction: "ltr !important" } }}>
+    <Box ref={container} data-testid="caption-track" {...scrubbing} sx={{ minWidth: 0, direction: "ltr", "& *": { direction: "ltr !important" } }}>
       <Timeline ref={timeline} editorData={rows} effects={effects} disableDrag={locked || dirty || movePreview !== null} gridSnap={false} dragLine
         scale={scale} scaleWidth={scaleWidth} scaleSplitCount={4} minScaleCount={Math.max(2, Math.ceil(total / scale) + 1)}
         getScaleRender={value => <span>{formatTimecode(value, fps)}</span>}

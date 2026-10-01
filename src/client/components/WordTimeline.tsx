@@ -8,6 +8,7 @@ import { formatTimecode, snapToFrame } from "../utils/timecode";
 import { validateWordRange } from "../../timelineEditing.js";
 import { TimecodeField } from "./TimecodeField";
 import { TimelineEditToolbar } from "./TimelineEditToolbar";
+import { useTimelineScrubbing } from "../hooks/useTimelineScrubbing";
 
 // Drafts belong to the parent so switching captions never discards work.
 export function WordTimeline({ enabled, segment, words, currentTime, onWordsChange, onSeek, disabled, toolbarEditor, toolbarActions, toolbarPrimary, toolbarClose, compact = false }: {
@@ -37,6 +38,7 @@ export function WordTimeline({ enabled, segment, words, currentTime, onWordsChan
   })) }], [words, segment.start, disabled]);
   const effects = useMemo(() => Object.fromEntries(words.map((w, i) => [String(i), { id: String(i), name: w.word }])), [words]);
   const seek = (relative: number) => { onSeek(Math.min(segment.end, Math.max(segment.start, snapToFrame(segment.start + relative, fps)))); return true; };
+  const { handlers: scrubbing } = useTimelineScrubbing(timeline, zoom, seek);
   const update = (next: Word[]) => { setError(null); onWordsChange(next.map((w, wordIndex) => ({ ...w, segmentId: segment.id, wordIndex }))); };
   const dialogError = editing && (validateWordRange(editing.word, segment, words.filter((_, i) => i !== editing.index)) ||
     (editing.index !== null && ((editing.index > 0 && editing.word.start < words[editing.index - 1].start) ||
@@ -70,7 +72,7 @@ export function WordTimeline({ enabled, segment, words, currentTime, onWordsChan
       </Box>
     </>} />
     <Snackbar open={!!error} onClose={() => setError(null)}><Alert severity="warning" onClose={() => setError(null)}>{error}</Alert></Snackbar>
-    <Box data-testid="word-track" aria-label="ציר פנימי — מילים במקטע הנבחר" sx={{ direction: "ltr", "& *": { direction: "ltr !important" }, minWidth: 0 }}>
+    <Box data-testid="word-track" {...scrubbing} aria-label="ציר פנימי — מילים במקטע הנבחר" sx={{ direction: "ltr", "& *": { direction: "ltr !important" }, minWidth: 0 }}>
       <Timeline ref={timeline} editorData={rows} effects={effects} scale={1} scaleWidth={zoom} minScaleCount={Math.max(2, Math.ceil(duration) + 1)}
         gridSnap={false} dragLine disableDrag={disabled}
         onCursorDrag={seek} onCursorDragEnd={seek} onClickTimeArea={seek}

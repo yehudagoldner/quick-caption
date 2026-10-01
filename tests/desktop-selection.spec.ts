@@ -34,6 +34,115 @@ async function open(page: Page) {
 const selected = (page: Page) => page.locator('[data-testid="subtitle-clip"][aria-pressed="true"]');
 const toolbar = (page: Page) => page.getByRole('toolbar', { name: 'פעולות בחירת כתוביות' });
 
+async function trackPoint(page: Page, time: number, y: number) {
+  const track = (await page.getByTestId('caption-track').boundingBox())!;
+  const clip = (await page.getByTestId('subtitle-clip').first().boundingBox())!;
+  const scroll = await page.getByTestId('caption-track').locator('.timeline-editor-edit-area .ReactVirtualized__Grid').evaluate(el => el.scrollLeft);
+  const pixelsPerSecond = clip.width / (segments[0].end - segments[0].start);
+  return { x: track.x + 20 + time * pixelsPerSecond - scroll, y: track.y + y };
+}
+
+test('every empty timeline surface seeks without changing caption selection or data', async ({ page }) => {
+  const saves = await open(page);
+  await page.getByTestId('subtitle-clip').nth(2).click();
+  const cases = [{ time: 1.4, y: 54 }, { time: 2.76, y: 54 }, { time: .2, y: 37 }, { time: 3.4, y: 84 }, { time: 1.4, y: 8 }];
+  for (const point of cases) {
+    const position = await trackPoint(page, point.time, point.y);
+    await page.mouse.click(position.x, position.y);
+    await expect.poll(() => page.locator('video').evaluate((v: HTMLVideoElement) => v.currentTime)).toBeCloseTo(point.time, 2);
+    await expect(selected(page)).toHaveCount(1);
+    await expect(page.getByTestId('subtitle-clip').nth(2)).toHaveAttribute('aria-pressed', 'true');
+  }
+  expect(saves).toHaveLength(0);
+});
+
+test('the playhead drags continuously from every height, including over a caption', async ({ page }) => {
+  const saves = await open(page);
+  for (const y of [8, 37, 54, 84]) {
+    const initial = await trackPoint(page, .88, 84);
+    await page.mouse.click(initial.x, initial.y);
+    const start = await trackPoint(page, .88, y);
+    const end = await trackPoint(page, 2.76, y);
+    await page.mouse.move(start.x, start.y);
+    await page.mouse.down();
+    await page.mouse.move(end.x, end.y, { steps: 8 });
+    // Assert before release: the playhead must scrub, not only seek on click-up.
+    await expect.poll(() => page.locator('video').evaluate((v: HTMLVideoElement) => v.currentTime)).toBeCloseTo(2.76, 2);
+    await page.mouse.up();
+    await expect(page.getByTestId('playhead-timecode')).toHaveText('00:00:02:19');
+    await expect(selected(page)).toHaveCount(0);
+  }
+  expect(saves).toHaveLength(0);
+  await expect(page.getByTestId('subtitle-clip').first()).toHaveAttribute('data-start', '0.4');
+});
+
+test('scrubbing captures the pointer outside the track and clamps at recording boundaries', async ({ page }) => {
+  const errors: Error[] = [];
+  page.on('pageerror', error => errors.push(error));
+  const saves = await open(page);
+  const initial = await trackPoint(page, 1.4, 54);
+  await page.mouse.move(initial.x, initial.y);
+  await page.mouse.down();
+  const track = (await page.getByTestId('caption-track').boundingBox())!;
+  await page.mouse.move(track.x + track.width + 100, track.y - 50, { steps: 8 });
+  const duration = await page.locator('video').evaluate((v: HTMLVideoElement) => v.duration);
+  await expect.poll(() => page.locator('video').evaluate((v: HTMLVideoElement) => v.currentTime)).toBeCloseTo(duration, 2);
+  await page.mouse.move(0, track.y - 50, { steps: 8 });
+  await expect(page.getByTestId('playhead-timecode')).toHaveText('00:00:00:00');
+  await page.mouse.up();
+  expect(saves).toHaveLength(0);
+  expect(errors).toHaveLength(0);
+});
+
+test('word-track empty space seeks absolute media time and its cursor drags over words', async ({ page }) => {
+  const saves = await open(page);
+  await page.getByTestId('subtitle-clip').nth(1).click();
+  await page.getByRole('button', { name: 'מילה אקטיבית', exact: true }).click();
+  const track = page.getByTestId('word-track');
+  await expect(track).toBeVisible();
+  const rect = (await track.boundingBox())!;
+  const zoom = Number(await page.getByRole('slider', { name: 'זום מילים' }).inputValue());
+  await page.mouse.click(rect.x + 20 + .24 * zoom, rect.y + rect.height - 4);
+  await expect(page.getByTestId('playhead-timecode')).toHaveText('00:00:01:21');
+  await page.mouse.move(rect.x + 20 + .24 * zoom, rect.y + 54);
+  await page.mouse.down();
+  await page.mouse.move(rect.x + 20 + .68 * zoom, rect.y + 8, { steps: 8 });
+  await expect(page.getByTestId('playhead-timecode')).toHaveText('00:00:02:07');
+  await page.mouse.up();
+  await expect(page.getByTestId('subtitle-clip').nth(1)).toHaveAttribute('aria-pressed', 'true');
+  expect(saves).toHaveLength(0);
+  await page.screenshot({ path: 'tmp/review/timeline-scrubbing.png' });
+});
+
+test('zoomed long-track scrubbing scrolls at the edge and seeks correctly after scrolling', async ({ page }) => {
+  const errors: Error[] = [];
+  page.on('pageerror', error => errors.push(error));
+  await page.setViewportSize({ width: 1366, height: 768 });
+  await page.goto('/tests/editor-harness.html');
+  await page.getByRole('button', { name: 'בדיקת ציר ארוך — 90 שניות', exact: true }).click();
+  await expect.poll(() => page.locator('video').evaluate((a: HTMLVideoElement) => a.readyState)).toBeGreaterThan(0);
+  const track = page.getByTestId('caption-track');
+  await track.scrollIntoViewIfNeeded();
+  const rect = (await track.boundingBox())!;
+  const clip = (await page.getByTestId('subtitle-clip').first().boundingBox())!;
+  const pixelsPerSecond = clip.width / 3;
+  const grid = track.locator('.timeline-editor-edit-area .ReactVirtualized__Grid');
+  await page.mouse.move(rect.x + 20 + 10 * pixelsPerSecond, rect.y + rect.height - 5);
+  await page.mouse.down();
+  await page.mouse.move(rect.x + rect.width - 8, rect.y + rect.height - 5, { steps: 8 });
+  await expect.poll(() => page.locator('video').evaluate((a: HTMLVideoElement) => a.currentTime)).toBeGreaterThan(32);
+  await page.mouse.move(rect.x + rect.width / 2, rect.y + 8);
+  await page.mouse.up();
+  const scroll = await grid.evaluate(el => el.scrollLeft);
+  expect(scroll).toBeGreaterThan(0);
+  const x = rect.width / 3;
+  const expected = Math.round(((scroll + x - 20) / pixelsPerSecond) * 24) / 24;
+  await page.mouse.click(rect.x + x, rect.y + 37);
+  await expect.poll(() => page.locator('video').evaluate((a: HTMLVideoElement) => a.currentTime)).toBeCloseTo(expected, 2);
+  expect(errors).toHaveLength(0);
+  await expect(page.getByTestId('save-count')).toHaveText('שמירות בדיקה: 0');
+});
+
 test('Ctrl toggles, Shift selects a range; toolbar merges and keyboard undoes/redoes', async ({ page }) => {
   const saves = await open(page);
   const clips = page.getByTestId('subtitle-clip');
@@ -61,6 +170,7 @@ test('Ctrl toggles, Shift selects a range; toolbar merges and keyboard undoes/re
 
 test('Delete and toolbar delete multiple captions; deleting all retains timeline and Undo', async ({ page }) => {
   await open(page);
+  const emptyTrackPoint = await trackPoint(page, 1.4, 54);
   await page.getByTestId('subtitle-clip').first().click();
   await page.getByTestId('subtitle-clip').nth(2).click({ modifiers: ['Control'] });
   await page.keyboard.press('Delete');
@@ -74,6 +184,8 @@ test('Delete and toolbar delete multiple captions; deleting all retains timeline
   await toolbar(page).getByRole('button', { name: 'מחיקת כתוביות נבחרות' }).click();
   await expect(page.getByTestId('subtitle-clip')).toHaveCount(0);
   await expect(page.getByTestId('caption-track')).toBeVisible();
+  await page.mouse.click(emptyTrackPoint.x, emptyTrackPoint.y);
+  await expect(page.getByTestId('playhead-timecode')).toHaveText('00:00:01:10');
   await expect(toolbar(page).getByRole('button', { name: 'בחירת הכול' })).toBeEnabled();
   await page.keyboard.press('Control+z');
   await expect(page.getByTestId('subtitle-clip')).toHaveCount(3);
@@ -90,6 +202,8 @@ test('arrows and toolbar translate all selected words by whole frames and preser
   expect(saves[0].segments[1].start).toBeCloseTo(1.64);
   expect(saves[0].words[0].start).toBeCloseTo(.44);
   expect(saves[0].words[2].start).toBeCloseTo(1.64);
+  // The request is observed before the editor finishes unlocking its actions.
+  await expect(toolbar(page).getByRole('button', { name: 'הזזת הבחירה פריים ימינה' })).toBeEnabled();
   await page.keyboard.press('Shift+ArrowLeft');
   await expect.poll(() => saves.length).toBe(2);
   expect(saves[1].segments[0].start).toBeCloseTo(.24);
