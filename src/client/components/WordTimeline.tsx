@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Alert, Box, Button, Dialog, DialogActions, DialogContent, DialogTitle, IconButton, Slider, Snackbar, Stack, TextField, Tooltip, Typography } from "@mui/material";
-import { AddRounded, EditOutlined, MyLocationRounded, DeleteOutlineRounded, ZoomInRounded, ShortTextRounded } from "@mui/icons-material";
+import { EditOutlined, MyLocationRounded, DeleteOutlineRounded, ZoomInRounded, ShortTextRounded } from "@mui/icons-material";
 import { Timeline, type TimelineRow, type TimelineState } from "@xzdarcy/react-timeline-editor";
 import type { Segment, Word } from "../types";
 import { useEditorPreferences } from "../contexts/EditorPreferences";
@@ -27,7 +27,7 @@ export function WordTimeline({ enabled, segment, words, currentTime, onWordsChan
   const root = useRef<HTMLDivElement | null>(null);
   const deleting = useRef(false);
   const [error, setError] = useState<string | null>(null);
-  const [editing, setEditing] = useState<{ index: number | null; word: Word } | null>(null);
+  const [editing, setEditing] = useState<{ index: number; word: Word } | null>(null);
   const [validStart, setValidStart] = useState(true), [validEnd, setValidEnd] = useState(true);
   const timeline = useRef<TimelineState | null>(null);
   const duration = segment.end - segment.start;
@@ -67,16 +67,9 @@ export function WordTimeline({ enabled, segment, words, currentTime, onWordsChan
     finally { deleting.current = false; }
   };
   const dialogError = editing && (validateWordRange(editing.word, segment, words.filter((_, i) => i !== editing.index)) ||
-    (editing.index !== null && ((editing.index > 0 && editing.word.start < words[editing.index - 1].start) ||
-      (editing.index < words.length - 1 && editing.word.start > words[editing.index + 1].start))
+    ((editing.index > 0 && editing.word.start < words[editing.index - 1].start) ||
+      (editing.index < words.length - 1 && editing.word.start > words[editing.index + 1].start)
       ? "שינוי תזמון לא משנה את סדר המילים. ערכו את הטקסט כדי לשנות סדר." : null));
-  const openAdd = () => {
-    let start = segment.start;
-    for (const word of words) { if (word.start - start >= 1 / fps) break; start = Math.max(start, word.end); }
-    const nextStart = words.find(w => w.start > start + .000001)?.start ?? segment.end;
-    setValidStart(true); setValidEnd(true);
-    setEditing({ index: null, word: { word: "", start, end: Math.min(nextStart, start + .5), segmentId: segment.id, timingSource: "aligned" } });
-  };
   // Only the presentation changes. The caption draft and its word timing data
   // remain owned by the parent, including when highlighting is switched off.
   if (!enabled) return <TimelineEditToolbar editor={toolbarEditor} actions={toolbarActions}
@@ -106,7 +99,6 @@ export function WordTimeline({ enabled, segment, words, currentTime, onWordsChan
       {toolbarActions}
       <Box className="timeline-toolbar-divider" />
       <Tooltip title="Ctrl / ⌘ + לחיצה לבחירה מרובה, Shift לבחירת טווח, Delete למחיקת המילים המסומנות, Esc לניקוי הבחירה."><Box component="span" sx={{ display: "flex", alignItems: "center", color: "text.secondary", gap: .25 }}><ShortTextRounded fontSize="small" /><Typography variant="caption" data-testid="word-selection-count">{selection.length ? `${selection.length} מילים נבחרו` : "מילים"}</Typography></Box></Tooltip>
-      <Tooltip title="הוסף מילה"><span><IconButton size="small" aria-label="הוסף מילה" disabled={disabled} onClick={openAdd}><AddRounded /></IconButton></span></Tooltip>
       <Tooltip title={hasWord ? "ערוך מילה ותזמון" : "בחרו מילה בציר לעריכה"}><span><IconButton size="small" aria-label="ערוך מילה ותזמון" disabled={disabled || !hasWord} onClick={() => { if (selected === null) return; setValidStart(true); setValidEnd(true); setEditing({ index: selected, word: { ...words[selected] } }); }}><EditOutlined /></IconButton></span></Tooltip>
       <Tooltip title="עבור למיקום המילה"><span><IconButton size="small" aria-label="עבור למיקום המילה" disabled={!hasWord} onClick={() => { if (selected !== null) onSeek(words[selected].start); }}><MyLocationRounded /></IconButton></span></Tooltip>
       <Tooltip title="מחק מילים מסומנות · Delete"><span><IconButton size="small" aria-label="מחק מילים מסומנות" color="error" disabled={disabled || !selection.length} onClick={() => void removeSelected()}><DeleteOutlineRounded /></IconButton></span></Tooltip>
@@ -151,7 +143,7 @@ export function WordTimeline({ enabled, segment, words, currentTime, onWordsChan
         </Box>} style={{ width: "100%", height: compact ? 88 : 120 }} />
     </Box>
     <Dialog open={!!editing} onClose={() => setEditing(null)} fullWidth maxWidth="sm">
-      <DialogTitle>{editing?.index === null ? "הוסף מילה חדשה" : "עריכת מילה ותזמון"}</DialogTitle>
+      <DialogTitle>עריכת מילה ותזמון</DialogTitle>
       {editing && <DialogContent><Stack spacing={2} sx={{ pt: 1 }}>
         <TextField autoFocus label="טקסט המילה" value={editing.word.word} onChange={e => setEditing({ ...editing, word: { ...editing.word, word: e.target.value } })} />
         <Typography variant="caption">גבולות המקטע: <span dir="ltr">{formatTimecode(segment.start, fps)} – {formatTimecode(segment.end, fps)}</span></Typography>
