@@ -184,6 +184,7 @@ export function useTranscriptionHandlers({
   const burnSignature = () => JSON.stringify({
     segments: editableSegments.map(segment => [segment.id, segment.start, segment.end, segment.text]),
     words: editableWords.map(word => [word.word, word.start, word.end, word.segmentId]),
+    mediaUrl,
     activeWordEnabled,
     direction: preferences.direction,
     fontSize,
@@ -194,6 +195,12 @@ export function useTranscriptionHandlers({
     width: videoDimensions?.width ?? null,
     height: videoDimensions?.height ?? null,
   });
+  const currentBurnSignature = burnSignature();
+  useEffect(() => {
+    if (burnedVideo && burnedSignature.current !== currentBurnSignature) setBurnedVideo(null);
+  }, [currentBurnSignature, burnedVideo, setBurnedVideo]);
+  const latestBurnSignature = useRef(currentBurnSignature);
+  latestBurnSignature.current = currentBurnSignature;
   const handleBurnVideo = useCallback(async (options?: { download?: boolean; reuse?: boolean }) => {
     if (!response.subtitle?.content) {
       setBurnError("לא נמצאו כתוביות מתאימות לצריבה.");
@@ -221,8 +228,9 @@ export function useTranscriptionHandlers({
         videoWidth: videoDimensions?.width ?? null,
         videoHeight: videoDimensions?.height ?? null,
       });
-      if (burnedVideo) {
-        URL.revokeObjectURL(burnedVideo.url);
+      if (latestBurnSignature.current !== signature) {
+        setBurnError("הכתוביות השתנו במהלך יצירת הווידאו. צרבו שוב את הגרסה המעודכנת.");
+        return null;
       }
       const url = URL.createObjectURL(result.blob);
       const baseName = downloadName.replace(/\.[^.]+$/, "") || "video";
@@ -246,6 +254,7 @@ export function useTranscriptionHandlers({
     }
   }, [
     response.subtitle?.content,
+    mediaUrl,
     setBurnError,
     setIsBurning,
     onBurn,

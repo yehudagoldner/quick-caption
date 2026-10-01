@@ -10,7 +10,7 @@ async function setup(page: Page, mode: 'admin' | 'member' | 'guest' = 'admin') {
     models: [{ model: 'gpt-6-luna', serviceTier: 'fast', calls: 4, inputTokens: 12345, outputTokens: 1000, cachedTokens: 200, durationSeconds: 0, costUSD: '0.0450', unpriced: 1 }],
     admins: [{ email: 'goldnery@gmail.com', grantedBy: 'goldnery@gmail.com', createdAt: '2026-09-30' }], audit: [],
   };
-  await page.route('**/src/client/contexts/AuthContext.tsx', route => route.fulfill({ contentType: 'application/javascript', body: `const user = ${mode === 'guest' ? 'null' : `{ uid: 'owner-id', email: '${mode === 'admin' ? 'goldnery@gmail.com' : 'member@example.com'}', displayName: 'Review', getIdToken: async () => 'ui-test-token' }`}; export const useAuth = () => ({ user, loading: false, signIn: async () => {}, signOut: async () => {} }); export const AuthProvider = ({ children }) => children;` }));
+  await page.route('**/src/client/contexts/AuthContext.tsx*', route => route.fulfill({ contentType: 'application/javascript', body: `const user = ${mode === 'guest' ? 'null' : `{ uid: 'owner-id', email: '${mode === 'admin' ? 'goldnery@gmail.com' : 'member@example.com'}', displayName: 'Review', getIdToken: async () => 'ui-test-token' }`}; export const useAuth = () => ({ user, loading: false, signIn: async () => {}, signOut: async () => {} }); export const AuthProvider = ({ children }) => children;` }));
   await page.routeWebSocket('**/socket.io/**', () => {});
   await page.route('**/api/**', route => route.fulfill({ json: { credits: 50, videos: [] } }));
   const grants: object[] = [];

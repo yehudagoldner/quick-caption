@@ -1,3 +1,4 @@
+import { apiFetch } from "../api";
 import { useEffect, useRef, useState } from "react";
 import { Alert, Box, Button, Card, CardActionArea, CardContent, Chip, CircularProgress, Container, Stack, Typography } from "@mui/material";
 import { PayPalScriptProvider, PayPalButtons, usePayPalScriptReducer, DISPATCH_ACTION, SCRIPT_LOADING_STATE } from "@paypal/react-paypal-js";
@@ -83,7 +84,7 @@ export function BuyCreditsPage({ user, currentCredits, onCreditsUpdated }: BuyCr
     setSuccess(null);
     setCheckoutOpen(true);
     try {
-      const response = await fetch(`${API_BASE_URL}/api/payments/create-order`, {
+      const response = await apiFetch(`${API_BASE_URL}/api/payments/create-order`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ userUid: uid, credits: selectedPackage.credits }),
         signal: AbortSignal.timeout(30_000),
@@ -111,7 +112,7 @@ export function BuyCreditsPage({ user, currentCredits, onCreditsUpdated }: BuyCr
     setError(null);
     setCanDiscardPending(false);
     try {
-      const response = await fetch(`${API_BASE_URL}/api/payments/${checkOnly ? "check-order" : "capture-order"}`, {
+      const response = await apiFetch(`${API_BASE_URL}/api/payments/${checkOnly ? "check-order" : "capture-order"}`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ orderId, userUid: uid }), signal: AbortSignal.timeout(60_000),
       });

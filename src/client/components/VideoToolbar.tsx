@@ -126,6 +126,7 @@ export function VideoToolbar({
   const [fontAnchorEl, setFontAnchorEl] = useState<null | HTMLElement>(null);
   const [colorAnchorEl, setColorAnchorEl] = useState<null | HTMLElement>(null);
   const [aiEditAnchorEl, setAiEditAnchorEl] = useState<null | HTMLElement>(null);
+  const [aiEditError, setAiEditError] = useState<string | null>(null);
   const [aiEditInstructions, setAiEditInstructions] = useState("");
   const [isAIEditing, setIsAIEditing] = useState(false);
 
@@ -146,11 +147,13 @@ export function VideoToolbar({
     if (onAIEdit && aiEditInstructions.trim()) {
       try {
         setIsAIEditing(true);
+        setAiEditError(null);
         await onAIEdit(aiEditInstructions.trim());
         setAiEditAnchorEl(null);
         setAiEditInstructions("");
       } catch (error) {
         console.error("AI edit failed", error);
+        setAiEditError("עריכת AI נכשלה. ההוראות נשמרו; אפשר לנסות שוב.");
       } finally {
         setIsAIEditing(false);
       }
@@ -451,6 +454,7 @@ export function VideoToolbar({
             <Typography variant="subtitle1" fontWeight={600}>
               עריכת כתוביות עם AI
             </Typography>
+            {aiEditError && <Alert severity="error">{aiEditError}</Alert>}
 
             <TextField
               label="מה לעשות?"

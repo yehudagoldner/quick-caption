@@ -1,3 +1,4 @@
+import { apiFetch } from "../api";
 import { useEffect, useState } from "react";
 import { Container, Alert, CircularProgress, Box, Typography } from "@mui/material";
 import { PreviewStepSection } from "./PreviewStepSection";
@@ -27,10 +28,12 @@ export function VideoEditPage({ user, videoToken, onSaveSegments, onNewUpload, o
   const [videoId, setVideoId] = useState<number | null>(null);
 
   useEffect(() => {
-    loadVideo();
+    const controller = new AbortController();
+    void loadVideo(controller.signal);
+    return () => controller.abort();
   }, [videoToken, user]);
 
-  const loadVideo = async () => {
+  const loadVideo = async (signal: AbortSignal) => {
     if (!user?.uid || !videoToken) {
       setError("נדרשת התחברות לצפייה בסרטון");
       setLoading(false);
@@ -43,7 +46,7 @@ export function VideoEditPage({ user, videoToken, onSaveSegments, onNewUpload, o
 
       // Use secure token-based loading instead of direct ID
       const url = `${API_BASE_URL || ""}/api/videos/load?token=${encodeURIComponent(videoToken)}&userUid=${encodeURIComponent(user.uid)}`;
-      const fetchResponse = await fetch(url);
+      const fetchResponse = await apiFetch(url, { signal });
 
       if (!fetchResponse.ok) {
         if (fetchResponse.status === 404) {
@@ -56,6 +59,7 @@ export function VideoEditPage({ user, videoToken, onSaveSegments, onNewUpload, o
       }
 
       const data = await fetchResponse.json();
+      if (signal.aborted) return;
       const video = data.video;
 
       if (!video || !video.subtitle_json) {
@@ -88,15 +92,16 @@ export function VideoEditPage({ user, videoToken, onSaveSegments, onNewUpload, o
 
       // Set media URL if video file exists
       if (video.stored_path) {
-        const mediaUrl = `${API_BASE_URL || ""}/api/videos/${video.id}/media?userUid=${encodeURIComponent(user.uid)}`;
+        const mediaUrl = `${API_BASE_URL || ""}/api/videos/${video.id}/media?mediaToken=${encodeURIComponent(data.mediaToken)}`;
         setMediaUrl(mediaUrl);
       }
 
     } catch (err) {
+      if (signal.aborted) return;
       console.error("Failed to load video:", err);
       setError(err instanceof Error ? err.message : "שגיאה בטעינת הסרטון");
     } finally {
-      setLoading(false);
+      if (!signal.aborted) setLoading(false);
     }
   };
 
@@ -110,7 +115,7 @@ export function VideoEditPage({ user, videoToken, onSaveSegments, onNewUpload, o
       throw new Error("שגיאה בטעינת הסרטון לשריפה");
     }
 
-    const videoResponse = await fetch(`${API_BASE_URL || ""}/api/videos/${videoId}/file?userUid=${encodeURIComponent(user.uid)}`);
+    const videoResponse = await apiFetch(`${API_BASE_URL || ""}/api/videos/${videoId}/file?userUid=${encodeURIComponent(user.uid)}`);
     if (!videoResponse.ok) {
       throw new Error("לא ניתן לטעון את הסרטון לשריפה");
     }
@@ -139,7 +144,7 @@ export function VideoEditPage({ user, videoToken, onSaveSegments, onNewUpload, o
       formData.append("videoHeight", String(Math.round(options.videoHeight)));
     }
 
-    const burnResponse = await fetch(`${API_BASE_URL || ""}/api/burn-subtitles`, {
+    const burnResponse = await apiFetch(`${API_BASE_URL || ""}/api/burn-subtitles`, {
       method: "POST",
       body: formData,
     });
@@ -206,10 +211,6 @@ export function VideoEditPage({ user, videoToken, onSaveSegments, onNewUpload, o
     return supportedFormats.find(option => option.value === format)?.label ?? format;
   })();
 
-  const downloadUrl = response.subtitle?.content ?
-    URL.createObjectURL(new Blob([response.subtitle.content], { type: "text/plain;charset=utf-8" })) :
-    null;
-
   const downloadName = `subtitle${format}`;
 
   return (
@@ -225,7 +226,7 @@ export function VideoEditPage({ user, videoToken, onSaveSegments, onNewUpload, o
           active={true}
           response={response}
           subtitleFormatLabel={formatLabel}
-          downloadUrl={downloadUrl}
+          downloadUrl={null}
           downloadName={downloadName}
           mediaUrl={mediaUrl}
           onBack={onNewUpload}

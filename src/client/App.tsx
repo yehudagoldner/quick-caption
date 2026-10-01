@@ -1,3 +1,4 @@
+import { apiFetch } from "./api";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Alert, Box, CircularProgress, Container, CssBaseline, Stack, ThemeProvider, createTheme } from "@mui/material";
 import { AppHeader } from "./components/AppHeader";
@@ -45,7 +46,7 @@ function getScreenFromUrl(): { screen: AppScreen; videoToken?: string } {
 }
 
 function updateUrl(screen: AppScreen, videoToken?: string) {
-  if (screen === 'admin') { window.history.pushState(null, '', '/admin'); return; }
+  if (screen === 'admin') { window.history.pushState({ editorIndex: Number(window.history.state?.editorIndex ?? 0) + 1 }, '', '/admin'); return; }
   const params = new URLSearchParams();
   if (screen !== "home") {
     params.set("screen", screen);
@@ -55,13 +56,16 @@ function updateUrl(screen: AppScreen, videoToken?: string) {
   }
 
   const newUrl = params.toString() ? `/?${params.toString()}` : '/';
-  window.history.pushState(null, "", newUrl);
+  window.history.pushState({ editorIndex: Number(window.history.state?.editorIndex ?? 0) + 1 }, "", newUrl);
 }
 
 function App() {
   const workflow = useTranscriptionWorkflow();
   const [currentScreen, setCurrentScreen] = useState<AppScreen>("home");
   const [videoToken, setVideoToken] = useState<string | undefined>();
+  const [projectError, setProjectError] = useState<string | null>(null);
+  const openingProject = useRef(false);
+  const historyIndex = useRef(Number(window.history.state?.editorIndex ?? 0));
   const [credits, setCredits] = useState<number | null>(null);
   const [adminUid, setAdminUid] = useState<string | null>(null);
   useEffect(() => {
@@ -84,6 +88,7 @@ function App() {
   const editing = currentScreen === "edit" || (currentScreen === "transcription" && workflow.activePage === "preview");
 
   useEffect(() => {
+    window.history.replaceState({ ...window.history.state, editorIndex: historyIndex.current }, '', window.location.href);
     const { screen, videoToken: token } = getScreenFromUrl();
     setCurrentScreen(screen);
     setVideoToken(token);
@@ -102,7 +107,7 @@ function App() {
     if (!workflow.user?.uid) return;
 
     try {
-      const response = await fetch(`${API_BASE_URL || ""}/api/users/credits?userUid=${encodeURIComponent(workflow.user.uid)}`);
+      const response = await apiFetch(`${API_BASE_URL || ""}/api/users/credits?userUid=${encodeURIComponent(workflow.user.uid)}`);
       if (response.ok) {
         const data = await response.json();
         setCredits(data.credits);
@@ -120,12 +125,29 @@ function App() {
   }, [workflow.activePage, workflow.user?.uid]);
 
   useEffect(() => {
+    let pendingTarget: number | null = null;
+    let accepting = false;
     const handlePopState = () => {
+      const target = Number(window.history.state?.editorIndex ?? historyIndex.current - 1);
+      if (pendingTarget !== null && target === historyIndex.current) {
+        const destinationIndex = pendingTarget;
+        pendingTarget = null;
+        const destination = () => { accepting = true; window.history.go(destinationIndex - historyIndex.current); };
+        if (editorNavigation.current) void editorNavigation.current(destination);
+        else destination();
+        return;
+      }
+      if (!accepting && editorNavigation.current && target !== historyIndex.current) {
+        pendingTarget = target;
+        window.history.go(historyIndex.current - target);
+        return;
+      }
+      accepting = false;
+      historyIndex.current = target;
       const { screen, videoToken: token } = getScreenFromUrl();
       setCurrentScreen(screen);
       setVideoToken(token);
     };
-
     window.addEventListener("popstate", handlePopState);
     return () => window.removeEventListener("popstate", handlePopState);
   }, []);
@@ -134,6 +156,7 @@ function App() {
     setCurrentScreen(screen);
     setVideoToken(token);
     updateUrl(screen, token);
+    historyIndex.current = Number(window.history.state.editorIndex);
   };
 
   const handleNewVideo = () => {
@@ -142,20 +165,23 @@ function App() {
   };
 
   const handleEditVideo = async (videoId: number) => {
-    if (!workflow.user?.uid) return;
-
+    if (!workflow.user?.uid || openingProject.current) return;
+    openingProject.current = true;
+    setProjectError(null);
     try {
       // Generate secure token for video editing
-      const tokenResponse = await fetch(`${API_BASE_URL || ""}/api/videos/${videoId}/token?userUid=${encodeURIComponent(workflow.user.uid)}`);
+      const tokenResponse = await apiFetch(`${API_BASE_URL || ""}/api/videos/${videoId}/token?userUid=${encodeURIComponent(workflow.user.uid)}`);
       if (!tokenResponse.ok) {
         throw new Error("Failed to generate video token");
       }
       const { token } = await tokenResponse.json();
+      if (typeof token !== "string" || !token) throw new Error("Invalid video session");
 
       navigateToScreen("edit", token);
     } catch (error) {
       console.error("Failed to create video edit session:", error);
-    }
+      setProjectError("לא ניתן לפתוח את הפרויקט כרגע. נסו שוב באמצעות המשך עריכה.");
+    } finally { openingProject.current = false; }
   };
 
   const handleSaveSegments = async (segments: any[], _subtitleContent?: string, words?: any[]) => {
@@ -163,7 +189,7 @@ function App() {
       throw new Error("Invalid session");
     }
 
-    const result = await fetch(`${API_BASE_URL || ""}/api/videos/update-subtitles`, {
+    const result = await apiFetch(`${API_BASE_URL || ""}/api/videos/update-subtitles`, {
       method: "PUT",
       headers: {
         "Content-Type": "application/json",
@@ -182,7 +208,9 @@ function App() {
   };
 
   const handleBuyCredits = () => {
-    navigateToScreen("buy-credits");
+    const destination = () => navigateToScreen("buy-credits");
+    if (editorNavigation.current) void editorNavigation.current(destination);
+    else destination();
   };
 
   return (
@@ -205,7 +233,11 @@ function App() {
           onProfileClick={workflow.onProfileClick}
           onProfileClose={workflow.onProfileClose}
           onSignIn={workflow.onSignIn}
-          onSignOut={workflow.onSignOut}
+          onSignOut={async () => {
+            const destination = () => { void workflow.onSignOut(); };
+            if (editorNavigation.current) await editorNavigation.current(destination);
+            else destination();
+          }}
           navigationBlocked={navigationBlocked}
           onNavigate={(page) => {
             const navigate = () => {
@@ -230,6 +262,7 @@ function App() {
           px: { xs: 1.5, md: 3 },
           mt: { xs: currentScreen === "transcription" ? 0 : 10, md: editing ? 8 : 10 },
         }}>
+          {projectError && <Alert severity="error" onClose={() => setProjectError(null)} sx={{ mb: 2 }}>{projectError}</Alert>}
           {currentScreen === "home" && workflow.error && (
             <Alert severity="error" sx={{ mb: 3 }}>
               {workflow.error}

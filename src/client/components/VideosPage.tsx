@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { apiFetch } from "../api";
+import { useEffect, useRef, useState } from "react";
 import {
   Alert,
   Button,
@@ -110,6 +111,9 @@ function canExport(video: Video) {
 export function VideosPage({ variant = "history", onEditVideo, onNewVideo }: VideosPageProps) {
   const { user } = useAuth();
   const [videos, setVideos] = useState<Video[]>([]);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const paginationRequest = useRef<AbortController | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [exportMenu, setExportMenu] = useState<{ anchor: HTMLElement; video: Video } | null>(null);
@@ -117,6 +121,11 @@ export function VideosPage({ variant = "history", onEditVideo, onNewVideo }: Vid
   const [actionMessage, setActionMessage] = useState<string | null>(null);
 
   useEffect(() => {
+    paginationRequest.current?.abort();
+    setLoadingMore(false);
+    setVideos([]);
+    setHasMore(false);
+    let cancelled = false;
     if (!user?.uid) {
       setLoading(false);
       return;
@@ -127,11 +136,13 @@ export function VideosPage({ variant = "history", onEditVideo, onNewVideo }: Vid
         setLoading(true);
         setError(null);
         const url = `${API_BASE_URL || ""}/api/videos?userUid=${encodeURIComponent(user.uid)}`;
-        const response = await fetch(url);
+        const response = await apiFetch(url);
         if (!response.ok) {
           throw new Error("Failed to fetch videos");
         }
         const data = await response.json();
+        if (cancelled) return;
+        setHasMore(Boolean(data.hasMore));
         setVideos(
           (data.videos || []).map((video: Video & { has_subtitles?: number | boolean }) => ({
             ...video,
@@ -140,14 +151,35 @@ export function VideosPage({ variant = "history", onEditVideo, onNewVideo }: Vid
           })),
         );
       } catch (err) {
+        if (cancelled) return;
         setError(err instanceof Error ? err.message : "אירעה שגיאה בטעינת הווידאו");
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     };
 
-    fetchVideos();
+    void fetchVideos();
+    return () => { cancelled = true; paginationRequest.current?.abort(); };
   }, [user?.uid]);
+
+  const loadMore = async () => {
+    if (!user || loadingMore) return;
+    const controller = new AbortController();
+    paginationRequest.current = controller;
+    setLoadingMore(true);
+    try {
+      const response = await apiFetch(`${API_BASE_URL}/api/videos?offset=${videos.length}&limit=50`, { signal: controller.signal });
+      if (!response.ok) throw new Error("טעינת פרויקטים נוספים נכשלה. נסו שוב.");
+      const data = await response.json();
+      if (controller.signal.aborted) return;
+      setVideos(previous => [...previous, ...(data.videos ?? []).map((video: Video) => ({ ...video,
+        duration_seconds: video.duration_seconds == null ? null : Number(video.duration_seconds),
+        has_subtitles: video.has_subtitles == null ? video.status === "completed" : Boolean(Number(video.has_subtitles)),
+      }))]);
+      setHasMore(Boolean(data.hasMore));
+    } catch (error) { if (!controller.signal.aborted) setActionMessage((error as Error).message); }
+    finally { if (!controller.signal.aborted) setLoadingMore(false); }
+  };
 
   const handleExport = async (video: Video, format: string) => {
     if (!user?.uid) return;
@@ -156,7 +188,7 @@ export function VideosPage({ variant = "history", onEditVideo, onNewVideo }: Vid
     setActionMessage(null);
 
     try {
-      const response = await fetch(`${API_BASE_URL || ""}/api/videos/${video.id}?userUid=${encodeURIComponent(user.uid)}`);
+      const response = await apiFetch(`${API_BASE_URL || ""}/api/videos/${video.id}?userUid=${encodeURIComponent(user.uid)}`);
       if (!response.ok) {
         throw new Error("לא ניתן לטעון את הכתוביות לייצוא");
       }
@@ -254,7 +286,7 @@ export function VideosPage({ variant = "history", onEditVideo, onNewVideo }: Vid
                 <Typography variant={isWorkspace ? "h6" : "h5"}>
                   {isWorkspace ? "המשך עבודה" : "היסטוריית סרטונים"}
                 </Typography>
-                <Chip label={`${videos.length} פרויקטים`} color="primary" variant="outlined" />
+                <Chip label={`${videos.length}${hasMore ? "+" : ""} פרויקטים`} color="primary" variant="outlined" />
               </Stack>
               <Typography variant="body2" color="text.secondary">
                 {isWorkspace
@@ -269,6 +301,7 @@ export function VideosPage({ variant = "history", onEditVideo, onNewVideo }: Vid
             )}
           </Stack>
 
+          {hasMore && <Button onClick={loadMore} disabled={loadingMore}>{loadingMore ? "טוען..." : "טען פרויקטים נוספים"}</Button>}
           {videos.length === 0 ? (
             <Alert severity="info">
               אין עדיין סרטונים בחשבון. העלו סרטון חדש כדי ליצור כתוביות.

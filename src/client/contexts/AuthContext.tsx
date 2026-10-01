@@ -1,4 +1,5 @@
-﻿import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { setApiUser } from "../api";
+import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { GoogleAuthProvider, onAuthStateChanged, signInWithPopup, signOut } from "firebase/auth";
 import type { User } from "firebase/auth";
 import { createDevAuthUser, isDevAuthBypass } from "../devAuth";
@@ -36,7 +37,12 @@ async function syncUser(user: User) {
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<User | null>(isDevAuthBypass ? createDevAuthUser() : null);
+  const [user, setUserState] = useState<User | null>(() => {
+    const initial = isDevAuthBypass ? createDevAuthUser() : null;
+    setApiUser(initial);
+    return initial;
+  });
+  const setUser = (next: User | null) => { setApiUser(next); setUserState(next); };
   const [loading, setLoading] = useState(!isDevAuthBypass);
 
   useEffect(() => {

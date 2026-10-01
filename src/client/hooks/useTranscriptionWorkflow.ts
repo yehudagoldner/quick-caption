@@ -1,4 +1,5 @@
-﻿import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type MouseEvent } from "react";
+import { apiFetch, apiHeaders } from "../api";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type MouseEvent } from "react";
 import { io } from "socket.io-client";
 import type { ManagerOptions, SocketOptions } from "socket.io-client";
 import type { BurnOptions } from "../components/TranscriptionResult";
@@ -256,7 +257,7 @@ export function useTranscriptionWorkflow(): TranscriptionWorkflow {
       const timeout = window.setTimeout(() => requestController.abort(), 10_000);
       try {
         const url = `${TRANSCRIBE_ENDPOINT}/jobs/${activeJobId}?userUid=${encodeURIComponent(uid)}`;
-        const res = await fetch(url, { cache: "no-store", signal: requestController.signal });
+        const res = await apiFetch(url, { cache: "no-store", signal: requestController.signal });
         if (!isCurrentJob()) return;
         if (res.status === 404 && Date.now() - startedChecking < 120_000) return;
         if (!res.ok) {
@@ -270,7 +271,7 @@ export function useTranscriptionWorkflow(): TranscriptionWorkflow {
           setResponse(job.result);
           setVideoId(job.result.videoId ?? null);
           if (job.result.videoId) {
-            setLoadedMediaUrl(`${API_BASE_URL || ""}/api/videos/${job.result.videoId}/media?userUid=${encodeURIComponent(uid)}`);
+            setLoadedMediaUrl(`${API_BASE_URL || ""}/api/videos/${job.result.videoId}/media?mediaToken=${encodeURIComponent(job.result.mediaToken ?? "")}`);
           }
           setActivePage("preview");
           setError(null);
@@ -315,7 +316,7 @@ export function useTranscriptionWorkflow(): TranscriptionWorkflow {
   }, [response, format]);
 
   const handleSubmit = useCallback(
-    (event: FormEvent<HTMLFormElement>) => {
+    async (event: FormEvent<HTMLFormElement>) => {
       event.preventDefault();
       if (currentJobRef.current) return;
       setError(null);
@@ -442,7 +443,16 @@ export function useTranscriptionWorkflow(): TranscriptionWorkflow {
         releaseCurrentJob();
       };
 
-      xhr.send(formData);
+      try {
+        const headers = await apiHeaders();
+        if (!isCurrentRequest()) return;
+        headers.forEach((value, key) => xhr.setRequestHeader(key, value));
+        xhr.send(formData);
+      } catch {
+        if (!isCurrentRequest()) return;
+        releaseCurrentJob();
+        setError("לא ניתן לאמת את החשבון. התחברו מחדש ונסו שוב.");
+      }
     },
     [file, maxCharactersPerSubtitle, socketId, user?.uid, releaseCurrentJob],
   );
@@ -466,7 +476,7 @@ export function useTranscriptionWorkflow(): TranscriptionWorkflow {
         return;
       }
 
-      const result = await fetch(`/api/videos/${videoId}/subtitles`, {
+      const result = await apiFetch(`${API_BASE_URL}/api/videos/${videoId}/subtitles`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
@@ -506,7 +516,7 @@ export function useTranscriptionWorkflow(): TranscriptionWorkflow {
 
       let media = file;
       if (!media && videoId && user?.uid) {
-        const mediaResponse = await fetch(`${API_BASE_URL || ""}/api/videos/${videoId}/media?userUid=${encodeURIComponent(user.uid)}`);
+        const mediaResponse = await apiFetch(`${API_BASE_URL || ""}/api/videos/${videoId}/media?userUid=${encodeURIComponent(user.uid)}`);
         if (!mediaResponse.ok) throw new Error("לא ניתן לטעון את הסרטון השמור לצריבת כתוביות.");
         const blob = await mediaResponse.blob();
         media = new File([blob], response.originalFilename || "video.mp4", { type: blob.type });
@@ -534,7 +544,7 @@ export function useTranscriptionWorkflow(): TranscriptionWorkflow {
         formData.append("videoHeight", String(Math.round(options.videoHeight)));
       }
 
-      const burnResponse = await fetch(BURN_ENDPOINT, {
+      const burnResponse = await apiFetch(BURN_ENDPOINT, {
         method: "POST",
         body: formData,
       });

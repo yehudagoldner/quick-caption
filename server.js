@@ -1,4 +1,5 @@
 ﻿import express from "express";
+import { createVideoTokens, loadVideoSigningKey } from "./src/videoTokens.js";
 import cors from "cors";
 import { createMediaUpload, mediaUploadError } from "./src/mediaUpload.js";
 import path from "path";
@@ -53,6 +54,28 @@ if (isDevAuthBypassEnabled()) {
   console.log("Dev auth bypass enabled for local dummy user");
 }
 
+const videoTokens = createVideoTokens(await loadVideoSigningKey({ configuredKey: process.env.VIDEO_TOKEN_SECRET }));
+const privateAuthenticate = (req, res, next) => {
+  if (isDevAuthBypassEnabled() && req.headers.authorization === 'Bearer local-development') {
+    req.identity = { uid: getDevAuthUid() };
+    return next();
+  }
+  return authenticate(req, res, next);
+};
+app.use('/api', (req, res, next) => {
+  if (req.method === 'GET' && req.path === '/payments/config') return next();
+  const media = ['GET', 'HEAD'].includes(req.method) && req.path.match(/^\/videos\/(\d+)\/media$/);
+  const grant = media && videoTokens.verify(req.query.mediaToken, 'media');
+  if (grant && grant.videoId === Number(media[1])) {
+    req.identity = { uid: grant.userUid };
+    return next();
+  }
+  privateAuthenticate(req, res, () => {
+    // Checkout handlers also derive ownership from this verified identity.
+    if (req.body && typeof req.body === 'object') req.body.userUid = req.identity.uid;
+    next();
+  });
+});
 const upload = createMediaUpload(uploadDir);
 app.use("/api/burn-subtitles", createBurnSubtitlesRouter(upload));
 app.use("/api/payments", paypalRouter);
@@ -72,7 +95,7 @@ app.get("/health", (req, res) => {
   res.json({ status: "ok" });
 });
 
-app.post("/api/users/sync", authenticate, async (req, res) => {
+app.post("/api/users/sync", async (req, res) => {
   const {
     uid,
     email,
@@ -110,7 +133,7 @@ app.post("/api/users/sync", authenticate, async (req, res) => {
 });
 
 app.get("/api/users/credits", async (req, res) => {
-  const userUid = req.query.userUid;
+  const userUid = req.identity.uid;
 
   if (!userUid) {
     return res.status(400).json({ error: 'userUid is required' });
@@ -130,18 +153,18 @@ app.get("/api/users/credits", async (req, res) => {
 
 
 app.get("/api/videos", async (req, res) => {
-  const userUid = req.query.userUid;
-  const limit = Number.parseInt(req.query.limit, 10) || 50;
-  const offset = Number.parseInt(req.query.offset, 10) || 0;
+  const userUid = req.identity.uid;
+  const limit = Math.min(99, Math.max(1, Number.parseInt(req.query.limit, 10) || 50));
+  const offset = Math.max(0, Number.parseInt(req.query.offset, 10) || 0);
 
   if (!userUid) {
     return res.status(400).json({ error: 'userUid is required' });
   }
 
   try {
-    const videos = await getUserVideos({ userUid, limit, offset });
+    const videos = await getUserVideos({ userUid, limit: limit + 1, offset });
     res.setHeader('Content-Type', 'application/json; charset=utf-8');
-    res.json({ videos });
+    res.json({ videos: videos.slice(0, limit), hasMore: videos.length > limit });
   } catch (error) {
     console.error('Failed to fetch videos:', error);
     res.status(500).json({ error: 'Failed to fetch videos' });
@@ -151,27 +174,16 @@ app.get("/api/videos", async (req, res) => {
 // Secure video loading endpoint using token (must be before /api/videos/:id)
 app.get("/api/videos/load", async (req, res) => {
   const token = req.query.token;
-  const userUid = req.query.userUid;
+  const userUid = req.identity.uid;
 
-  console.log('Load video request:', { token, userUid, query: req.query });
 
   if (!token || !userUid) {
     return res.status(400).json({ error: 'token and userUid are required' });
   }
 
   try {
-    // Decode and validate token
-    let tokenData;
-    try {
-      tokenData = JSON.parse(Buffer.from(token, 'base64url').toString());
-    } catch {
-      return res.status(400).json({ error: 'Invalid token format' });
-    }
-
-    // Check token expiration
-    if (!tokenData.exp || tokenData.exp < Date.now()) {
-      return res.status(401).json({ error: 'Token expired' });
-    }
+    const tokenData = videoTokens.verify(token, 'edit');
+    if (!tokenData) return res.status(401).json({ error: 'Invalid or expired token' });
 
     // Verify user matches token
     if (tokenData.userUid !== userUid) {
@@ -185,7 +197,7 @@ app.get("/api/videos/load", async (req, res) => {
     }
 
     res.setHeader('Content-Type', 'application/json; charset=utf-8');
-    res.json({ video });
+    res.json({ video, mediaToken: videoTokens.issue(video.id, userUid, 'media') });
   } catch (error) {
     console.error('Failed to load video with token:', error);
     res.status(500).json({ error: 'Failed to load video' });
@@ -194,7 +206,7 @@ app.get("/api/videos/load", async (req, res) => {
 
 app.get("/api/videos/:id", async (req, res) => {
   const videoId = Number.parseInt(req.params.id, 10);
-  const userUid = req.query.userUid;
+  const userUid = req.identity.uid;
 
   if (!Number.isFinite(videoId) || !userUid) {
     return res.status(400).json({ error: 'videoId and userUid are required' });
@@ -206,7 +218,7 @@ app.get("/api/videos/:id", async (req, res) => {
       return res.status(404).json({ error: 'Video not found' });
     }
     res.setHeader('Content-Type', 'application/json; charset=utf-8');
-    res.json({ video });
+    res.json({ video, mediaToken: videoTokens.issue(video.id, userUid, 'media') });
   } catch (error) {
     console.error('Failed to fetch video:', error);
     res.status(500).json({ error: 'Failed to fetch video' });
@@ -215,7 +227,7 @@ app.get("/api/videos/:id", async (req, res) => {
 
 app.get("/api/videos/:id/media", async (req, res) => {
   const videoId = Number.parseInt(req.params.id, 10);
-  const userUid = req.query.userUid;
+  const userUid = req.identity.uid;
 
   if (!Number.isFinite(videoId) || !userUid) {
     return res.status(400).json({ error: 'videoId and userUid are required' });
@@ -235,6 +247,8 @@ app.get("/api/videos/:id/media", async (req, res) => {
       return res.status(404).json({ error: 'Video file not found on disk' });
     }
 
+    res.set('Referrer-Policy', 'no-referrer');
+    res.set('Cache-Control', 'private, no-store');
     res.sendFile(fullPath);
   } catch (error) {
     console.error('Failed to serve video:', error);
@@ -244,7 +258,8 @@ app.get("/api/videos/:id/media", async (req, res) => {
 
 app.put("/api/videos/:id/subtitles", async (req, res) => {
   const videoId = Number.parseInt(req.params.id, 10);
-  const { userUid, subtitleJson, wordsJson } = req.body ?? {};
+  const { subtitleJson, wordsJson } = req.body ?? {};
+  const userUid = req.identity.uid;
 
   if (!Number.isFinite(videoId) || !userUid || typeof subtitleJson !== 'string') {
     return res.status(400).json({ error: 'videoId, userUid and subtitleJson are required' });
@@ -265,7 +280,7 @@ app.put("/api/videos/:id/subtitles", async (req, res) => {
 // Secure token generation for video editing
 app.get("/api/videos/:id/token", async (req, res) => {
   const videoId = Number.parseInt(req.params.id, 10);
-  const userUid = req.query.userUid;
+  const userUid = req.identity.uid;
 
   if (!Number.isFinite(videoId) || !userUid) {
     return res.status(400).json({ error: 'videoId and userUid are required' });
@@ -278,16 +293,8 @@ app.get("/api/videos/:id/token", async (req, res) => {
       return res.status(404).json({ error: 'Video not found' });
     }
 
-    // Generate secure token with expiration (24 hours)
-    const tokenData = {
-      videoId,
-      userUid,
-      exp: Date.now() + (24 * 60 * 60 * 1000), // 24 hours
-      random: crypto.randomBytes(16).toString('hex')
-    };
-
-    const token = Buffer.from(JSON.stringify(tokenData)).toString('base64url');
-    res.json({ token });
+    const token = videoTokens.issue(videoId, userUid, 'edit');
+    res.json({ token, mediaToken: videoTokens.issue(videoId, userUid, 'media') });
   } catch (error) {
     console.error('Failed to generate video token:', error);
     res.status(500).json({ error: 'Failed to generate video token' });
@@ -296,25 +303,16 @@ app.get("/api/videos/:id/token", async (req, res) => {
 
 // Secure subtitle update endpoint using token
 app.put("/api/videos/update-subtitles", async (req, res) => {
-  const { token, userUid, subtitleJson, wordsJson } = req.body ?? {};
+  const { token, subtitleJson, wordsJson } = req.body ?? {};
+  const userUid = req.identity.uid;
 
   if (!token || !userUid || typeof subtitleJson !== 'string') {
     return res.status(400).json({ error: 'token, userUid and subtitleJson are required' });
   }
 
   try {
-    // Decode and validate token
-    let tokenData;
-    try {
-      tokenData = JSON.parse(Buffer.from(token, 'base64url').toString());
-    } catch {
-      return res.status(400).json({ error: 'Invalid token format' });
-    }
-
-    // Check token expiration
-    if (!tokenData.exp || tokenData.exp < Date.now()) {
-      return res.status(401).json({ error: 'Token expired' });
-    }
+    const tokenData = videoTokens.verify(token, 'edit');
+    if (!tokenData) return res.status(401).json({ error: 'Invalid or expired token' });
 
     // Verify user matches token
     if (tokenData.userUid !== userUid) {
@@ -343,7 +341,7 @@ app.put("/api/videos/update-subtitles", async (req, res) => {
 // Secure video file access endpoint using token
 app.get("/api/videos/:id/file", async (req, res) => {
   const videoId = Number.parseInt(req.params.id, 10);
-  const userUid = req.query.userUid;
+  const userUid = req.identity.uid;
 
   if (!Number.isFinite(videoId) || !userUid) {
     return res.status(400).json({ error: 'videoId and userUid are required' });
@@ -363,6 +361,8 @@ app.get("/api/videos/:id/file", async (req, res) => {
       return res.status(404).json({ error: 'Video file not found on disk' });
     }
 
+    res.set('Referrer-Policy', 'no-referrer');
+    res.set('Cache-Control', 'private, no-store');
     res.sendFile(fullPath);
   } catch (error) {
     console.error('Failed to serve video file:', error);
@@ -372,7 +372,7 @@ app.get("/api/videos/:id/file", async (req, res) => {
 
 app.get("/api/transcribe/jobs/:jobId", async (req, res) => {
   const { jobId } = req.params;
-  const { userUid } = req.query;
+  const userUid = req.identity.uid;
   if (!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(jobId) || typeof userUid !== "string" || !userUid) {
     return res.status(400).json({ error: "Valid jobId and userUid are required" });
   }
@@ -382,7 +382,10 @@ app.get("/api/transcribe/jobs/:jobId", async (req, res) => {
     res.set('Cache-Control', 'no-store');
     res.json({
       status: job.status,
-      result: job.status === "completed" ? JSON.parse(job.result_json) : undefined,
+      result: job.status === "completed" ? (() => {
+        const result = JSON.parse(job.result_json);
+        return { ...result, mediaToken: result.videoId ? videoTokens.issue(result.videoId, userUid, 'media') : undefined };
+      })() : undefined,
       error: job.status === "failed" ? job.error_message : undefined,
       stages: typeof job.stages_json === 'string' ? JSON.parse(job.stages_json) : job.stages_json ?? [],
     });
@@ -394,7 +397,7 @@ app.get("/api/transcribe/jobs/:jobId", async (req, res) => {
 
 app.post("/api/transcribe", upload.single("media"), async (req, res) => {
   const socketId = req.body?.socketId;
-  const userUid = req.body?.userUid;
+  const userUid = req.identity.uid;
   const jobId = req.body?.jobId;
   const maxWordsPerSubtitle = parseInt(req.body?.maxWordsPerSubtitle, 10) || 5;
   const rawCharacters = req.body?.maxCharactersPerSubtitle;
@@ -794,7 +797,7 @@ app.get(/.*/, (req, res) => {
 });
 
 httpServer.listen(port, () => {
-  console.log(`Server listening on http://localhost:${port}`);
+  console.log(`Server listening on http://localhost:${httpServer.address().port}`);
 });
 
 function createStageEmitter(socketId, jobId) {

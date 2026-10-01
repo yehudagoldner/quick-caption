@@ -223,7 +223,7 @@ export async function getUserVideos({ userUid, limit = 50, offset = 0 }) {
             END AS duration_seconds
      FROM videos
      WHERE user_uid = ?
-     ORDER BY created_at DESC
+     ORDER BY created_at DESC, id DESC
      LIMIT ${safeLimit} OFFSET ${safeOffset}`,
     [userUid],
   );

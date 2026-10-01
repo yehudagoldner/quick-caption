@@ -20,6 +20,7 @@ export type SubtitlePayload = {
 };
 
 export type ApiResponse = {
+  mediaToken?: string;
   text: string;
   originalFilename?: string;
   segments: Segment[];

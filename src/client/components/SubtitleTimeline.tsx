@@ -28,7 +28,7 @@ export type SubtitleTimelineProps = {
   onRequestTimeChange: (time: number) => void;
   onCaptionBatch: (ids: Segment["id"][], action: CaptionBatchAction, splitTime?: number) => Promise<void>;
   onSegmentsChange: (segments: Segment[]) => void | Promise<void>;
-  onAddSubtitle: (text: string, startTime: number, endTime: number) => void;
+  onAddSubtitle: (text: string, startTime: number, endTime: number) => void | Promise<void>;
   onSaveSegment: (segment: Segment, words: Word[]) => Promise<void>;
   onSplitSegment: (id: Segment["id"], time: number, draft?: CaptionDraft) => Promise<void>;
   isPlaying?: boolean; onPlayPause?: () => void; onPlayFrom: (time: number) => void;
@@ -93,7 +93,8 @@ export function SubtitleTimeline({ activeWordEnabled, segments, words = [], disa
     onLoopChange(false);
   };
   const choose = (id: Segment["id"], event: { ctrlKey: boolean; metaKey: boolean; shiftKey: boolean }) => {
-    if (groupLocked) return;
+    if (locked || movePreview) return;
+    if (dirty) { applySelection([id]); selectionAnchor.current = id; return; }
     if (event.shiftKey && selectionAnchor.current != null) {
       const ordered = [...segments].sort((a, b) => a.start - b.start);
       const a = ordered.findIndex(s => s.id === selectionAnchor.current), b = ordered.findIndex(s => s.id === id);
@@ -209,6 +210,7 @@ export function SubtitleTimeline({ activeWordEnabled, segments, words = [], disa
       flight.current = true;
       try {
         for (const item of pending) await commitRef.current(item);
+        setError(null);
       } catch (e) { setError((e as Error).message || "השמירה נכשלה; הטיוטה נשמרה בעורך."); }
       finally { flight.current = false; }
     };
@@ -363,7 +365,7 @@ export function SubtitleTimeline({ activeWordEnabled, segments, words = [], disa
       <Button size="small" aria-label="תצוגת 30 שניות" aria-pressed={zoom === null} variant={zoom === null ? "contained" : "text"} onClick={() => setZoom(null)} sx={{ whiteSpace: "nowrap", minWidth: 0 }}>30 שנ׳</Button>
       <Button size="small" aria-label="התאם את כל ההקלטה" aria-pressed={zoom === 0} onClick={() => { setZoom(0); scrollLeft.current = 0; timeline.current?.setScrollLeft(0); }} sx={{ whiteSpace: "nowrap", minWidth: 0 }}>הכול</Button>
       <CaptionSelectionToolbar count={selection.length} disabled={groupLocked} canMerge={canMergeCaptions(segments, selection)} canSplit={canSplitCaptionAtTime(selectedCaption, time)}
-        canAdd={time < total} add={() => { if (isPlaying) onPlayPause?.(); onLoopChange(false); onAddSubtitle("הכנס טקסט כאן", time, Math.min(total, time + 0.5)); }}
+        canAdd={time < total} add={() => { if (isPlaying) onPlayPause?.(); onLoopChange(false); void Promise.resolve().then(() => onAddSubtitle("הכנס טקסט כאן", time, Math.min(total, time + 0.5))).then(() => setError(null)).catch(e => setError(e.message || "לא ניתן להוסיף כתובית כאן.")); }}
         selectAll={() => applySelection(segments.map(s => s.id))} clear={clearSelection} merge={() => void runSelectionAction("merge")} split={() => void runSelectionAction("split")} remove={() => void runSelectionAction("delete")} move={nudge} />
     </Stack>
     <Box ref={container} data-testid="caption-track" {...scrubbing} title="Ctrl + גלגלת לזום פנימה והחוצה" sx={{ minWidth: 0, direction: "ltr", "& *": { direction: "ltr !important" } }}>
@@ -455,7 +457,7 @@ export function SubtitleTimeline({ activeWordEnabled, segments, words = [], disa
           onDeleteWords={deleteWords}
           toolbarEditor={<TextField className="caption-text-editor" variant="standard" fullWidth value={draft.segment.text} disabled={locked}
           placeholder="טקסט המקטע" inputProps={{ dir: preferences.direction, "aria-label": "טקסט המקטע", title: draft.segment.text }}
-          onBlur={() => { if (draft.segment.text.trim()) void commitDraft(draft); }}
+          onBlur={() => { if (draft.segment.text.trim()) void commitDraft(draft).then(() => setError(null)).catch(e => setError(e.message || "השמירה נכשלה; הטיוטה נשמרה בעורך.")); }}
           InputProps={{ disableUnderline: true,
             startAdornment: <InputAdornment position="start" sx={{ ml: .75, mr: 0, color: "primary.main", gap: .5 }}><EditOutlined sx={{ fontSize: 16 }} /><Typography component="span" variant="caption" sx={{ fontWeight: 700, color: "primary.main", display: { xs: "none", sm: "inline" } }}>ערכו כאן</Typography></InputAdornment>,
             endAdornment: <InputAdornment position="end" sx={{ ml: 0 }}><Tooltip title="פתח עריכה בחלון"><span><IconButton size="small" aria-label="פתח עריכה בחלון" disabled={locked} onClick={() => openExpandedEditor(draft.segment.id)}><OpenInFullRounded /></IconButton></span></Tooltip></InputAdornment>,
@@ -476,8 +478,8 @@ export function SubtitleTimeline({ activeWordEnabled, segments, words = [], disa
       <DialogContent>
         {draft && <TextField autoFocus fullWidth multiline minRows={4} maxRows={10} label="טקסט הכתובית" value={draft.segment.text} disabled={locked}
           inputProps={{ dir: preferences.direction }} sx={{ mt: 1 }} onChange={e => changeText(e.target.value)}
-          onBlur={() => { if (draft.segment.text.trim()) void commitDraft(draft); }}
-          onKeyDown={e => { if ((e.ctrlKey || e.metaKey) && e.key === "Enter") { e.preventDefault(); if (draft.segment.text.trim()) void commitDraft(draft); setExpandedSegmentId(null); } }}
+          onBlur={() => { if (draft.segment.text.trim()) void commitDraft(draft).then(() => setError(null)).catch(e => setError(e.message || "השמירה נכשלה; הטיוטה נשמרה בעורך.")); }}
+          onKeyDown={e => { if ((e.ctrlKey || e.metaKey) && e.key === "Enter") { e.preventDefault(); if (draft.segment.text.trim()) void commitDraft(draft).then(() => setError(null)).catch(e => setError(e.message || "השמירה נכשלה; הטיוטה נשמרה בעורך.")); setExpandedSegmentId(null); } }}
           helperText="הזמנים נקבעים בציר הראשי." />}
         {error && <Alert severity="error" sx={{ mt: 2 }}>{error}</Alert>}
       </DialogContent>

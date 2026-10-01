@@ -8,6 +8,7 @@ export const devAuthUid =
 
 export function createDevAuthUser(): User {
   return {
+    getIdToken: async () => "local-development",
     uid: devAuthUid,
     email: "dev@localhost",
     displayName: "משתמש דמה",

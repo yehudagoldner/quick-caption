@@ -191,6 +191,7 @@ export function MobileCaptionEditor({
   const [addOpen, setAddOpen] = useState(false);
   const [aiOpen, setAiOpen] = useState(false);
   const [aiInstructions, setAiInstructions] = useState("");
+  const [aiError, setAiError] = useState<string | null>(null);
   const [aiBusy, setAiBusy] = useState(false);
   const [newText, setNewText] = useState("");
   const [newStart, setNewStart] = useState(0);
@@ -930,14 +931,16 @@ export function MobileCaptionEditor({
       <Dialog open={aiOpen} onClose={() => setAiOpen(false)} fullWidth>
         <DialogTitle>עריכת כתוביות עם AI</DialogTitle>
         <DialogContent>
+          {aiError && <Alert severity="error">{aiError}</Alert>}
           <TextField label="מה לעשות?" multiline rows={4} value={aiInstructions} onChange={event => setAiInstructions(event.target.value)} fullWidth sx={{ mt: 1 }} placeholder="לדוגמה: תפצל כתוביות ארוכות, תתקן שגיאות כתיב" />
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setAiOpen(false)}>ביטול</Button>
           <Button variant="contained" disabled={aiBusy || !aiInstructions.trim() || !onAIEdit} onClick={async () => {
             if (!onAIEdit) return;
-            setAiBusy(true);
+            setAiBusy(true); setAiError(null);
             try { await onAIEdit(aiInstructions.trim()); setAiOpen(false); setAiInstructions(""); }
+            catch { setAiError("עריכת AI נכשלה. ההוראות נשמרו; אפשר לנסות שוב."); }
             finally { setAiBusy(false); }
           }}>{aiBusy ? "AI מעבד..." : "בצע עריכה"}</Button>
         </DialogActions>

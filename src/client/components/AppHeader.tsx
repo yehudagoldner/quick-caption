@@ -129,26 +129,26 @@ export function AppHeader({
               )}
 
               <Box sx={{ display: { xs: "block", md: "none" } }}>
-                <MenuItem onClick={() => { onProfileClose(); onNavigate("home"); }}>
+                <MenuItem disabled={navigationBlocked} onClick={() => { onProfileClose(); onNavigate("home"); }}>
                   <HomeRounded sx={{ ml: 1 }} />
                   דף הבית
                 </MenuItem>
-                <MenuItem onClick={() => { onProfileClose(); onNavigate("videos"); }}>
+                <MenuItem disabled={navigationBlocked} onClick={() => { onProfileClose(); onNavigate("videos"); }}>
                   <VideoLibraryRounded sx={{ ml: 1 }} />
                   היסטוריית סרטונים
                 </MenuItem>
-                <MenuItem onClick={() => { onProfileClose(); onNavigate("transcription"); }}>
+                <MenuItem disabled={navigationBlocked} onClick={() => { onProfileClose(); onNavigate("transcription"); }}>
                   <UploadFileOutlined sx={{ ml: 1 }} />
                   סרטון חדש
                 </MenuItem>
               </Box>
 
-              <MenuItem onClick={() => { onProfileClose(); onBuyCredits(); }}>
+              <MenuItem disabled={navigationBlocked} onClick={() => { onProfileClose(); onBuyCredits(); }}>
                 <AccountBalanceWalletRounded sx={{ ml: 1 }} />
                 רכישת קרדיטים
               </MenuItem>
               {isAdmin && <MenuItem disabled={navigationBlocked} onClick={() => { onProfileClose(); onAdmin?.(); }}>ניהול</MenuItem>}
-              <MenuItem onClick={onSignOut}>התנתקות</MenuItem>
+              <MenuItem disabled={navigationBlocked} onClick={onSignOut}>התנתקות</MenuItem>
             </Menu>
           </>
         ) : (

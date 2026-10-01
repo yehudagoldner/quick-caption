@@ -1,10 +1,11 @@
+import { apiFetch } from "../api";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Segment, Word } from "../types";
 import { segmentsToSrt, cleanSegmentText, fixSegmentOverlaps } from "../utils/transcriptionUtils";
 import { reflowSubtitleCharacters } from "../../subtitleSegmentation.js";
 import { synchronizeWords } from "../../wordAlignment.js";
 import { editCaptionBatch, type CaptionBatchAction } from "../../captionBatchEditing.js";
-import { AUTO_CAPTION_FONT_SIZE, type CaptionFontSizeSetting } from "../../captionStyle.js";
+import { useProjectCaptionStyle } from "./useProjectCaptionStyle";
 import { EditHistory, snapshot, validateCaptionRange, wordsForSegment } from "../../timelineEditing.js";
 
 type BurnedVideo = {
@@ -42,11 +43,11 @@ export function useTranscriptionState({
   const saveQueue = useRef<Promise<void>>(Promise.resolve());
   const [historyVersion, setHistoryVersion] = useState(0);
   const [activeSegmentId, setActiveSegmentId] = useState<Segment["id"] | null>(null);
-  const [fontSize, setFontSize] = useState<CaptionFontSizeSetting>(AUTO_CAPTION_FONT_SIZE);
-  const [fontColor, setFontColor] = useState("#ffffff");
-  const [outlineColor, setOutlineColor] = useState("#000000");
-  const [offsetYPercent, setOffsetYPercent] = useState(20);
-  const [marginPercent, setMarginPercent] = useState(5);
+  const { fontSize, setFontSize, fontColor, setFontColor, outlineColor, setOutlineColor,
+    offsetYPercent, setOffsetYPercent, marginPercent, setMarginPercent } = useProjectCaptionStyle(videoId);
+  // Saved props are acknowledgements, not replacements for a newer local edit.
+  const ownsRevision = useRef(false);
+  const project = useRef(videoId);
   const [videoDimensions, setVideoDimensions] = useState<{ width: number; height: number } | null>(null);
   const [renderDimensions, setRenderDimensions] = useState<{ width: number; height: number } | null>(null);
   const [videoDuration, setVideoDuration] = useState<number | null>(null);
@@ -76,21 +77,17 @@ export function useTranscriptionState({
   });
 
   useEffect(() => {
-    const cleaned = fixSegmentOverlaps(
-      responseSegments.map((segment) => ({
-        ...segment,
-        text: cleanSegmentText(segment.text),
-      }))
-    );
-    if (pendingSaves.current) return;
+    if (project.current !== videoId) {
+      project.current = videoId;
+      ownsRevision.current = false;
+    }
+    if (ownsRevision.current || pendingSaves.current) return;
+    const cleaned = fixSegmentOverlaps(responseSegments.map(segment => ({ ...segment, text: cleanSegmentText(segment.text) })));
+    const words = synchronizeWords(cleaned, responseWords);
     setEditableSegments(cleaned);
-    revision.current = snapshot(cleaned, synchronizeWords(cleaned, responseWords));
-  }, [responseSegments]);
-
-  useEffect(() => {
-    if (pendingSaves.current) return;
-    setEditableWords(responseWords ?? []);
-  }, [responseWords]);
+    setEditableWords(words);
+    revision.current = snapshot(cleaned, words);
+  }, [responseSegments, responseWords, videoId]);
 
   useEffect(() => {
     setActiveSegmentId(null);
@@ -117,6 +114,7 @@ export function useTranscriptionState({
         wordsCount: nextWords?.length,
         firstSegmentText: nextSegments[0]?.text?.substring(0, 50)
       });
+      ownsRevision.current = true;
       setEditableSegments(nextSegments);
       const synchronizedWords = synchronizeWords(nextSegments, nextWords ?? editableWords);
       const previousRevision = revision.current;
@@ -144,7 +142,10 @@ export function useTranscriptionState({
       saveQueue.current = queued;
       try {
         await queued;
-        if (!options?.quiet && pendingSaves.current === 1) setSaveState("success");
+        if (pendingSaves.current === 1) {
+          setSaveState("success");
+          setSaveError(null);
+        }
       } catch (error) {
         console.error(error);
         // Explicit-save editors retain their own draft. Roll back the preview
@@ -195,6 +196,7 @@ export function useTranscriptionState({
 
   const handleSegmentTextChange = useCallback(
     (segmentId: Segment["id"], value: string) => {
+      ownsRevision.current = true;
       setEditableSegments((prev) =>
         prev.map((segment) => (segment.id === segmentId ? { ...segment, text: value } : segment)),
       );
@@ -243,12 +245,14 @@ export function useTranscriptionState({
         text,
       };
 
+      const error = validateCaptionRange(newSegment, editableSegments, videoDuration ?? Infinity);
+      if (error) throw new Error(error);
       const newSegments = [...editableSegments, newSegment].sort((a, b) => a.start - b.start);
       setEditableSegments(newSegments);
       setSelectedSegmentId(newSegment.id);
-      await persistSegments(newSegments);
+      await persistSegments(newSegments, undefined, { throwOnError: true });
     },
-    [editableSegments, persistSegments],
+    [editableSegments, persistSegments, videoDuration],
   );
 
   const handleToggleActiveWord = useCallback(() => {
@@ -294,9 +298,10 @@ export function useTranscriptionState({
         return;
       }
 
-      setSaveState("saving"); // Reuse saving state to show activity
+      setSaveState("saving");
+      setSaveError(null);
       try {
-        const response = await fetch("/api/resegment", {
+        const response = await apiFetch("/api/resegment", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ words: editableWords, maxWords, customInstructions }),
@@ -314,14 +319,13 @@ export function useTranscriptionState({
         );
 
         console.log('🔄 handleResegment - new segments count:', cleanedSegments.length);
-        await persistSegments(cleanedSegments, data.words ?? editableWords);
+        await persistSegments(cleanedSegments, data.words ?? editableWords, { throwOnError: true });
         setSaveState("success");
       } catch (error) {
         console.error("Failed to resegment:", error);
         setSaveState("error");
         setSaveError("שגיאה בפיצול מחדש");
-      } finally {
-        setTimeout(() => setSaveState("idle"), 2000);
+        throw error;
       }
     },
     [editableWords, persistSegments]
@@ -335,8 +339,9 @@ export function useTranscriptionState({
       }
 
       setSaveState("saving");
+      setSaveError(null);
       try {
-        const response = await fetch("/api/ai-edit-subtitles", {
+        const response = await apiFetch("/api/ai-edit-subtitles", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -361,14 +366,13 @@ export function useTranscriptionState({
         if (data.reasoning) {
           console.log('🤖 AI reasoning:', data.reasoning);
         }
-        await persistSegments(cleanedSegments, data.words ?? editableWords);
+        await persistSegments(cleanedSegments, data.words ?? editableWords, { throwOnError: true });
         setSaveState("success");
       } catch (error) {
         console.error("Failed to AI edit:", error);
         setSaveState("error");
         setSaveError("שגיאה בעריכת AI");
-      } finally {
-        setTimeout(() => setSaveState("idle"), 2000);
+        throw error;
       }
     },
     [editableSegments, editableWords, persistSegments]

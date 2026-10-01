@@ -12,7 +12,7 @@ const result = {
 
 async function prepare(page: Page, savedJob = false) {
   // Keep these recovery tests independent of Firebase and paid transcription services.
-  await page.route('**/src/client/contexts/AuthContext.tsx', route => route.fulfill({
+  await page.route('**/src/client/contexts/AuthContext.tsx*', route => route.fulfill({
     contentType: 'application/javascript',
     body: `export const useAuth = () => ({ user: { uid: '${uid}', displayName: 'Test' }, loading: false, signIn: async () => {}, signOut: async () => {} }); export const AuthProvider = ({ children }) => children;`,
   }));
