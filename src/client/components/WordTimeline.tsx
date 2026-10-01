@@ -9,6 +9,7 @@ import { validateWordRange } from "../../timelineEditing.js";
 import { TimecodeField } from "./TimecodeField";
 import { TimelineEditToolbar } from "./TimelineEditToolbar";
 import { useTimelineScrubbing } from "../hooks/useTimelineScrubbing";
+import { useTimelineWheelZoom } from "../hooks/useTimelineWheelZoom";
 
 // Drafts belong to the parent so switching captions never discards work.
 export function WordTimeline({ enabled, segment, words, selection, onSelectionChange: setSelection, currentTime, onWordsChange, onDeleteWords, onSeek, disabled, toolbarEditor, toolbarActions, toolbarPrimary, toolbarClose, compact = false }: {
@@ -30,6 +31,7 @@ export function WordTimeline({ enabled, segment, words, selection, onSelectionCh
   const [editing, setEditing] = useState<{ index: number; word: Word } | null>(null);
   const [validStart, setValidStart] = useState(true), [validEnd, setValidEnd] = useState(true);
   const timeline = useRef<TimelineState | null>(null);
+  const container = useRef<HTMLDivElement | null>(null);
   const duration = segment.end - segment.start;
   const wordStructure = words.map(word => word.word).join("\u0000");
   useEffect(() => { setSelection([]); selectionAnchor.current = null; setEditing(null); setError(null); }, [segment.id, enabled, wordStructure]);
@@ -37,6 +39,7 @@ export function WordTimeline({ enabled, segment, words, selection, onSelectionCh
     const time = Math.max(0, Math.min(duration, currentTime - segment.start));
     if (timeline.current?.getTime() !== time) timeline.current?.setTime(time);
   }, [currentTime, segment.start, duration, zoom, enabled]);
+  useTimelineWheelZoom(container, timeline, zoom, 80, 640, setZoom, enabled);
   const rows = useMemo<TimelineRow[]>(() => [{ id: "words", actions: words.map((word, i) => ({
     id: String(i), effectId: String(i), start: word.start - segment.start, end: word.end - segment.start,
     movable: !disabled, flexible: !disabled,
@@ -109,7 +112,7 @@ export function WordTimeline({ enabled, segment, words, selection, onSelectionCh
       </Box>
     </>} />
     <Snackbar open={!!error} onClose={() => setError(null)}><Alert severity="warning" onClose={() => setError(null)}>{error}</Alert></Snackbar>
-    <Box data-testid="word-track" {...scrubbing} aria-label="ציר פנימי — מילים במקטע הנבחר" sx={{ direction: "ltr", "& *": { direction: "ltr !important" }, minWidth: 0 }}>
+    <Box ref={container} data-testid="word-track" {...scrubbing} title="Ctrl + גלגלת לזום פנימה והחוצה" aria-label="ציר פנימי — מילים במקטע הנבחר" sx={{ direction: "ltr", "& *": { direction: "ltr !important" }, minWidth: 0 }}>
       <Timeline ref={timeline} editorData={rows} effects={effects} scale={1} scaleWidth={zoom} minScaleCount={Math.max(2, Math.ceil(duration) + 1)}
         gridSnap={false} dragLine disableDrag={disabled}
         onCursorDrag={seek} onCursorDragEnd={seek} onClickTimeArea={seek}

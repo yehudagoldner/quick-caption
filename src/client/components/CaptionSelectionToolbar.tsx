@@ -35,6 +35,7 @@ export function CaptionSelectionToolbar({ count, disabled, canAdd, canMerge, can
           ['Ctrl / ⌘ + K', 'פיצול הכתובית המסומנת בנקודת הקו'], ['Ctrl / ⌘ + Z', 'ביטול פעולה'],
           ['Ctrl / ⌘ + Shift + Z / Ctrl + Y', 'ביצוע חוזר'], ['Space', 'ניגון / השהיה'],
           ['Home / End', 'מעבר לתחילת הסרטון / לסופו'], ['+ / −', 'קירוב / הרחקת ציר הזמן'],
+          ['Ctrl + גלגלת', 'קירוב / הרחקת הציר שמתחת לעכבר'],
           ['Ctrl / ⌘ + 0', 'הצגת כל ההקלטה'], ['F2 / לחיצה כפולה', 'פתיחת עריכת הכתובית'],
         ].map(([key, label]) => <Box key={key} sx={{ display: 'flex', justifyContent: 'space-between', gap: 2, py: .6, borderBottom: '1px solid #eee' }}><Typography variant="body2">{label}</Typography><Typography component="kbd" variant="body2" dir="ltr" sx={{ whiteSpace: 'nowrap' }}>{key}</Typography></Box>)}
         <Typography variant="caption" sx={{ display: 'block', mt: 2 }}>הקיצורים פעילים כשהמיקוד בציר הראשי. ↑ / ↓ פועלים גם בציר המילים. בעת הקלדה בשדה הקיצורים אינם פעילים. גררו כתובית מסומנת כדי להזיז את כל הבחירה יחד.</Typography>

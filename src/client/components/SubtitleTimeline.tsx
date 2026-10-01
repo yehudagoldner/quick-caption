@@ -16,6 +16,7 @@ import { canMergeCaptions, canSplitCaptionAtTime, type CaptionBatchAction } from
 import { AudioWaveform } from "./AudioWaveform";
 import { useTimelineScrubbing } from "../hooks/useTimelineScrubbing";
 import { VideoSeekBar } from "./VideoSeekBar";
+import { useTimelineWheelZoom } from "../hooks/useTimelineWheelZoom";
 
 export type CaptionDraft = { segment: Segment; words: Word[]; allowEmpty?: boolean };
 export type SubtitleTimelineProps = {
@@ -115,7 +116,9 @@ export function SubtitleTimeline({ activeWordEnabled, segments, words = [], disa
     observer.observe(container.current); return () => observer.disconnect();
   }, []);
   const effectiveZoom = zoom ?? timelineZoomForWindow(total);
-  const pixelsPerSecond = Math.max(.01, (width - 40) / total) * 2 ** (effectiveZoom / 25);
+  const minimumScale = Math.max(.01, (width - 40) / total);
+  const maximumZoom = Math.max(200, Math.ceil(timelineZoomForWindow(total, 1)));
+  const pixelsPerSecond = minimumScale * 2 ** (effectiveZoom / 25);
   const scale = Math.max(1, Math.ceil(100 / pixelsPerSecond));
   const scaleWidth = pixelsPerSecond * scale;
   const seek = (value: number) => { onRequestTimeChange(Math.max(0, Math.min(total, snapToFrame(value, fps)))); return true; };
@@ -129,6 +132,8 @@ export function SubtitleTimeline({ activeWordEnabled, segments, words = [], disa
       timeline.current?.setScrollLeft(scrollLeft.current);
     }
   }, [time, pixelsPerSecond, width]);
+  useTimelineWheelZoom(container, timeline, pixelsPerSecond, minimumScale, minimumScale * 2 ** (maximumZoom / 25),
+    value => setZoom(Math.max(0, Math.min(maximumZoom, 25 * Math.log2(value / minimumScale)))));
   const displaySegments = movePreview ?? segments;
   const trackStructure = displaySegments.map(segment => `${segment.id}:${segment.start}:${segment.end}`).join("|");
   const rows = useMemo<TimelineRow[]>(() => [{ id: "captions", actions: displaySegments.map(s => ({
@@ -352,7 +357,7 @@ export function SubtitleTimeline({ activeWordEnabled, segments, words = [], disa
     <Stack data-testid="main-timeline-zoom" direction="row" gap={1} alignItems="center" sx={{ height: compactTiming ? 36 : 40, px: 1, bgcolor: "action.hover", minWidth: 0 }}>
       {!compactTiming && <Typography variant="caption" sx={{ whiteSpace: "nowrap" }}>זום ציר ראשי</Typography>}
       <ThemeProvider theme={ltrTheme}><Box dir="ltr" sx={{ flex: 1, minWidth: 40, maxWidth: 240, px: 1 }}>
-        <Slider size="small" aria-label="זום ציר ראשי" min={0} max={Math.max(200, Math.ceil(timelineZoomForWindow(total, 1)))} value={effectiveZoom}
+        <Slider size="small" aria-label="זום ציר ראשי" min={0} max={maximumZoom} value={effectiveZoom}
           aria-valuetext={`כ־${Math.round(total / 2 ** (effectiveZoom / 25))} שניות בתצוגה`} onChange={(_, value) => setZoom(value as number)} />
       </Box></ThemeProvider>
       <Button size="small" aria-label="תצוגת 30 שניות" aria-pressed={zoom === null} variant={zoom === null ? "contained" : "text"} onClick={() => setZoom(null)} sx={{ whiteSpace: "nowrap", minWidth: 0 }}>30 שנ׳</Button>
@@ -361,7 +366,7 @@ export function SubtitleTimeline({ activeWordEnabled, segments, words = [], disa
         canAdd={time < total} add={() => { if (isPlaying) onPlayPause?.(); onLoopChange(false); onAddSubtitle("הכנס טקסט כאן", time, Math.min(total, time + 0.5)); }}
         selectAll={() => applySelection(segments.map(s => s.id))} clear={clearSelection} merge={() => void runSelectionAction("merge")} split={() => void runSelectionAction("split")} remove={() => void runSelectionAction("delete")} move={nudge} />
     </Stack>
-    <Box ref={container} data-testid="caption-track" {...scrubbing} sx={{ minWidth: 0, direction: "ltr", "& *": { direction: "ltr !important" } }}>
+    <Box ref={container} data-testid="caption-track" {...scrubbing} title="Ctrl + גלגלת לזום פנימה והחוצה" sx={{ minWidth: 0, direction: "ltr", "& *": { direction: "ltr !important" } }}>
       <Timeline ref={timeline} editorData={rows} effects={effects} disableDrag={locked || dirty || movePreview !== null} gridSnap={false} dragLine
         scale={scale} scaleWidth={scaleWidth} scaleSplitCount={4} minScaleCount={Math.max(2, Math.ceil(total / scale) + 1)}
         getScaleRender={value => <span>{formatTimecode(value, fps)}</span>}
