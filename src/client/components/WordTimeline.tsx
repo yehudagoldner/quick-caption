@@ -11,23 +11,28 @@ import { TimelineEditToolbar } from "./TimelineEditToolbar";
 import { useTimelineScrubbing } from "../hooks/useTimelineScrubbing";
 
 // Drafts belong to the parent so switching captions never discards work.
-export function WordTimeline({ enabled, segment, words, currentTime, onWordsChange, onSeek, disabled, toolbarEditor, toolbarActions, toolbarPrimary, toolbarClose, compact = false }: {
+export function WordTimeline({ enabled, segment, words, currentTime, onWordsChange, onDeleteWords, onSeek, disabled, toolbarEditor, toolbarActions, toolbarPrimary, toolbarClose, compact = false }: {
   enabled: boolean;
   compact?: boolean;
   segment: Segment; words: Word[]; currentTime: number;
   onWordsChange: (words: Word[]) => void; onSeek: (time: number) => void; disabled?: boolean;
+  onDeleteWords: (remainingWords: Word[]) => Promise<void>;
   toolbarEditor: ReactNode; toolbarActions: ReactNode; toolbarPrimary: ReactNode; toolbarClose: ReactNode;
 }) {
   const { preferences } = useEditorPreferences();
   const fps = preferences.fps;
   const [zoom, setZoom] = useState(160);
-  const [selected, setSelected] = useState<number | null>(null);
+  const [selection, setSelection] = useState<number[]>([]);
+  const selectionAnchor = useRef<number | null>(null);
+  const root = useRef<HTMLDivElement | null>(null);
+  const deleting = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState<{ index: number | null; word: Word } | null>(null);
   const [validStart, setValidStart] = useState(true), [validEnd, setValidEnd] = useState(true);
   const timeline = useRef<TimelineState | null>(null);
   const duration = segment.end - segment.start;
-  useEffect(() => { setSelected(null); setEditing(null); setError(null); }, [segment.id, enabled]);
+  const wordStructure = words.map(word => word.word).join("\u0000");
+  useEffect(() => { setSelection([]); selectionAnchor.current = null; setEditing(null); setError(null); }, [segment.id, enabled, wordStructure]);
   useLayoutEffect(() => {
     const time = Math.max(0, Math.min(duration, currentTime - segment.start));
     if (timeline.current?.getTime() !== time) timeline.current?.setTime(time);
@@ -40,6 +45,27 @@ export function WordTimeline({ enabled, segment, words, currentTime, onWordsChan
   const seek = (relative: number) => { onSeek(Math.min(segment.end, Math.max(segment.start, snapToFrame(segment.start + relative, fps)))); return true; };
   const { handlers: scrubbing } = useTimelineScrubbing(timeline, zoom, seek);
   const update = (next: Word[]) => { setError(null); onWordsChange(next.map((w, wordIndex) => ({ ...w, segmentId: segment.id, wordIndex }))); };
+  const choose = (index: number, event: { ctrlKey: boolean; metaKey: boolean; shiftKey: boolean }) => {
+    if (disabled || deleting.current) return;
+    if (event.shiftKey && selectionAnchor.current !== null) {
+      const first = Math.min(index, selectionAnchor.current), last = Math.max(index, selectionAnchor.current);
+      const range = Array.from({ length: last - first + 1 }, (_, i) => first + i);
+      setSelection(event.ctrlKey || event.metaKey ? [...new Set([...selection, ...range])] : range);
+    } else if (event.ctrlKey || event.metaKey) {
+      setSelection(selection.includes(index) ? selection.filter(value => value !== index) : [...selection, index]);
+      selectionAnchor.current = index;
+    } else { setSelection([index]); selectionAnchor.current = index; }
+  };
+  const removeSelected = async () => {
+    if (disabled || deleting.current || !selection.length) return;
+    deleting.current = true;
+    setError(null);
+    try {
+      await onDeleteWords(words.filter((_, i) => !selection.includes(i)).map((word, wordIndex) => ({ ...word, segmentId: segment.id, wordIndex })));
+      setSelection([]); selectionAnchor.current = null;
+    } catch (e) { setError((e as Error).message || "מחיקת המילים נכשלה. נסו שוב."); }
+    finally { deleting.current = false; }
+  };
   const dialogError = editing && (validateWordRange(editing.word, segment, words.filter((_, i) => i !== editing.index)) ||
     (editing.index !== null && ((editing.index > 0 && editing.word.start < words[editing.index - 1].start) ||
       (editing.index < words.length - 1 && editing.word.start > words[editing.index + 1].start))
@@ -55,16 +81,35 @@ export function WordTimeline({ enabled, segment, words, currentTime, onWordsChan
   // remain owned by the parent, including when highlighting is switched off.
   if (!enabled) return <TimelineEditToolbar editor={toolbarEditor} actions={toolbarActions}
     primary={toolbarPrimary} close={toolbarClose} compactAt={600} label="עריכת המקטע" actionsLabel="פעולות מקטע" />;
+  const selected = selection.length === 1 ? selection[0] : null;
   const hasWord = selected !== null && !!words[selected];
-  return <Box data-testid="word-editor">
+  return <Box ref={root} tabIndex={-1} data-testid="word-editor" sx={{ outline: "none" }}
+    onPointerDownCapture={event => {
+      if (!(event.target as HTMLElement).closest('input,textarea,button,[role="slider"],[role="dialog"]')) root.current?.focus({ preventScroll: true });
+    }}
+    onKeyDown={event => {
+      const target = event.target as HTMLElement;
+      if (event.defaultPrevented || event.nativeEvent.isComposing || target.closest('input,textarea,select,[contenteditable="true"],[role="dialog"]')) return;
+      const command = event.ctrlKey || event.metaKey;
+      if (!command && !event.altKey && (event.key === "Delete" || event.key === "Backspace")) {
+        // Always consume word deletion, even with no selection or while saving,
+        // so the outer caption timeline never interprets it as caption deletion.
+        event.preventDefault(); event.stopPropagation(); void removeSelected();
+      } else if (command && event.key.toLowerCase() === "a") {
+        event.preventDefault(); event.stopPropagation();
+        if (!disabled) { setSelection(words.map((_, i) => i)); selectionAnchor.current = 0; }
+      } else if (event.key === "Escape" && selection.length) {
+        event.preventDefault(); event.stopPropagation(); setSelection([]); selectionAnchor.current = null;
+      }
+    }}>
     <TimelineEditToolbar editor={toolbarEditor} primary={toolbarPrimary} close={toolbarClose} actions={<>
       {toolbarActions}
       <Box className="timeline-toolbar-divider" />
-      <Tooltip title="ציר פנימי — מילים במקטע הנבחר. גררו מילה להזזה ואת הקצוות לשינוי משך."><Box component="span" sx={{ display: "flex", alignItems: "center", color: "text.secondary", gap: .25 }}><ShortTextRounded fontSize="small" /><Typography variant="caption">מילים</Typography></Box></Tooltip>
+      <Tooltip title="Ctrl / ⌘ + לחיצה לבחירה מרובה, Shift לבחירת טווח, Delete למחיקת המילים המסומנות, Esc לניקוי הבחירה."><Box component="span" sx={{ display: "flex", alignItems: "center", color: "text.secondary", gap: .25 }}><ShortTextRounded fontSize="small" /><Typography variant="caption" data-testid="word-selection-count">{selection.length ? `${selection.length} מילים נבחרו` : "מילים"}</Typography></Box></Tooltip>
       <Tooltip title="הוסף מילה"><span><IconButton size="small" aria-label="הוסף מילה" disabled={disabled} onClick={openAdd}><AddRounded /></IconButton></span></Tooltip>
       <Tooltip title={hasWord ? "ערוך מילה ותזמון" : "בחרו מילה בציר לעריכה"}><span><IconButton size="small" aria-label="ערוך מילה ותזמון" disabled={disabled || !hasWord} onClick={() => { if (selected === null) return; setValidStart(true); setValidEnd(true); setEditing({ index: selected, word: { ...words[selected] } }); }}><EditOutlined /></IconButton></span></Tooltip>
       <Tooltip title="עבור למיקום המילה"><span><IconButton size="small" aria-label="עבור למיקום המילה" disabled={!hasWord} onClick={() => { if (selected !== null) onSeek(words[selected].start); }}><MyLocationRounded /></IconButton></span></Tooltip>
-      <Tooltip title="הסר מילה מהטיוטה"><span><IconButton size="small" aria-label="הסר מילה מהטיוטה" color="error" disabled={disabled || !hasWord} onClick={() => { update(words.filter((_, i) => i !== selected)); setSelected(null); }}><DeleteOutlineRounded /></IconButton></span></Tooltip>
+      <Tooltip title="מחק מילים מסומנות · Delete"><span><IconButton size="small" aria-label="מחק מילים מסומנות" color="error" disabled={disabled || !selection.length} onClick={() => void removeSelected()}><DeleteOutlineRounded /></IconButton></span></Tooltip>
       <Box className="timeline-toolbar-divider" />
       <Box sx={{ display: "flex", alignItems: "center", gap: 1, width: 110, px: 1 }}>
         <Tooltip title="זום מילים"><ZoomInRounded fontSize="small" color="action" /></Tooltip>
@@ -96,10 +141,12 @@ export function WordTimeline({ enabled, segment, words, currentTime, onWordsChan
         }}
         getScaleRender={value => <span>{formatTimecode(value, fps)}</span>}
         getActionRender={action => <Box className="word-timeline-action" data-testid="word-clip" role="button" tabIndex={0}
-          aria-label={`עריכת מילה: ${words[Number(action.id)]?.word}`} aria-pressed={selected === Number(action.id)}
+          aria-label={`עריכת מילה: ${words[Number(action.id)]?.word}`} aria-pressed={selection.includes(Number(action.id))}
           title={`${words[Number(action.id)]?.word} · ${formatTimecode(segment.start + action.start, fps)} – ${formatTimecode(segment.start + action.end, fps)}`}
-          onClick={() => setSelected(Number(action.id))} onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setSelected(Number(action.id)); } }}
-          sx={{ bgcolor: selected === Number(action.id) ? "primary.main" : "success.dark", height: "100%", color: "white", borderRadius: 1, px: 1, display: "flex", alignItems: "center", overflow: "hidden" }}>
+          onMouseDown={event => { if (event.ctrlKey || event.metaKey || event.shiftKey) { event.preventDefault(); event.stopPropagation(); } }}
+          onClick={event => { event.currentTarget.focus({ preventScroll: true }); choose(Number(action.id), event); }}
+          onKeyDown={event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); choose(Number(action.id), event); } }}
+          sx={{ bgcolor: selection.includes(Number(action.id)) ? "primary.main" : "success.dark", height: "100%", color: "white", borderRadius: 1, px: 1, display: "flex", alignItems: "center", overflow: "hidden" }}>
           <Typography noWrap variant="caption" sx={{ direction: `${preferences.direction} !important`, unicodeBidi: "plaintext" }}>{words[Number(action.id)]?.word}</Typography>
         </Box>} style={{ width: "100%", height: compact ? 88 : 120 }} />
     </Box>
@@ -118,7 +165,7 @@ export function WordTimeline({ enabled, segment, words, currentTime, onWordsChan
           if (!editing || dialogError) return;
           const next = words.filter((_, i) => i !== editing.index);
           next.push({ ...editing.word, word: editing.word.word.trim(), timingSource: "aligned" });
-          update(next.sort((a, b) => a.start - b.start)); setSelected(null); setEditing(null);
+          update(next.sort((a, b) => a.start - b.start)); setSelection([]); selectionAnchor.current = null; setEditing(null);
         }}>החל בטיוטה</Button>
       </DialogActions>
     </Dialog>

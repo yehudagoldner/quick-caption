@@ -220,6 +220,24 @@ export function SubtitleTimeline({ activeWordEnabled, segments, words = [], disa
     } catch (e) { setError((e as Error).message || "השמירה נכשלה; הטיוטה נשמרה בעורך."); return false; }
     finally { flight.current = false; setSaving(false); }
   };
+  const deleteWords = async (remainingWords: Word[]) => {
+    if (!draft || locked || flight.current) return;
+    flight.current = true; setSaving(true); setError(null);
+    try {
+      if (!remainingWords.length) {
+        // Removing every word also removes the now-empty caption, keeping
+        // autosave/navigation valid and using the existing Undo history.
+        await onCaptionBatch([draft.segment.id], "delete");
+        clearDraft(draft.segment.id);
+        onSegmentSelect(null);
+      } else {
+        const next = { segment: { ...draft.segment, text: remainingWords.map(word => word.word).join(" ") }, words: remainingWords };
+        setDraft(next);
+        await commitDraft(next);
+      }
+    } catch (e) { setError((e as Error).message || "מחיקת המילים נכשלה; השינוי נשמר בעורך."); throw e; }
+    finally { flight.current = false; setSaving(false); }
+  };
   const runSelectionAction = async (action: CaptionBatchAction) => {
     if (groupLocked || flight.current || !selection.length) return;
     root.current?.focus({ preventScroll: true });
@@ -412,6 +430,7 @@ export function SubtitleTimeline({ activeWordEnabled, segments, words = [], disa
     </Box>
     {!compactTiming && draft && !disabled && <Box data-testid="segment-inspector">
         <WordTimeline compact={compactDesktop} enabled={activeWordEnabled} segment={draft.segment} words={draft.words} currentTime={time} disabled={locked} onSeek={seek}
+          onDeleteWords={deleteWords}
           toolbarEditor={<TextField className="caption-text-editor" variant="standard" fullWidth value={draft.segment.text} disabled={locked}
           placeholder="טקסט המקטע" inputProps={{ dir: preferences.direction, "aria-label": "טקסט המקטע", title: draft.segment.text }}
           onBlur={() => { if (draft.segment.text.trim()) void commitDraft(draft); }}
