@@ -12,6 +12,11 @@ import "./src/loadAppEnv.js";
 import { transcribeMedia, normalizeSubtitleFormat, transcribeWithWordTimestamps, getMediaDuration, resegmentWithGPT, intelligentSplitSegment, aiEditSubtitles } from "./src/transcription.js";
 import { createBurnSubtitlesRouter } from "./routes/burnSubtitles.js";
 import paypalRouter from "./routes/paypal.js";
+import pool from "./db.js";
+import { createAdminStore } from "./src/adminStore.js";
+import { createAdminRouter } from "./routes/admin.js";
+import { createFirebaseVerifier, createIdentityMiddleware } from "./src/firebaseIdentity.js";
+import { configureUsageRecorder, usageContext } from "./src/aiUsage.js";
 import { ensureSchema, upsertUser, saveVideo, updateVideoSubtitles, getUserVideos, getVideoById, getUserCredits, deductCredits, ensureDevDummyUser, createTranscriptionJob, getTranscriptionJob, finishTranscriptionJob, updateTranscriptionProgress, completeTranscriptionJob } from "./db.js";
 import { trackTranscriptionProgress } from "./src/transcriptionJobs.js";
 import { estimateTranscriptionCredits, creditsToDollars, calculateTotalWorkflowCredits } from "./src/creditCalculator.js";
@@ -33,6 +38,12 @@ const videosStorageDir = path.join(process.cwd(), "stored-videos");
 await fsp.mkdir(uploadDir, { recursive: true });
 await fsp.mkdir(videosStorageDir, { recursive: true });
 await ensureSchema();
+const adminStore = createAdminStore(pool);
+const verifyIdentity = createFirebaseVerifier({ projectId: process.env.FIREBASE_PROJECT_ID || process.env.VITE_FIREBASE_PROJECT_ID });
+const authenticate = createIdentityMiddleware(verifyIdentity);
+configureUsageRecorder(row => adminStore.recordUsage(row));
+app.use(usageContext);
+app.use('/api/admin', createAdminRouter({ authenticate, store: adminStore }));
 if (isDevAuthBypassEnabled()) {
   await ensureDevDummyUser({
     uid: getDevAuthUid(),
@@ -61,7 +72,7 @@ app.get("/health", (req, res) => {
   res.json({ status: "ok" });
 });
 
-app.post("/api/users/sync", async (req, res) => {
+app.post("/api/users/sync", authenticate, async (req, res) => {
   const {
     uid,
     email,
@@ -71,7 +82,7 @@ app.post("/api/users/sync", async (req, res) => {
     emailVerified,
     providerId,
     lastLoginAt,
-  } = req.body ?? {};
+  } = { ...req.body, ...req.identity };
   if (!uid || !email) {
     return res.status(400).json({ error: "uid and email are required" });
   }

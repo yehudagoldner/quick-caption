@@ -32,6 +32,8 @@ type AppHeaderProps = {
   onNavigate: (page: HeaderPage) => void;
   onBuyCredits: () => void;
   navigationBlocked?: boolean;
+  isAdmin?: boolean;
+  onAdmin?: () => void;
 };
 
 export function AppHeader({
@@ -47,6 +49,8 @@ export function AppHeader({
   onNavigate,
   onBuyCredits,
   navigationBlocked = false,
+  isAdmin = false,
+  onAdmin,
 }: AppHeaderProps) {
   const { isDevBypass } = useAuth();
   const narrow = useNarrowViewport();
@@ -143,6 +147,7 @@ export function AppHeader({
                 <AccountBalanceWalletRounded sx={{ ml: 1 }} />
                 רכישת קרדיטים
               </MenuItem>
+              {isAdmin && <MenuItem disabled={navigationBlocked} onClick={() => { onProfileClose(); onAdmin?.(); }}>ניהול</MenuItem>}
               <MenuItem onClick={onSignOut}>התנתקות</MenuItem>
             </Menu>
           </>

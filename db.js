@@ -3,6 +3,7 @@ import "./src/loadAppEnv.js";
 import { creditPayment } from "./src/creditPayments.js";
 import { completeJob, JOB_STALE_SECONDS } from "./src/transcriptionJobs.js";
 import { ensureVideoRetention, touchVideo } from "./src/videoRetention.js";
+import { ensureAdminSchema } from "./src/adminStore.js";
 
 const pool = mysql.createPool({
   host: process.env.DB_HOST,
@@ -99,6 +100,8 @@ export async function ensureSchema() {
     await pool.execute("ALTER TABLE videos ADD COLUMN words_json JSON NULL AFTER subtitle_json");
   }
 
+  await ensureAdminSchema(pool);
+
   // Add credits column to existing users table
   const [creditsColumns] = await pool.query("SHOW COLUMNS FROM users LIKE 'credits'");
   if (Array.isArray(creditsColumns) && creditsColumns.length === 0) {
@@ -157,26 +160,36 @@ export async function saveVideo({
   subtitleJson = null,
   wordsJson = null,
 }) {
-  const [result] = await pool.execute(
-    `INSERT INTO videos (user_uid, original_filename, stored_path, status, media_type, mime_type, format, duration_seconds, size_bytes, transcription_id, subtitle_json, words_json)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [
-      userUid,
-      originalFilename,
-      storedPath,
-      status,
-      mediaType,
-      mimeType,
-      format,
-      durationSeconds,
-      sizeBytes,
-      transcriptionId,
-      subtitleJson,
-      wordsJson,
-    ],
-  );
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
+    const [result] = await connection.execute(
+      `INSERT INTO videos (user_uid, original_filename, stored_path, status, media_type, mime_type, format, duration_seconds, size_bytes, transcription_id, subtitle_json, words_json)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        userUid,
+        originalFilename,
+        storedPath,
+        status,
+        mediaType,
+        mimeType,
+        format,
+        durationSeconds,
+        sizeBytes,
+        transcriptionId,
+        subtitleJson,
+        wordsJson,
+      ],
+    );
 
-  return result?.insertId ?? null;
+    if (status === 'completed') {
+      await connection.execute('INSERT INTO video_activity (video_id, user_uid, media_type, duration_seconds) VALUES (?, ?, ?, ?)',
+        [result.insertId, userUid, mediaType, durationSeconds ?? 0]);
+    }
+    await connection.commit();
+    return result?.insertId ?? null;
+  } catch (error) { await connection.rollback(); throw error; }
+  finally { connection.release(); }
 }
 
 export async function updateVideoSubtitles({ videoId, userUid, subtitleJson, wordsJson = undefined }) {
@@ -191,6 +204,7 @@ export async function updateVideoSubtitles({ videoId, userUid, subtitleJson, wor
   }
 
   const [result] = await pool.execute(query, params);
+  if (result.affectedRows) await pool.execute('UPDATE video_activity SET edited = 1 WHERE video_id = ? AND user_uid = ?', [videoId, userUid]);
   return result;
 }
 

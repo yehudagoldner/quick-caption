@@ -3,6 +3,7 @@ import { promises as fsp } from "fs";
 import { spawn } from "child_process";
 import path from "path";
 import OpenAI from "openai";
+import { instrumentOpenAI } from "./aiUsage.js";
 import "./loadAppEnv.js";
 import { limitSubtitleCharacters } from "./subtitleSegmentation.js";
 import { synchronizeWords, mergeCorrectedSegments, subtitleTokens } from "./wordAlignment.js";
@@ -645,7 +646,7 @@ function createOpenAIClient() {
   if (!apiKey) {
     throw new Error("OPENAI_API_KEY environment variable is required for OpenAI transcription.");
   }
-  return new OpenAI({ apiKey });
+  return instrumentOpenAI(new OpenAI({ apiKey }), getMediaDuration);
 }
 
 // Opt in locally through .env; audio requests do not accept this text-only tier.

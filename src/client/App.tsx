@@ -6,6 +6,8 @@ import { TranscriptionPage } from "./components/TranscriptionPage";
 import { VideoEditPage } from "./components/VideoEditPage";
 import { VideosPage } from "./components/VideosPage";
 import { BuyCreditsPage } from "./components/BuyCreditsPage";
+import { AdminPage } from "./components/AdminPage";
+import { adminRequest } from "./adminApi";
 import { useTranscriptionWorkflow } from "./hooks/useTranscriptionWorkflow";
 import { EditorNavigationContext, type EditorNavigationGuard } from "./contexts/EditorNavigationContext";
 import "./App.css";
@@ -23,9 +25,10 @@ const theme = createTheme({
 const RAW_API_BASE = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.trim() ?? "";
 const API_BASE_URL = RAW_API_BASE.replace(/\/?$/, "");
 
-type AppScreen = "home" | "transcription" | "videos" | "edit" | "buy-credits";
+type AppScreen = "home" | "transcription" | "videos" | "edit" | "buy-credits" | "admin";
 
 function getScreenFromUrl(): { screen: AppScreen; videoToken?: string } {
+  if (window.location.pathname.replace(/\/$/, '') === '/admin') return { screen: 'admin' };
   const params = new URLSearchParams(window.location.search);
   const screen = params.get("screen") as AppScreen;
   const videoToken = params.get("video");
@@ -42,6 +45,7 @@ function getScreenFromUrl(): { screen: AppScreen; videoToken?: string } {
 }
 
 function updateUrl(screen: AppScreen, videoToken?: string) {
+  if (screen === 'admin') { window.history.pushState(null, '', '/admin'); return; }
   const params = new URLSearchParams();
   if (screen !== "home") {
     params.set("screen", screen);
@@ -50,7 +54,7 @@ function updateUrl(screen: AppScreen, videoToken?: string) {
     params.set("video", videoToken);
   }
 
-  const newUrl = params.toString() ? `${window.location.pathname}?${params.toString()}` : window.location.pathname;
+  const newUrl = params.toString() ? `/?${params.toString()}` : '/';
   window.history.pushState(null, "", newUrl);
 }
 
@@ -59,6 +63,18 @@ function App() {
   const [currentScreen, setCurrentScreen] = useState<AppScreen>("home");
   const [videoToken, setVideoToken] = useState<string | undefined>();
   const [credits, setCredits] = useState<number | null>(null);
+  const [adminUid, setAdminUid] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    setAdminUid(null);
+    if (workflow.user) {
+      const user = workflow.user;
+      void adminRequest<{ isAdmin: boolean }>(user, '/session').then(session => {
+        if (!cancelled) setAdminUid(session.isAdmin ? user.uid : null);
+      }).catch(() => {});
+    }
+    return () => { cancelled = true; };
+  }, [workflow.user]);
   const editorNavigation = useRef<EditorNavigationGuard | null>(null);
   const [navigationBlocked, setNavigationBlocked] = useState(false);
   const registerEditorNavigation = useCallback((guard: EditorNavigationGuard | null, blocked = false) => {
@@ -200,6 +216,12 @@ function App() {
             else navigate();
           }}
           onBuyCredits={handleBuyCredits}
+          isAdmin={Boolean(workflow.user && adminUid === workflow.user.uid)}
+          onAdmin={() => {
+            const navigate = () => navigateToScreen('admin');
+            if (editorNavigation.current) void editorNavigation.current(navigate);
+            else navigate();
+          }}
         />
 
         <Container maxWidth={false} sx={{
@@ -257,6 +279,8 @@ function App() {
               onCreditsUpdated={fetchCredits}
             />
           )}
+
+          {currentScreen === 'admin' && <AdminPage key={workflow.user?.uid ?? 'guest'} />}
 
           {currentScreen === "edit" && videoToken && (
             <VideoEditPage

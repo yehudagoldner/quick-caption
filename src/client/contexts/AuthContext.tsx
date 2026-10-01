@@ -15,9 +15,10 @@ const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
 async function syncUser(user: User) {
   try {
+    const idToken = await user.getIdToken();
     await fetch("/api/users/sync", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` },
       body: JSON.stringify({
         uid: user.uid,
         email: user.email,
