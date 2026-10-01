@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import { Box, Dialog, DialogTitle, DialogContent, DialogActions, Button, IconButton, Tooltip, Typography } from '@mui/material';
-import { SelectAllRounded, DeselectRounded, JoinFullRounded, DeleteOutlineRounded, ContentCutRounded, KeyboardRounded, ArrowBackRounded, ArrowForwardRounded } from '@mui/icons-material';
+import { AddRounded, SelectAllRounded, DeselectRounded, JoinFullRounded, DeleteOutlineRounded, ContentCutRounded, KeyboardRounded, ArrowBackRounded, ArrowForwardRounded } from '@mui/icons-material';
 
-export function CaptionSelectionToolbar({ count, disabled, canMerge, canSplit, selectAll, clear, merge, split, remove, move }: {
-  count: number; disabled: boolean; canMerge: boolean; canSplit: boolean;
-  selectAll: () => void; clear: () => void; merge: () => void; split: () => void; remove: () => void; move: (frames: number) => void;
+export function CaptionSelectionToolbar({ count, disabled, canAdd, canMerge, canSplit, add, selectAll, clear, merge, split, remove, move }: {
+  count: number; disabled: boolean; canAdd: boolean; canMerge: boolean; canSplit: boolean;
+  add: () => void; selectAll: () => void; clear: () => void; merge: () => void; split: () => void; remove: () => void; move: (frames: number) => void;
 }) {
   const [help, setHelp] = useState(false);
   const commands = [
@@ -19,6 +19,7 @@ export function CaptionSelectionToolbar({ count, disabled, canMerge, canSplit, s
   return <>
     <Box role="toolbar" aria-label="פעולות בחירת כתוביות" sx={{ display: 'flex', alignItems: 'center', gap: .25, marginInlineStart: 'auto', flexShrink: 0, '& .MuiIconButton-root': { width: 30, height: 30, p: .5 }, '& .MuiSvgIcon-root': { fontSize: 19 } }}>
       <Typography variant="caption" role="status" sx={{ minWidth: 48 }}>{count ? `${count} נבחרו` : 'בחירה'}</Typography>
+      <Tooltip title="הוסף כתובית"><span><IconButton aria-label="הוסף כתובית" disabled={disabled || !canAdd} onClick={add} color="primary"><AddRounded /></IconButton></span></Tooltip>
       {commands.map(([label, key, icon, action, unavailable]) => <Tooltip key={label} title={`${label} · ${key}`}><span><IconButton aria-label={label} disabled={disabled || unavailable} onClick={action} color={label.startsWith('מחיקת') ? 'error' : 'default'}>{icon}</IconButton></span></Tooltip>)}
       <Tooltip title="קיצורי מקלדת"><IconButton aria-label="קיצורי מקלדת" onClick={() => setHelp(true)}><KeyboardRounded /></IconButton></Tooltip>
     </Box>

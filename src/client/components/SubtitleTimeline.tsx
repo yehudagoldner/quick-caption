@@ -2,7 +2,7 @@ import "react-virtualized/styles.css";
 import "./SubtitleTimeline.css";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Alert, Box, Button, Dialog, DialogActions, DialogContent, DialogTitle, IconButton, InputAdornment, Slider, Stack, TextField, ThemeProvider, Tooltip, Typography, createTheme, useTheme } from "@mui/material";
-import { AddRounded, PlayArrowRounded, PauseRounded, UndoRounded, RedoRounded, RepeatRounded, ContentCutRounded, CloseRounded, RestartAltRounded, EditOutlined, OpenInFullRounded } from "@mui/icons-material";
+import { PlayArrowRounded, PauseRounded, UndoRounded, RedoRounded, RepeatRounded, ContentCutRounded, CloseRounded, RestartAltRounded, EditOutlined, OpenInFullRounded } from "@mui/icons-material";
 import { Timeline, type TimelineRow, type TimelineState } from "@xzdarcy/react-timeline-editor";
 import type { Segment, Word } from "../types";
 import { useEditorPreferences } from "../contexts/EditorPreferences";
@@ -282,8 +282,6 @@ export function SubtitleTimeline({ activeWordEnabled, segments, words = [], disa
     {error && !expanded && <Alert severity="warning" onClose={() => setError(null)}>{error}</Alert>}
     <Stack direction="row" alignItems="center" gap={1}>
       <IconButton aria-label={isPlaying ? "השהה" : "נגן"} onClick={onPlayPause}>{isPlaying ? <PauseRounded /> : <PlayArrowRounded />}</IconButton>
-      <Tooltip title="הוסף כתובית"><span><IconButton aria-label="הוסף כתובית" disabled={groupLocked || time >= total}
-        onClick={() => { if (isPlaying) onPlayPause?.(); onLoopChange(false); onAddSubtitle("הכנס טקסט כאן", time, Math.min(total, time + 0.5)); }}><AddRounded /></IconButton></span></Tooltip>
       <Button size="small" aria-label="פריים אחורה" onClick={() => seek(time - 1 / fps)}>−1F</Button>
       <Typography variant="body2" dir="ltr" data-testid="playhead-timecode" sx={{ whiteSpace: "nowrap" }}>{formatTimecode(time, fps)}</Typography>
       <Button size="small" aria-label="פריים קדימה" onClick={() => seek(time + 1 / fps)}>+1F</Button>
@@ -305,6 +303,7 @@ export function SubtitleTimeline({ activeWordEnabled, segments, words = [], disa
       <Button size="small" aria-label="תצוגת 30 שניות" aria-pressed={zoom === null} variant={zoom === null ? "contained" : "text"} onClick={() => setZoom(null)} sx={{ whiteSpace: "nowrap", minWidth: 0 }}>30 שנ׳</Button>
       <Button size="small" aria-label="התאם את כל ההקלטה" aria-pressed={zoom === 0} onClick={() => { setZoom(0); scrollLeft.current = 0; timeline.current?.setScrollLeft(0); }} sx={{ whiteSpace: "nowrap", minWidth: 0 }}>הכול</Button>
       <CaptionSelectionToolbar count={selection.length} disabled={groupLocked} canMerge={canMergeCaptions(segments, selection)} canSplit={canSplitCaptionAtTime(selectedCaption, time)}
+        canAdd={time < total} add={() => { if (isPlaying) onPlayPause?.(); onLoopChange(false); onAddSubtitle("הכנס טקסט כאן", time, Math.min(total, time + 0.5)); }}
         selectAll={() => applySelection(segments.map(s => s.id))} clear={clearSelection} merge={() => void runSelectionAction("merge")} split={() => void runSelectionAction("split")} remove={() => void runSelectionAction("delete")} move={nudge} />
     </Stack>
     <Box ref={container} data-testid="caption-track" sx={{ minWidth: 0, direction: "ltr", "& *": { direction: "ltr !important" } }}>
