@@ -52,6 +52,8 @@ export function TranscriptionResult({
   const { preferences } = useEditorPreferences();
   const [hasTimelineDrafts, setHasTimelineDrafts] = useState(false);
   const [loopEnabled, setLoopEnabled] = useState(false);
+  const loopEnabledRef = useRef(loopEnabled);
+  loopEnabledRef.current = loopEnabled;
   const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
   const [exportFormat, setExportFormat] = useState(response.subtitle?.format || ".srt");
   const downloadName = originalDownloadName.replace(/\.[^.]+$/, "") + exportFormat;
@@ -188,6 +190,7 @@ export function TranscriptionResult({
     handleMarginChange,
     handleBurnVideo,
   } = useTranscriptionHandlers({
+    mediaUrl,
     editableSegments,
     editableWords,
     activeWordEnabled,
@@ -241,6 +244,7 @@ export function TranscriptionResult({
               onDraftStateChange: setHasTimelineDrafts, loopEnabled,
               onPlayFrom: time => { handleTimelineTimeChange(time); void videoPlayer?.play().catch(() => setBurnError("לא ניתן להתחיל ניגון.")); },
               onLoopChange: enabled => {
+                loopEnabledRef.current = enabled;
                 setLoopEnabled(enabled);
                 const selected = editableSegments.find(s => s.id === selectedSegmentId);
                 if (enabled && selected) { handleTimelineTimeChange(selected.start); void videoPlayer?.play().catch(() => setLoopEnabled(false)); }
@@ -274,7 +278,7 @@ export function TranscriptionResult({
             downloadName={downloadName}
             activeWordEnabled={activeWordEnabled}
             onVideoTimeUpdate={time => {
-              const selected = loopEnabled && editableSegments.find(s => s.id === selectedSegmentId);
+              const selected = loopEnabledRef.current && editableSegments.find(s => s.id === selectedSegmentId);
               if (selected && videoPlayer && (time >= selected.end || time < selected.start)) {
                 const wasEnded = videoPlayer.ended;
                 handleTimelineTimeChange(selected.start);
@@ -284,7 +288,13 @@ export function TranscriptionResult({
             onVideoLoadedMetadata={handleVideoLoadedMetadata}
             onVideoResize={handleVideoResize}
             onTimelineSegmentsChange={handleTimelineSegmentsChange}
-            onTimelineTimeChange={handleTimelineTimeChange}
+            onTimelineTimeChange={time => {
+              // A manual seek must win over the selected-caption loop, including
+              // media events queued before React renders the new loop state.
+              loopEnabledRef.current = false;
+              setLoopEnabled(false);
+              handleTimelineTimeChange(time);
+            }}
             onSegmentSelect={id => { setSelectedSegmentId(id); setLoopEnabled(false); }}
             onSegmentTextChangeAndSave={handleSegmentTextChangeAndSave}
             onSegmentTextChange={handleSegmentTextChange}

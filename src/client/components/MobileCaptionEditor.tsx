@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, type ReactNode } from "react";
+import { VideoSeekBar } from "./VideoSeekBar";
 import {
   Alert,
   Box,
@@ -573,24 +574,7 @@ export function MobileCaptionEditor({
             {playerSlot("watch")}
             {!styleOpen && <Typography variant="caption" color="text.secondary" sx={{ flexShrink: 0 }}>{formatTimecode(currentTime, preferences.fps)}</Typography>}
             {!styleOpen && <>
-            <Box
-              dir="ltr"
-              role="slider"
-              aria-label="מיקום בהקלטה"
-              aria-valuemin={0}
-              aria-valuemax={duration}
-              aria-valuenow={currentTime}
-              onClick={event => {
-                const rect = event.currentTarget.getBoundingClientRect();
-                onTimelineTimeChange(Math.max(0, Math.min(duration, ((event.clientX - rect.left) / rect.width) * duration)));
-              }}
-              sx={{ flexShrink: 0, position: "relative", width: "100%", height: 28, cursor: "pointer", display: "flex", alignItems: "center" }}
-            >
-              <Box sx={{ position: "relative", width: "100%", height: 6, bgcolor: "#e8edf3", borderRadius: 999 }}>
-                <Box sx={{ position: "absolute", top: 0, bottom: 0, width: `${(currentTime / duration) * 100}%`, bgcolor: "primary.main", borderRadius: 999 }} />
-                <Box sx={{ position: "absolute", top: "50%", width: 14, height: 14, borderRadius: "50%", bgcolor: "primary.main", transform: "translate(-50%, -50%)", left: `${(currentTime / duration) * 100}%` }} />
-              </Box>
-            </Box>
+            <VideoSeekBar compact currentTime={currentTime} duration={duration} fps={preferences.fps} mediaUrl={mediaUrl} onSeek={onTimelineTimeChange} />
             {editableSegments.length > 0 && (
               <Box
                 ref={captionStripRef}

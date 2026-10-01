@@ -15,6 +15,7 @@ import { moveCaptionSelection } from "../../captionSelection.js";
 import { canMergeCaptions, canSplitCaptionAtTime, type CaptionBatchAction } from "../../captionBatchEditing.js";
 import { AudioWaveform } from "./AudioWaveform";
 import { useTimelineScrubbing } from "../hooks/useTimelineScrubbing";
+import { VideoSeekBar } from "./VideoSeekBar";
 
 export type CaptionDraft = { segment: Segment; words: Word[] };
 export type SubtitleTimelineProps = {
@@ -243,8 +244,25 @@ export function SubtitleTimeline({ activeWordEnabled, segments, words = [], disa
   const cancelDrag = () => { dragging.current = null; setMovePreview(null); suppressClick.current = true; };
   const selectedCaption = selection.length === 1 ? segments.find(s => s.id === selection[0]) : undefined;
   useEffect(() => {
+    if (!compactDesktop || selection.length < 2 || groupLocked || flight.current) return;
+    const dismiss = (event: PointerEvent) => {
+      if (event.button !== 0 || !event.isPrimary || dragging.current) return;
+      const target = event.target;
+      if (!(target instanceof Element) || target.closest('button,a,input,textarea,select,video,audio,[contenteditable="true"],[role="button"],[role="slider"],[role="dialog"],[role="menu"],[role="listbox"],[role="tab"],[role="toolbar"],[data-testid="segment-inspector"],[data-testid="word-track"],.timeline-editor-action,.timeline-editor-cursor')) return;
+      clearSelection();
+    };
+    // Capture before timeline scrubbing stops propagation, including blank space
+    // elsewhere in the desktop editor. Caption and control gestures stay intact.
+    document.addEventListener("pointerdown", dismiss, true);
+    return () => document.removeEventListener("pointerdown", dismiss, true);
+  });
+  useEffect(() => {
     const keys = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement;
+      if (compactDesktop && event.code === "Escape" && selection.length && !locked && !dirty && !flight.current && !dragging.current
+        && !event.defaultPrevented && !event.isComposing && !target.closest('input,textarea,select,[contenteditable="true"],[role="dialog"],[role="menu"],[role="listbox"]')) {
+        event.preventDefault(); clearSelection(); return;
+      }
       if (event.defaultPrevented || event.isComposing || !root.current?.contains(target)
         || target.closest('input,textarea,select,[contenteditable="true"],[role="dialog"],[role="slider"],[data-testid="segment-inspector"]')) return;
       const command = event.ctrlKey || event.metaKey;
@@ -292,9 +310,9 @@ export function SubtitleTimeline({ activeWordEnabled, segments, words = [], disa
         <IconButton size="small" aria-label="ביטול פעולה" onClick={onUndo} disabled={!canUndo || locked || dirty}><UndoRounded /></IconButton>
         <IconButton size="small" aria-label="ביצוע חוזר" onClick={onRedo} disabled={!canRedo || locked || dirty}><RedoRounded /></IconButton>
       </>}
-      {compactDesktop && <ThemeProvider theme={ltrTheme}><Box dir="ltr" sx={{ flex: 1, px: 2 }}><Slider aria-label="מיקום בהקלטה" min={0} max={total} step={1 / fps} value={time} onChange={(_, value) => seek(value as number)} /></Box></ThemeProvider>}
+      {compactDesktop && <Box dir="ltr" sx={{ flex: 1, px: 2 }}><VideoSeekBar currentTime={time} duration={total} fps={fps} mediaUrl={mediaUrl} onSeek={onRequestTimeChange} /></Box>}
     </Stack>
-    {!compactDesktop && <ThemeProvider theme={ltrTheme}><Box dir="ltr" sx={{ px: 1 }}><Slider aria-label="מיקום בהקלטה" min={0} max={total} step={1 / fps} value={time} onChange={(_, value) => seek(value as number)} /></Box></ThemeProvider>}
+    {!compactDesktop && <Box dir="ltr" sx={{ px: 1 }}><VideoSeekBar currentTime={time} duration={total} fps={fps} mediaUrl={mediaUrl} onSeek={onRequestTimeChange} /></Box>}
     {!compactTiming && <AudioWaveform mediaUrl={mediaUrl} duration={total} currentTime={time} onSeek={seek} />}
     <Box data-testid="timeline-tracks" sx={{ minWidth: 0 }}>
     <Stack data-testid="main-timeline-zoom" direction="row" gap={1} alignItems="center" sx={{ height: compactTiming ? 36 : 40, px: 1, bgcolor: "action.hover", minWidth: 0 }}>

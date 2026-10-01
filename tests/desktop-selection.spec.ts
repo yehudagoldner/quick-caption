@@ -143,6 +143,48 @@ test('zoomed long-track scrubbing scrolls at the edge and seeks correctly after 
   await expect(page.getByTestId('save-count')).toHaveText('שמירות בדיקה: 0');
 });
 
+test('desktop blank space clears multiple selected captions without saving or affecting controls', async ({ page }) => {
+  const saves = await open(page);
+  const clips = page.getByTestId('subtitle-clip');
+  const chooseTwo = async () => {
+    await clips.first().click();
+    await clips.nth(1).click({ modifiers: ['Control'] });
+    await expect(selected(page)).toHaveCount(2);
+  };
+  await chooseTwo();
+  await page.getByRole('button', { name: 'הצג עורך', exact: true }).click();
+  await expect(selected(page)).toHaveCount(2);
+  const editor = (await page.getByTestId('desktop-caption-editor').boundingBox())!;
+  await page.mouse.click(editor.x + 20, editor.y + 160);
+  await expect(selected(page)).toHaveCount(0);
+  await chooseTwo();
+  const position = await trackPoint(page, 1.4, 54);
+  await page.mouse.click(position.x, position.y);
+  await expect(selected(page)).toHaveCount(0);
+  await expect.poll(() => page.locator('video').evaluate((video: HTMLVideoElement) => video.currentTime)).toBeCloseTo(1.4, 2);
+  expect(saves).toHaveLength(0);
+});
+
+test('desktop Escape clears selection outside the track and lets a dialog close first', async ({ page }) => {
+  const saves = await open(page);
+  const clips = page.getByTestId('subtitle-clip');
+  await clips.first().click();
+  await clips.nth(1).click({ modifiers: ['Control'] });
+  await page.getByRole('button', { name: 'הגדרות כתוביות', exact: true }).click();
+  await expect(page.getByRole('dialog', { name: 'הגדרות כתוביות' })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('dialog', { name: 'הגדרות כתוביות' })).toBeHidden();
+  await expect(selected(page)).toHaveCount(2);
+  await page.keyboard.press('Escape');
+  await expect(selected(page)).toHaveCount(0);
+  await clips.first().click();
+  await clips.nth(1).click({ modifiers: ['Control'] });
+  await page.getByRole('slider', { name: 'מיקום בהקלטה', exact: true }).focus();
+  await page.keyboard.press('Escape');
+  await expect(selected(page)).toHaveCount(0);
+  expect(saves).toHaveLength(0);
+});
+
 test('Ctrl toggles, Shift selects a range; toolbar merges and keyboard undoes/redoes', async ({ page }) => {
   const saves = await open(page);
   const clips = page.getByTestId('subtitle-clip');

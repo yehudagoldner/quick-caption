@@ -1,5 +1,5 @@
 import type { ChangeEvent } from "react";
-import { useCallback, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import type { ApiResponse, Segment, Word } from "../types";
 import type { BurnOptions } from "../components/VideoToolbar";
 import { findSegment } from "../utils/transcriptionUtils";
@@ -37,6 +37,7 @@ type UseTranscriptionHandlersProps = {
   setBurnedVideo: (video: BurnedVideo | null) => void;
   persistSegments: (segments: Segment[], words?: Word[], options?: { throwOnError?: boolean }) => Promise<void>;
   videoPlayer: HTMLVideoElement | null;
+  mediaUrl: string | null;
   response: ApiResponse;
   downloadName: string;
   burnedVideo: BurnedVideo | null;
@@ -68,6 +69,7 @@ export function useTranscriptionHandlers({
   setBurnedVideo,
   persistSegments,
   videoPlayer,
+  mediaUrl,
   response,
   downloadName,
   burnedVideo,
@@ -80,7 +82,11 @@ export function useTranscriptionHandlers({
   onBurn,
 }: UseTranscriptionHandlersProps) {
   const { preferences } = useEditorPreferences();
+  const pendingSeek = useRef<number | null>(null);
+  useEffect(() => { pendingSeek.current = null; }, [mediaUrl]);
   const handleVideoTimeUpdate = useCallback((nextTime: number) => {
+    // Loading events must not overwrite a user's seek waiting for metadata.
+    if (pendingSeek.current !== null || !Number.isFinite(nextTime)) return;
     const segment = findSegment(editableSegments, nextTime);
     setActiveSegmentId(segment?.id ?? null);
     setCurrentTime(nextTime);
@@ -98,32 +104,35 @@ export function useTranscriptionHandlers({
   }, [setRenderDimensions]);
 
   const handleTimelineTimeChange = useCallback((time: number) => {
-    console.debug('🔥 Timeline time change called:', { time });
-
-    if (!videoPlayer) {
-      console.debug('🔥 No video player, updating time and segment directly');
-      setCurrentTime(time);
-      // Update active segment even when no video player
-      const segment = findSegment(editableSegments, time);
-      console.debug('🔥 Found segment for time', time, ':', segment);
-      setActiveSegmentId(segment?.id ?? null);
-      return;
-    }
-    const duration = Number.isFinite(videoPlayer.duration) && videoPlayer.duration > 0 ? videoPlayer.duration : undefined;
+    if (!Number.isFinite(time)) return;
+    const ready = videoPlayer && videoPlayer.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA;
+    const duration = ready && Number.isFinite(videoPlayer.duration) && videoPlayer.duration > 0 ? videoPlayer.duration : undefined;
     const clamped = Math.max(0, duration ? Math.min(time, duration) : time);
-    console.debug('🔥 Video player exists, clamped time:', clamped, 'duration:', duration);
-
-    if (Math.abs(videoPlayer.currentTime - clamped) > 0.000001) {
+    // Some files expose a zero-length seekable range at loadedmetadata. Wait
+    // for media data as well, retaining the latest request until it is seekable.
+    pendingSeek.current = ready ? null : clamped;
+    if (ready && Math.abs(videoPlayer.currentTime - clamped) > 0.000001) {
       videoPlayer.currentTime = clamped;
-      console.debug('🔥 Updated video currentTime to:', clamped);
     }
     setCurrentTime(clamped);
     // Update active segment immediately when timeline changes
     const segment = findSegment(editableSegments, clamped);
-    console.debug('🔥 Found segment for clamped time', clamped, ':', segment);
     setActiveSegmentId(segment?.id ?? null);
-    console.debug('🔥 Set active segment ID to:', segment?.id ?? null);
   }, [videoPlayer, setCurrentTime, editableSegments, setActiveSegmentId]);
+
+  useEffect(() => {
+    if (!videoPlayer) return;
+    const applyPending = () => {
+      if (videoPlayer.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA && pendingSeek.current !== null) handleTimelineTimeChange(pendingSeek.current);
+    };
+    videoPlayer.addEventListener("loadeddata", applyPending);
+    videoPlayer.addEventListener("canplay", applyPending);
+    applyPending();
+    return () => {
+      videoPlayer.removeEventListener("loadeddata", applyPending);
+      videoPlayer.removeEventListener("canplay", applyPending);
+    };
+  }, [videoPlayer, handleTimelineTimeChange]);
 
   const handleTimelineSegmentsChange = useCallback(
     async (nextSegments: Segment[], options?: { fitWords?: boolean }) => {
