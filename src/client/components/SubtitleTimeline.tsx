@@ -17,7 +17,7 @@ import { AudioWaveform } from "./AudioWaveform";
 import { useTimelineScrubbing } from "../hooks/useTimelineScrubbing";
 import { VideoSeekBar } from "./VideoSeekBar";
 
-export type CaptionDraft = { segment: Segment; words: Word[] };
+export type CaptionDraft = { segment: Segment; words: Word[]; allowEmpty?: boolean };
 export type SubtitleTimelineProps = {
   activeWordEnabled: boolean;
   segments: Segment[]; words?: Word[]; disabled?: boolean; busy?: boolean;
@@ -50,6 +50,8 @@ export function SubtitleTimeline({ activeWordEnabled, segments, words = [], disa
   const time = Math.max(0, Math.min(total, currentTime ?? 0));
   const root = useRef<HTMLDivElement | null>(null);
   const [selection, setSelection] = useState<Segment["id"][]>([]);
+  const [wordSelection, setWordSelection] = useState<{ segmentId: Segment["id"] | null; indexes: number[] }>({ segmentId: null, indexes: [] });
+  useEffect(() => { setWordSelection({ segmentId: null, indexes: [] }); }, [mediaUrl, selectedSegmentId, activeWordEnabled]);
   const selectionAnchor = useRef<Segment["id"] | null>(null);
   const localFocus = useRef<Segment["id"] | null | undefined>(undefined);
   const [movePreview, setMovePreview] = useState<Segment[] | null>(null);
@@ -136,9 +138,10 @@ export function SubtitleTimeline({ activeWordEnabled, segments, words = [], disa
   const selected = segments.find(s => s.id === selectedSegmentId);
   // Playback changes time each frame, not the track data. Keep the word array stable
   // so the timeline does not rebuild its virtualized grid on every video frame.
-  const draft = useMemo(() => selected ? drafts[String(selected.id)] ?? {
+  const draft = useMemo<CaptionDraft | null>(() => selected ? drafts[String(selected.id)] ?? {
     segment: selected, words: wordsForSegment(words, selected),
   } : null, [selected, drafts, words]);
+  const selectedWords = activeWordEnabled && draft && wordSelection.segmentId === draft.segment.id ? wordSelection.indexes : [];
   const setDraft = (next: CaptionDraft) => {
     setDrafts(previous => ({ ...previous, [String(next.segment.id)]: next }));
   };
@@ -173,7 +176,7 @@ export function SubtitleTimeline({ activeWordEnabled, segments, words = [], disa
   ]);
   const commitDraft = async (item: CaptionDraft) => {
     const source = segmentsRef.current.find(segment => segment.id === item.segment.id);
-    if (!source || !item.segment.text.trim()) return;
+    if (!source || (!item.segment.text.trim() && !item.allowEmpty)) return;
     const stamp = draftSignature(item);
     const persisted = draftSignature({ segment: source, words: wordsForSegment(wordsRef.current, source) });
     if (persisted === stamp) {
@@ -196,7 +199,7 @@ export function SubtitleTimeline({ activeWordEnabled, segments, words = [], disa
   useEffect(() => {
     const tick = async () => {
       if (flight.current || gateRef.current.disabled || gateRef.current.busy) return;
-      const pending = Object.values(draftsRef.current).filter(item => item.segment.text.trim());
+      const pending = Object.values(draftsRef.current).filter(item => item.segment.text.trim() || item.allowEmpty);
       if (!pending.length) return;
       flight.current = true;
       try {
@@ -208,7 +211,7 @@ export function SubtitleTimeline({ activeWordEnabled, segments, words = [], disa
     return () => window.clearInterval(timer);
   }, [mediaUrl]);
   const save = async (split = false) => {
-    if (!draft || locked || flight.current || !draft.segment.text.trim()) return false;
+    if (!draft || locked || flight.current || (!draft.segment.text.trim() && !draft.allowEmpty)) return false;
     flight.current = true;
     setSaving(true); setError(null);
     try {
@@ -220,21 +223,17 @@ export function SubtitleTimeline({ activeWordEnabled, segments, words = [], disa
     } catch (e) { setError((e as Error).message || "השמירה נכשלה; הטיוטה נשמרה בעורך."); return false; }
     finally { flight.current = false; setSaving(false); }
   };
-  const deleteWords = async (remainingWords: Word[]) => {
-    if (!draft || locked || flight.current) return;
+  const deleteWords = async () => {
+    if (!draft || locked || flight.current || !selectedWords.length) return;
+    const remainingWords = draft.words.filter((_, i) => !selectedWords.includes(i)).map((word, wordIndex) => ({ ...word, segmentId: draft.segment.id, wordIndex }));
     flight.current = true; setSaving(true); setError(null);
     try {
-      if (!remainingWords.length) {
-        // Removing every word also removes the now-empty caption, keeping
-        // autosave/navigation valid and using the existing Undo history.
-        await onCaptionBatch([draft.segment.id], "delete");
-        clearDraft(draft.segment.id);
-        onSegmentSelect(null);
-      } else {
-        const next = { segment: { ...draft.segment, text: remainingWords.map(word => word.word).join(" ") }, words: remainingWords };
-        setDraft(next);
-        await commitDraft(next);
-      }
+      // Word deletion keeps the caption and its boundaries, even when all words
+      // are removed. Explicit empty drafts also participate in save retries.
+      const next = { segment: { ...draft.segment, text: remainingWords.map(word => word.word).join(" ") }, words: remainingWords, allowEmpty: !remainingWords.length };
+      setDraft(next);
+      await commitDraft(next);
+      setWordSelection({ segmentId: draft.segment.id, indexes: [] });
     } catch (e) { setError((e as Error).message || "מחיקת המילים נכשלה; השינוי נשמר בעורך."); throw e; }
     finally { flight.current = false; setSaving(false); }
   };
@@ -281,9 +280,16 @@ export function SubtitleTimeline({ activeWordEnabled, segments, words = [], disa
         && !event.defaultPrevented && !event.isComposing && !target.closest('input,textarea,select,[contenteditable="true"],[role="dialog"],[role="menu"],[role="listbox"]')) {
         event.preventDefault(); clearSelection(); return;
       }
-      if (event.defaultPrevented || event.isComposing || !root.current?.contains(target)
+      if (event.defaultPrevented || event.isComposing
         || target.closest('input,textarea,select,[contenteditable="true"],[role="dialog"],[role="menu"],[role="listbox"],[role="slider"]')) return;
       const command = event.ctrlKey || event.metaKey;
+      if (!command && !event.altKey && (event.code === "Delete" || event.code === "Backspace") && selectedWords.length) {
+        // Selected words own Delete even after focus moves out of their track.
+        event.preventDefault();
+        if (!event.repeat) void deleteWords().catch(() => {});
+        return;
+      }
+      if (!root.current?.contains(target)) return;
       if (!command && !event.altKey && !event.shiftKey && (event.code === "ArrowUp" || event.code === "ArrowDown")) {
         if (selectedCaption && !dragging.current) {
           event.preventDefault();
@@ -303,7 +309,7 @@ export function SubtitleTimeline({ activeWordEnabled, segments, words = [], disa
       } else if (command && event.code === "KeyY") { event.preventDefault(); if (canRedo) onRedo(); }
       else if (command && event.code === "KeyM") { event.preventDefault(); if (canMergeCaptions(segments, selection)) void runSelectionAction("merge"); }
       else if (command && event.code === "KeyK") { event.preventDefault(); if (canSplitCaptionAtTime(selectedCaption, time)) void runSelectionAction("split"); }
-      else if (!command && !event.altKey && (event.code === "Delete" || event.code === "Backspace")) { event.preventDefault(); if (selection.length) void runSelectionAction("delete"); }
+      else if (!command && !event.altKey && (event.code === "Delete" || event.code === "Backspace")) { event.preventDefault(); if (!event.repeat && selection.length) void runSelectionAction("delete"); }
       else if ((!command || event.metaKey) && (event.code === "ArrowLeft" || event.code === "ArrowRight")) {
         event.preventDefault(); const frames = (event.code === "ArrowLeft" ? -1 : 1) * (event.shiftKey ? 5 : 1);
         if (selection.length) nudge(frames); else seek(time + frames / fps);
@@ -433,13 +439,14 @@ export function SubtitleTimeline({ activeWordEnabled, segments, words = [], disa
               if (e.key === "F2") { e.preventDefault(); openExpandedEditor(segment.id); }
               else if (e.key === "Enter") { e.preventDefault(); choose(segment.id, e); }
             }}
-            sx={{ touchAction: "none", userSelect: "none", bgcolor: selection.includes(segment.id) ? "primary.main" : "#9b5700", color: "white", height: "100%", px: 1, display: "flex", alignItems: "center", borderRadius: 1, overflow: "hidden" }}>
+            sx={{ touchAction: "none", userSelect: "none", bgcolor: selection.includes(segment.id) ? (selectedWords.length && draft?.segment.id === segment.id ? "success.main" : "primary.main") : "#9b5700", color: "white", height: "100%", px: 1, display: "flex", alignItems: "center", borderRadius: 1, overflow: "hidden" }}>
             <Typography noWrap variant="caption" sx={{ direction: `${preferences.direction} !important`, unicodeBidi: "plaintext" }}>{segment.text}</Typography>
           </Box>;
         }} style={{ height: compactTiming || compactDesktop ? 88 : 130, width: "100%" }} />
     </Box>
     {!compactTiming && draft && !disabled && <Box data-testid="segment-inspector">
         <WordTimeline compact={compactDesktop} enabled={activeWordEnabled} segment={draft.segment} words={draft.words} currentTime={time} disabled={locked} onSeek={seek}
+          selection={selectedWords} onSelectionChange={indexes => setWordSelection({ segmentId: draft.segment.id, indexes })}
           onDeleteWords={deleteWords}
           toolbarEditor={<TextField className="caption-text-editor" variant="standard" fullWidth value={draft.segment.text} disabled={locked}
           placeholder="טקסט המקטע" inputProps={{ dir: preferences.direction, "aria-label": "טקסט המקטע", title: draft.segment.text }}

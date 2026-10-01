@@ -91,19 +91,101 @@ test('Delete removes nonadjacent duplicate words, saves intact timings and suppo
   await page.screenshot({ path: 'tmp/review/word-multiselect-delete.png' });
 });
 
-test('deleting every selected word removes only its caption and Undo restores its words', async ({ page }) => {
+test('deleting every selected word keeps its empty caption and boundaries and Undo restores its words', async ({ page }) => {
   const saves = await open(page);
   await clips(page).first().click();
   await page.keyboard.press('Control+a');
   await page.keyboard.press('Delete');
-  await expect(page.getByTestId('subtitle-clip')).toHaveCount(1);
-  await expect(page.getByTestId('word-editor')).toHaveCount(0);
+  await expect(page.getByTestId('subtitle-clip')).toHaveCount(2);
+  await expect(page.getByTestId('word-editor')).toBeVisible();
+  await expect(clips(page)).toHaveCount(0);
+  await expect(page.getByTestId('subtitle-clip').first()).toHaveAttribute('data-start', String(segments[0].start));
+  await expect(page.getByTestId('subtitle-clip').first()).toHaveAttribute('data-end', String(segments[0].end));
   await expect(undo(page)).toBeEnabled();
-  expect(saves[0].segments).toEqual([segments[1]]);
+  expect(saves[0].segments).toEqual([{ ...segments[0], text: '' }, segments[1]]);
   expect(saves[0].words).toEqual(words.filter(word => word.segmentId === 2));
   await undo(page).click();
   await expect(page.getByTestId('subtitle-clip')).toHaveCount(2);
   await page.getByTestId('subtitle-clip').first().click();
+  await expect(clips(page)).toHaveCount(6);
+  expect(saves.at(-1)?.words).toEqual(words);
+});
+
+test('selected words make the caption green and own Delete after focus moves to the main track or header', async ({ page }) => {
+  const saves = await open(page);
+  const caption = page.getByTestId('subtitle-clip').first();
+  const blue = await caption.evaluate(el => getComputedStyle(el).backgroundColor);
+  await clips(page).first().click();
+  await clips(page).nth(2).click({ modifiers: ['Control'] });
+  await expect(caption).toHaveCSS('background-color', 'rgb(46, 125, 50)');
+  const track = (await page.getByTestId('caption-track').boundingBox())!;
+  await page.mouse.click(track.x + 30, track.y + track.height - 3);
+  await expect(selected(page)).toHaveCount(2);
+  await page.keyboard.press('Delete');
+  await expect(clips(page)).toHaveCount(4);
+  await expect(page.getByTestId('subtitle-clip')).toHaveCount(2);
+  await expect(undo(page)).toBeEnabled();
+  expect(saves[0].segments).toEqual([{ ...segments[0], text: 'שתיים ארבע חמש שש' }, segments[1]]);
+  await expect(caption).toHaveCSS('background-color', blue);
+  await clips(page).first().click();
+  await expect(caption).toHaveCSS('background-color', 'rgb(46, 125, 50)');
+  await page.getByRole('button', { name: 'סרטון חדש', exact: true }).focus();
+  await page.keyboard.press('Delete');
+  await expect(clips(page)).toHaveCount(3);
+  await expect(undo(page)).toBeEnabled();
+  expect(saves[1].segments).toEqual([{ ...segments[0], text: 'ארבע חמש שש' }, segments[1]]);
+  await expect(page.getByTestId('subtitle-clip')).toHaveCount(2);
+  await clips(page).first().click();
+  await page.keyboard.press('Escape');
+  await expect(selected(page)).toHaveCount(0);
+  await expect(caption).toHaveCSS('background-color', blue);
+  await expect(caption).toHaveAttribute('aria-pressed', 'true');
+});
+
+test('holding Delete after a word deletion cannot cascade into deleting its caption', async ({ page }) => {
+  const saves = await open(page);
+  await clips(page).first().click();
+  await clips(page).nth(2).click({ modifiers: ['Control'] });
+  const track = (await page.getByTestId('caption-track').boundingBox())!;
+  await page.mouse.click(track.x + 30, track.y + track.height - 3);
+  await page.keyboard.down('Delete');
+  await expect(undo(page)).toBeEnabled();
+  await page.keyboard.down('Delete');
+  await page.keyboard.down('Delete');
+  await page.keyboard.up('Delete');
+  await expect(page.getByTestId('subtitle-clip')).toHaveCount(2);
+  await expect(clips(page)).toHaveCount(4);
+  expect(saves).toHaveLength(1);
+});
+
+test('failed removal of all words retries the empty draft and new caption text repopulates the word track', async ({ page }) => {
+  await open(page);
+  const saves: Save[] = [];
+  await page.route('**/api/videos/update-subtitles', async route => {
+    const body = route.request().postDataJSON();
+    saves.push({ segments: JSON.parse(body.subtitleJson), words: JSON.parse(body.wordsJson) });
+    await route.fulfill(saves.length === 1 ? { status: 500, json: { error: 'Failed' } } : { json: { success: true } });
+  });
+  await clips(page).first().click();
+  await page.keyboard.press('Control+a');
+  await page.keyboard.press('Delete');
+  await expect(page.getByRole('textbox', { name: 'טקסט המקטע' })).toHaveValue('');
+  await expect(clips(page)).toHaveCount(0);
+  await expect(page.getByRole('alert').filter({ hasText: 'Failed to save segments' }).first()).toBeVisible();
+  await expect.poll(() => saves.length).toBe(2);
+  await expect(undo(page)).toBeEnabled();
+  expect(saves[1]).toEqual(saves[0]);
+  expect(saves[1].segments).toEqual([{ ...segments[0], text: '' }, segments[1]]);
+  const caption = page.getByRole('textbox', { name: 'טקסט המקטע' });
+  await caption.fill('טקסט חדש');
+  await expect(clips(page)).toHaveCount(2);
+  await caption.blur();
+  await expect(undo(page)).toBeEnabled();
+  expect(saves.at(-1)?.segments).toEqual([{ ...segments[0], text: 'טקסט חדש' }, segments[1]]);
+  expect(saves.at(-1)?.words.filter(word => word.segmentId === 1).map(word => word.word)).toEqual(['טקסט', 'חדש']);
+  await undo(page).click();
+  await expect(clips(page)).toHaveCount(0);
+  await undo(page).click();
   await expect(clips(page)).toHaveCount(6);
   expect(saves.at(-1)?.words).toEqual(words);
 });

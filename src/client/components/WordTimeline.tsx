@@ -11,18 +11,18 @@ import { TimelineEditToolbar } from "./TimelineEditToolbar";
 import { useTimelineScrubbing } from "../hooks/useTimelineScrubbing";
 
 // Drafts belong to the parent so switching captions never discards work.
-export function WordTimeline({ enabled, segment, words, currentTime, onWordsChange, onDeleteWords, onSeek, disabled, toolbarEditor, toolbarActions, toolbarPrimary, toolbarClose, compact = false }: {
+export function WordTimeline({ enabled, segment, words, selection, onSelectionChange: setSelection, currentTime, onWordsChange, onDeleteWords, onSeek, disabled, toolbarEditor, toolbarActions, toolbarPrimary, toolbarClose, compact = false }: {
   enabled: boolean;
   compact?: boolean;
   segment: Segment; words: Word[]; currentTime: number;
   onWordsChange: (words: Word[]) => void; onSeek: (time: number) => void; disabled?: boolean;
-  onDeleteWords: (remainingWords: Word[]) => Promise<void>;
+  selection: number[]; onSelectionChange: (selection: number[]) => void;
+  onDeleteWords: () => Promise<void>;
   toolbarEditor: ReactNode; toolbarActions: ReactNode; toolbarPrimary: ReactNode; toolbarClose: ReactNode;
 }) {
   const { preferences } = useEditorPreferences();
   const fps = preferences.fps;
   const [zoom, setZoom] = useState(160);
-  const [selection, setSelection] = useState<number[]>([]);
   const selectionAnchor = useRef<number | null>(null);
   const root = useRef<HTMLDivElement | null>(null);
   const deleting = useRef(false);
@@ -61,7 +61,7 @@ export function WordTimeline({ enabled, segment, words, currentTime, onWordsChan
     deleting.current = true;
     setError(null);
     try {
-      await onDeleteWords(words.filter((_, i) => !selection.includes(i)).map((word, wordIndex) => ({ ...word, segmentId: segment.id, wordIndex })));
+      await onDeleteWords();
       setSelection([]); selectionAnchor.current = null;
     } catch (e) { setError((e as Error).message || "מחיקת המילים נכשלה. נסו שוב."); }
     finally { deleting.current = false; }

@@ -67,8 +67,9 @@ test('caption boundary shortcuts work from the word track and preserve multiple 
   }
   expect(saves).toHaveLength(0);
   await page.keyboard.press('Delete');
-  await expect(page.getByTestId('subtitle-clip')).toHaveCount(2);
-  expect(saves[0].segments).toEqual([segments[0], segments[2]]);
+  await expect(page.getByTestId('word-clip')).toHaveCount(0);
+  await expect(page.getByTestId('subtitle-clip')).toHaveCount(3);
+  expect(saves[0].segments).toEqual([segments[0], { ...segments[1], text: '' }, segments[2]]);
 });
 
 test('boundary shortcuts respect fields, dialogs, sliders, modifiers and absent or multiple caption selection', async ({ page }) => {
