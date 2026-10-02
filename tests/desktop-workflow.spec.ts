@@ -7,10 +7,10 @@ test('desktop home opens marketing for signed-in users and starts a new video', 
   await page.goto('/?screen=videos');
   await page.getByRole('button', { name: 'דף הבית', exact: true }).click();
   await expect(page).toHaveURL(/\/$/);
-  await expect(page.getByRole('heading', { level: 1, name: /הסרטון שלכם/ })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 1, name: /שעוצרות את הגלילה/ })).toBeVisible();
   await expect(page.getByText('התחברו כדי להמשיך', { exact: true })).toHaveCount(0);
   await page.reload();
-  await expect(page.getByRole('heading', { level: 1, name: /הסרטון שלכם/ })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 1, name: /שעוצרות את הגלילה/ })).toBeVisible();
   await page.getByRole('button', { name: 'התחילו ליצור כתוביות', exact: true }).click();
   await expect(page).toHaveURL(/screen=transcription/);
   await expect(page.getByTestId('media-dropzone')).toBeVisible();
@@ -20,7 +20,7 @@ test('mobile home retains the signed-in workspace', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await prepareApp(page);
   await page.goto('/');
-  await expect(page.getByRole('heading', { level: 1, name: /הסרטון שלכם/ })).toHaveCount(0);
+  await expect(page.getByRole('heading', { level: 1, name: /שעוצרות את הגלילה/ })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'סרטון חדש', exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'סרטון חדש', exact: true }).click();
   await expect(page.getByTestId('media-dropzone')).toBeVisible();

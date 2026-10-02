@@ -1,4 +1,4 @@
-import { test, expect, type Page } from '@playwright/test';
+﻿import { test, expect, type Page } from '@playwright/test';
 import { prepareApp } from './app-fixtures';
 
 async function guest(page: Page, loading = false) {
@@ -6,13 +6,18 @@ async function guest(page: Page, loading = false) {
   await page.route('**/src/client/contexts/AuthContext.tsx*', route => route.fulfill({ contentType: 'application/javascript', body: `export const useAuth = () => ({ user: null, loading: ${loading}, signIn: async () => { window.signInCalls = (window.signInCalls || 0) + 1; }, signOut: async () => {} }); export const AuthProvider = ({ children }) => children;` }));
 }
 
+const liveDemo = (page: Page) => page.getByRole('region', { name: 'הדגמה חיה של עורך הכתוביות' });
+const caption = (page: Page) => page.getByTestId('demo-caption');
+const activeWord = (page: Page) => caption(page).locator('[data-active-word]');
+
 for (const width of [320, 390, 900, 1366, 1920]) {
-  test(`marketing fits ${width}px, styles work, and demo needs no login`, async ({ page }) => {
+  test(`marketing fits ${width}px and the live demo works without login`, async ({ page }) => {
+    test.setTimeout(60_000);
     await page.setViewportSize({ width, height: 900 });
     await guest(page);
     await page.goto('/');
-    await expect(page.getByRole('heading', { level: 1 })).toContainText('הסגנון שלכם.');
-    await expect.poll(() => page.locator('.marketing-preview img').evaluate((img: HTMLImageElement) => img.naturalWidth)).toBeGreaterThan(0);
+    await expect(page.getByRole('heading', { level: 1 })).toContainText('שעוצרות את הגלילה.');
+    await expect.poll(() => liveDemo(page).getByTestId('demo-stage').locator('img').evaluate((img: HTMLImageElement) => img.naturalWidth)).toBeGreaterThan(0);
     await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBe(0);
     if (width === 390 || width === 1366) {
       await page.evaluate(() => document.fonts.ready);
@@ -21,20 +26,43 @@ for (const width of [320, 390, 900, 1366, 1920]) {
     }
     if (width >= 900) {
       await expect(page.getByRole('button', { name: 'התחילו ליצור כתוביות' })).toBeInViewport({ ratio: 1 });
-      await expect(page.getByRole('region', { name: 'הדגמת סגנונות כתוביות' })).toBeInViewport({ ratio: 1 });
+      await expect(liveDemo(page)).toBeInViewport();
     }
+
     await page.getByRole('button', { name: 'צפו בדוגמה' }).click();
-    await expect(page.getByRole('button', { name: 'השהיית הדגמה' })).toBeVisible();
-    await expect.poll(() => page.getByTestId('marketing-caption').locator('.is-active').innerText()).not.toBe('כל');
-    await page.getByRole('button', { name: 'השהיית הדגמה' }).click();
-    const paused = await page.getByTestId('marketing-caption').locator('.is-active').innerText();
+    await expect(liveDemo(page)).toBeInViewport();
+    const first = await activeWord(page).innerText();
+    await expect.poll(() => activeWord(page).innerText(), { timeout: 10_000 }).not.toBe(first);
+    await liveDemo(page).getByTestId('demo-stage').click();
+    const paused = await activeWord(page).innerText();
     await page.waitForTimeout(800);
-    await expect(page.getByTestId('marketing-caption').locator('.is-active')).toHaveText(paused);
-    await page.getByRole('button', { name: /נקי וקלאסי/ }).click();
-    await expect(page.getByTestId('marketing-caption')).toHaveClass(/marketing-caption-clean/);
-    await page.getByRole('button', { name: /בולט בסושיאל/ }).click();
-    await expect(page.getByTestId('marketing-caption')).toHaveClass(/marketing-caption-bold/);
+    await expect(activeWord(page)).toHaveText(paused);
+
+    if (width >= 900) {
+      const demo = liveDemo(page);
+      await expect(demo.getByRole('button', { name: 'נגן', exact: true })).toBeVisible();
+      await demo.getByRole('button', { name: 'מילה אקטיבית' }).click();
+      await expect(activeWord(page)).toHaveCount(0);
+      await demo.getByRole('button', { name: 'מילה אקטיבית' }).click();
+      await expect(activeWord(page)).toHaveCount(1);
+
+      await demo.getByRole('button', { name: 'צבעים' }).click();
+      await page.getByLabel('צבע טקסט').fill('#ff0000');
+      await expect(caption(page)).toHaveCSS('color', 'rgb(255, 0, 0)');
+      await page.keyboard.press('Escape');
+
+      await demo.getByRole('button', { name: 'עריכת כתובית: מתקנים מילה בקליק' }).click();
+      await expect(page.getByTestId('demo-inspector')).toBeVisible();
+      await page.getByTestId('demo-inspector').getByRole('textbox', { name: 'טקסט המקטע' }).fill('מתקנים כל מילה');
+      await expect(caption(page)).toHaveText('מתקנים כל מילה');
+      await expect(demo.getByRole('textbox', { name: 'טקסט הכתובית' }).nth(2)).toHaveValue('מתקנים כל מילה');
+    }
+
+    await page.getByRole('button', { name: 'צהוב בולט: נסו בעורך' }).click();
+    await expect(page.getByRole('button', { name: 'צהוב בולט: נסו בעורך' })).toHaveAttribute('aria-pressed', 'true');
+    await expect(caption(page)).toHaveCSS('color', 'rgb(255, 225, 77)');
     expect(await page.evaluate(() => (window as any).signInCalls ?? 0)).toBe(0);
+
     await page.locator('summary').filter({ hasText: 'איך התשלום עובד?' }).click();
     await expect(page.getByText('התמלול משתמש בקרדיטים.', { exact: false })).toBeVisible();
     await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBe(0);
@@ -42,6 +70,19 @@ for (const width of [320, 390, 900, 1366, 1920]) {
     expect(await page.evaluate(() => (window as any).signInCalls)).toBe(1);
   });
 }
+
+test('demo does not autoplay with reduced motion', async ({ page }) => {
+  await page.setViewportSize({ width: 1366, height: 768 });
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await guest(page);
+  await page.goto('/');
+  await expect(liveDemo(page).getByRole('button', { name: 'נגן', exact: true })).toBeVisible();
+  const time = await page.getByTestId('demo-timecode').innerText();
+  await page.waitForTimeout(700);
+  await expect(page.getByTestId('demo-timecode')).toHaveText(time);
+  await liveDemo(page).getByRole('button', { name: 'פריים קדימה' }).click();
+  await expect(page.getByTestId('demo-timecode')).not.toHaveText(time);
+});
 
 test('signed-in footer starts upload at the top and section links preserve browser history', async ({ page }) => {
   await page.setViewportSize({ width: 1366, height: 768 });
@@ -65,5 +106,5 @@ test('desktop marketing and demo are available while authentication loads', asyn
   await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
   await expect(page.getByRole('button', { name: 'טוענים...', exact: true })).toBeDisabled();
   await page.getByRole('button', { name: 'צפו בדוגמה' }).click();
-  await expect(page.getByRole('button', { name: 'השהיית הדגמה' })).toBeVisible();
+  await expect(liveDemo(page).getByRole('button', { name: 'השהה', exact: true })).toBeVisible();
 });

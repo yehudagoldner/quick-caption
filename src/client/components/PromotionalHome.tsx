@@ -1,6 +1,13 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useRef, type MouseEvent } from "react";
 import { Button, useMediaQuery } from "@mui/material";
-import { ArrowBackRounded, AutoAwesomeRounded, CheckRounded, PauseRounded, PlayArrowRounded, UploadFileRounded, TuneRounded, DownloadRounded } from "@mui/icons-material";
+import {
+  ArrowBackRounded, AutoAwesomeRounded, AutoFixHighRounded, CheckRounded, DownloadRounded, FormatTextdirectionRToLRounded,
+  MovieFilterRounded, PhoneIphoneRounded, PlayArrowRounded, RecordVoiceOverRounded, SubtitlesRounded, TimelineRounded,
+  TuneRounded, UploadFileRounded, VerifiedRounded, VideoLibraryRounded,
+} from "@mui/icons-material";
+import { DesktopEditorDemo, PhoneEditorDemo, CaptionOverlay } from "./marketing/EditorDemo";
+import { DEMO_IMAGE, LOOK_PRESETS, sameLook, useCaptionDemo, useElementSize, useInView, type CaptionDemo, type CaptionLook } from "./marketing/captionDemo";
+import { findSegment } from "../utils/transcriptionUtils";
 import "./PromotionalHome.css";
 
 interface PromotionalHomeProps {
@@ -9,82 +16,246 @@ interface PromotionalHomeProps {
   isAuthenticated: boolean;
   onStart: () => void;
 }
-const styles = [
-  { id: "active", name: "מילה פעילה", note: "כל מילה מקבלת את הרגע שלה" },
-  { id: "clean", name: "נקי וקלאסי", note: "קריא, פשוט ומדויק" },
-  { id: "bold", name: "בולט בסושיאל", note: "נותנים לטקסט את הבמה" },
-] as const;
-const lines = [["כל", "סרטון", "מתחיל", "בסיפור."], ["תנו", "למילים", "שלכם", "מקום."]];
+
+const useCases = ["רילס וטיקטוק", "פודקאסטים", "יוטיוב שורטס", "סרטוני הדרכה", "הרצאות ווובינרים", "מודעות ותוכן לעסק", "ראיונות", "וולוגים"];
 const faqs = [
-  ["אפשר לערוך את הכתוביות אחרי התמלול?", "כן. אפשר לתקן את הטקסט, לשנות את התזמון ולבחור את העיצוב לפני ההורדה."],
-  ["מה אפשר להוריד בסיום?", "אפשר להוריד קובץ כתוביות ב־SRT או VTT, או סרטון עם הכתוביות מוטמעות בתוכו."],
+  ["אפשר לערוך את הכתוביות אחרי התמלול?", "כן. אפשר לתקן את הטקסט, לשנות את התזמון בציר הזמן, לפצל ולחבר כתוביות ולבחור את העיצוב לפני ההורדה."],
+  ["מה אפשר להוריד בסיום?", "קובץ כתוביות ב־SRT, VTT או TXT, או סרטון עם הכתוביות צרובות בתוכו."],
+  ["הסרטון הצרוב ייראה כמו בתצוגה המקדימה?", "כן. התצוגה המקדימה משתמשת באותו פונט ובאותם חישובי גודל ומיקום שבהם הכתוביות נצרבות לסרטון."],
   ["אפשר לתמלל גם קובץ אודיו?", "כן. ניתן להעלות גם קובץ אודיו, לערוך את התמלול ולהוריד קובץ כתוביות."],
+  ["איזה גודל קובץ אפשר להעלות, וכמה זמן הוא נשמר?", "עד 500MB לקובץ. סרטונים והכתוביות שלהם נמחקים לאחר 30 יום ללא פתיחה או עריכה."],
   ["איך התשלום עובד?", "התמלול משתמש בקרדיטים. לפני העיבוד מוצגת הערכת העלות לפי הקובץ והמודל שנבחר. ניתן לרכוש חבילות קרדיטים מתוך החשבון."],
 ];
+const sections = [["caption-demo", "הדגמה"], ["styles", "סגנונות"], ["how-it-works", "איך זה עובד"], ["features", "יכולות"], ["marketing-faq", "שאלות נפוצות"]];
+
+function LookCard({ name, note, look, demo, selected, onApply }: { name: string; note: string; look: CaptionLook; demo: CaptionDemo; selected: boolean; onApply: () => void }) {
+  const frame = useRef<HTMLDivElement>(null);
+  const size = useElementSize(frame);
+  const segment = findSegment(demo.segments, demo.time) ?? null;
+  return <article className={`marketing-look ${selected ? "is-selected" : ""}`}>
+    <div className="marketing-look-frame" ref={frame}>
+      <img src={DEMO_IMAGE} alt="" width="1024" height="1536" loading="lazy" />
+      <CaptionOverlay look={look} segments={demo.segments} segment={segment} time={demo.time} render={size} />
+    </div>
+    <div className="marketing-look-meta">
+      <div><h3>{name}</h3><p>{note}</p></div>
+      <span className="marketing-look-swatches" aria-hidden="true"><i style={{ background: look.fontColor }} /><i style={{ background: look.outlineColor }} /></span>
+    </div>
+    <button type="button" className="marketing-look-apply" aria-pressed={selected} aria-label={`${name}: נסו בעורך`} onClick={onApply}>
+      {selected ? <><CheckRounded /> פעיל בהדגמה</> : <>נסו בעורך <ArrowBackRounded /></>}
+    </button>
+  </article>;
+}
 
 export function PromotionalHome({ authLoading, onSignIn, isAuthenticated, onStart }: PromotionalHomeProps) {
-  const reducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)");
-  const [playing, setPlaying] = useState(false);
-  const [tick, setTick] = useState(0);
-  const [style, setStyle] = useState<(typeof styles)[number]["id"]>("active");
-  const demo = useRef<HTMLElement>(null);
-  const start = isAuthenticated ? onStart : onSignIn;
-  const scrollTo = (id: string) => document.getElementById(id)?.scrollIntoView({ behavior: reducedMotion ? "instant" : "smooth", block: "start" });
-  useEffect(() => {
-    if (!playing) return;
-    const timer = window.setInterval(() => setTick(value => (value + 1) % 8), 650);
-    return () => window.clearInterval(timer);
-  }, [playing]);
-  const watchDemo = () => {
-    setPlaying(true);
-    demo.current?.scrollIntoView({ behavior: reducedMotion ? "instant" : "smooth", block: "center" });
-    demo.current?.focus({ preventScroll: true });
+  const reducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)", { noSsr: true });
+  const wide = useMediaQuery("(min-width: 760px)", { noSsr: true });
+  const demoRef = useRef<HTMLElement>(null);
+  const stylesRef = useRef<HTMLElement>(null);
+  const featuresRef = useRef<HTMLElement>(null);
+  const demo = useCaptionDemo({ autoplay: !reducedMotion, visible: useInView(demoRef) });
+  const stylesVisible = useInView(stylesRef);
+  const featuresVisible = useInView(featuresRef);
+  const gallery = useCaptionDemo({ autoplay: !reducedMotion, visible: stylesVisible || featuresVisible });
+  const start = useCallback(() => { if (isAuthenticated) onStart(); else void onSignIn(); }, [isAuthenticated, onStart, onSignIn]);
+  const behavior: ScrollBehavior = reducedMotion ? "instant" : "smooth";
+  const scrollTo = (id: string) => document.getElementById(id)?.scrollIntoView({ behavior, block: "start" });
+  const jump = (id: string) => (event: MouseEvent<HTMLAnchorElement>) => {
+    if (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+    event.preventDefault();
+    scrollTo(id);
   };
+  const showDemo = () => {
+    demo.setPlaying(true);
+    demoRef.current?.scrollIntoView({ behavior, block: "center" });
+    demoRef.current?.focus({ preventScroll: true });
+  };
+  const applyLook = (look: CaptionLook) => {
+    demo.setLook(look);
+    demo.setPlaying(true);
+    showDemo();
+  };
+
   return (
     <main className="marketing" dir="rtl">
-      <div className="marketing-wrap">
-        <nav className="marketing-nav" aria-label="ניווט בעמוד השיווקי">{[["caption-demo", "דוגמת כתוביות"], ["how-it-works", "איך זה עובד"], ["marketing-faq", "שאלות נפוצות"]].map(([id, label]) => <a key={id} href={`#${id}`} onClick={event => { if (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return; event.preventDefault(); scrollTo(id); }}>{label}</a>)}</nav>
-        <section className="marketing-hero" aria-labelledby="marketing-title">
+      <section className="marketing-hero" aria-labelledby="marketing-title">
+        <div className="marketing-aurora" aria-hidden="true"><i /><i /><i /></div>
+        <div className="marketing-wrap">
+          <nav className="marketing-nav" aria-label="ניווט בעמוד השיווקי">
+            {sections.map(([id, label]) => <a key={id} href={`#${id}`} onClick={jump(id)}>{label}</a>)}
+          </nav>
           <div className="marketing-copy">
-            <span className="marketing-eyebrow"><AutoAwesomeRounded fontSize="small" /> נוצר בשביל המילים שלכם</span>
-            <h1 id="marketing-title">הסרטון שלכם.<br />כתוביות בעברית.<br /><span>הסגנון שלכם.</span></h1>
-            <p className="marketing-intro">תמלול אוטומטי, עריכה ועיצוב —<br className="marketing-desktop-break" /> עד לסרטון מוכן לשיתוף.</p>
-            <div className="marketing-actions"><Button className="marketing-primary" variant="contained" onClick={start} disabled={authLoading} endIcon={<ArrowBackRounded />}>{authLoading ? "טוענים..." : "התחילו ליצור כתוביות"}</Button><Button className="marketing-watch" onClick={watchDemo} startIcon={<PlayArrowRounded />}>צפו בדוגמה</Button></div>
-            <p className="marketing-action-note">{isAuthenticated ? "מוכנים? אפשר להתחיל עם סרטון או אודיו." : "מתחברים ומתחילים. הכול ישירות בדפדפן."}</p>
-            <div className="marketing-benefits">{["עריכה בעברית", "עיצוב בשליטה שלכם", "הורדת סרטון או כתוביות"].map(item => <span key={item}><CheckRounded />{item}</span>)}</div>
-          </div>
-          <section id="caption-demo" className="marketing-demo" ref={demo} tabIndex={-1} aria-label="הדגמת סגנונות כתוביות">
-            <div className="marketing-demo-top"><span><span className="marketing-live-dot" /> תצוגה מקדימה</span><span className="marketing-demo-label">הדגמת עיצוב</span></div>
-            <div className="marketing-demo-body">
-              <div className="marketing-preview">
-                <img src="/demo/creator.webp" alt="תמונת יוצר להדגמת עיצוב הכתוביות" width="1024" height="1536" fetchPriority="high" />
-                <span className="marketing-preview-tag">כתוביות בעברית</span>
-                <div className={`marketing-caption marketing-caption-${style}`} data-testid="marketing-caption" aria-label="דוגמת כתוביות">{lines[Math.floor(tick / 4)].map((word, index) => <span key={`${Math.floor(tick / 4)}-${index}`} className={index === tick % 4 ? "is-active" : undefined}>{word}</span>)}</div>
-                <div className="marketing-preview-bottom"><span>הסיפור שלכם, בפריים.</span><span dir="ltr">QUICK / CAPTION</span></div>
-              </div>
-              <div className="marketing-style-picker" role="group" aria-label="בחירת סגנון הדגמה">
-                <span className="marketing-style-heading"><TuneRounded /> הסגנון שלכם</span>
-                {styles.map(item => <button key={item.id} className={`marketing-style-option ${item.id === style ? "is-selected" : ""}`} aria-pressed={item.id === style} onClick={() => setStyle(item.id)}><span className={`marketing-style-sample marketing-style-sample-${item.id}`}>Aa</span><span>{item.name}</span></button>)}
-                <div className="marketing-demo-tip"><AutoAwesomeRounded /> בחרו סגנון.<br />ראו את ההבדל.</div>
-              </div>
+            <span className="marketing-eyebrow"><AutoAwesomeRounded /> תמלול, עריכה ועיצוב, במקום אחד</span>
+            <h1 id="marketing-title">כתוביות בעברית<br /><span>שעוצרות את הגלילה.</span></h1>
+            <p className="marketing-intro">מעלים סרטון ומקבלים תמלול מדויק עם תזמון לכל מילה. מתקנים, מעצבים ומורידים סרטון מוכן לשיתוף, ישירות מהדפדפן.</p>
+            <div className="marketing-actions">
+              <Button className="marketing-primary" variant="contained" onClick={start} disabled={authLoading} endIcon={<ArrowBackRounded />}>{authLoading ? "טוענים..." : "התחילו ליצור כתוביות"}</Button>
+              <Button className="marketing-watch" onClick={showDemo} startIcon={<span className="marketing-watch-icon"><PlayArrowRounded /></span>}>צפו בדוגמה</Button>
             </div>
-            <div className="marketing-demo-controls"><button aria-label={playing ? "השהיית הדגמה" : "הפעלת הדגמה"} onClick={() => setPlaying(value => !value)}>{playing ? <PauseRounded /> : <PlayArrowRounded />}</button><div className="marketing-demo-progress" aria-hidden="true"><span style={{ width: `${(tick + 1) * 12.5}%` }} /></div><span className="marketing-demo-time" dir="ltr">0:0{Math.floor(tick * .65)} / 0:05</span></div>
-            <p className="marketing-demo-note">{styles.find(item => item.id === style)?.note}</p>
-          </section>
-        </section>
-        <div className="marketing-use-cases"><span>לכל תוכן שיש לכם לומר</span><div><span>רילס וסטוריז</span><i /><span>פודקאסטים</span><i /><span>סרטוני הדרכה</span><i /><span>תוכן לעסק</span></div></div>
-        <section id="how-it-works" className="marketing-process" aria-labelledby="marketing-process-title">
-          <div className="marketing-section-title"><span className="marketing-kicker">פחות התעסקות. יותר יצירה.</span><h2 id="marketing-process-title">מהסרטון שלכם, לתוצאה שלכם.</h2><p>שלושה שלבים, והשליטה נשארת אצלכם.</p></div>
-          <div className="marketing-steps">
-            <article><div className="marketing-step-icon"><UploadFileRounded /><span>01</span></div><h3>מעלים</h3><p>בוחרים סרטון או קובץ אודיו.<br />התמלול האוטומטי נותן לכם נקודת פתיחה.</p><div className="marketing-step-detail">סרטון או אודיו <span>↑</span></div></article>
-            <article><div className="marketing-step-icon"><TuneRounded /><span>02</span></div><h3>נותנים את הטאץ׳ שלכם</h3><p>מתקנים מילים, מדייקים את התזמון ובוחרים פונט, צבע וסגנון.</p><div className="marketing-step-detail marketing-word-detail">הסגנון <mark>שלכם.</mark></div></article>
-            <article><div className="marketing-step-icon"><DownloadRounded /><span>03</span></div><h3>מוכנים לשיתוף</h3><p>מורידים סרטון עם כתוביות מוטמעות, או קובץ כתוביות לשימוש נוסף.</p><div className="marketing-step-detail marketing-formats"><span>VIDEO</span><span>SRT</span><span>VTT</span></div></article>
+            <ul className="marketing-benefits" aria-label="מה מקבלים">
+              {["עברית מימין לשמאל", "מילה אקטיבית", "SRT · VTT · סרטון צרוב"].map(item => <li key={item}><CheckRounded />{item}</li>)}
+            </ul>
           </div>
-        </section>
-        <section id="marketing-faq" className="marketing-faq" aria-labelledby="marketing-faq-title"><div><span className="marketing-kicker">טוב לדעת</span><h2 id="marketing-faq-title">לפני שמתחילים.</h2><p>כמה תשובות קצרות,<br />כדי שתוכלו להתמקד ביצירה.</p></div><div className="marketing-questions">{faqs.map(([question, answer]) => <details key={question}><summary>{question}<span aria-hidden="true">+</span></summary><p>{answer}</p></details>)}</div></section>
-        <section className="marketing-final"><span className="marketing-kicker">המילים כבר אצלכם.</span><h2>עכשיו תנו להן מקום בסרטון.</h2><Button className="marketing-primary" variant="contained" onClick={start} disabled={authLoading} endIcon={<ArrowBackRounded />}>לסרטון הבא שלכם</Button><p>עברית. עיצוב. הסיפור שלכם.</p></section>
-        <footer className="marketing-footer"><img src="/quickcaption-logo.svg" width="165" height="36" alt="Quick Caption" /><span>כתוביות בעברית, בדרך שלכם.</span><a href="#marketing-title" onClick={event => { if (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return; event.preventDefault(); scrollTo("marketing-title"); }}>בחזרה למעלה ↑</a></footer>
+
+          <section id="caption-demo" ref={demoRef} tabIndex={-1} className="marketing-demo" aria-label="הדגמה חיה של עורך הכתוביות">
+            <div className="marketing-demo-glow" aria-hidden="true" />
+            {wide ? <div className="qc-window">
+              <div className="qc-window-bar" aria-hidden="true">
+                <span className="qc-window-dots"><i /><i /><i /></span>
+                <span className="qc-window-url"><VerifiedRounded /> quick-caption.com</span>
+                <span className="qc-window-live"><b /> הדגמה חיה</span>
+              </div>
+              <DesktopEditorDemo demo={demo} onStart={start} />
+            </div> : <PhoneEditorDemo demo={demo} onStart={start} />}
+            <div className="marketing-float marketing-float-a" aria-hidden="true"><TimelineRounded /> דיוק עד רמת הפריים</div>
+            <div className="marketing-float marketing-float-b" aria-hidden="true"><span>כל</span> <b>מילה</b> <span>בזמן</span></div>
+            <div className="marketing-float marketing-float-c" aria-hidden="true"><DownloadRounded /> SRT · VTT · MP4</div>
+          </section>
+          <p className="marketing-demo-hint"><AutoAwesomeRounded /> {wide
+            ? <>זה העורך עצמו. נסו <b>צבעים</b>, <b>מיקום</b>, <b>מילה אקטיבית</b>, או לחצו על כתובית בציר הזמן.</>
+            : <>זה העורך בטלפון. הקישו על כתובית, או על <b>עיצוב</b> כדי להחליף סגנון.</>}</p>
+        </div>
+      </section>
+
+      <div className="marketing-marquee" aria-label="מתאים לכל סוג תוכן">
+        <div className="marketing-marquee-row">
+          {[...useCases, ...useCases].map((item, index) => <span key={index} aria-hidden={index >= useCases.length || undefined}>{item}<i /></span>)}
+        </div>
       </div>
+
+      <section id="styles" ref={stylesRef} className="marketing-studio" aria-labelledby="marketing-studio-title">
+        <div className="marketing-wrap">
+          <div className="marketing-section-title">
+            <span className="marketing-kicker">סטודיו הסגנונות</span>
+            <h2 id="marketing-studio-title">בוחרים לוק. רואים אותו חי.</h2>
+            <p>כל סגנון כאן בנוי מההגדרות שבעורך: צבע, מסגרת, מיקום ומילה אקטיבית.<br className="marketing-desktop-break" /> בחרו אחד ונסו אותו על ההדגמה.</p>
+          </div>
+          <div className="marketing-looks">
+            {LOOK_PRESETS.map(preset => <LookCard key={preset.id} name={preset.name} note={preset.note} look={preset.look} demo={gallery}
+              selected={sameLook(demo.look, preset.look)} onApply={() => applyLook(preset.look)} />)}
+          </div>
+        </div>
+      </section>
+
+      <section id="how-it-works" className="marketing-process" aria-labelledby="marketing-process-title">
+        <div className="marketing-wrap">
+          <div className="marketing-section-title">
+            <span className="marketing-kicker">פחות התעסקות. יותר יצירה.</span>
+            <h2 id="marketing-process-title">מהסרטון שלכם, לתוצאה שלכם.</h2>
+            <p>שלושה שלבים, והשליטה נשארת אצלכם.</p>
+          </div>
+          <ol className="marketing-steps">
+            <li>
+              <span className="marketing-step-number">01</span>
+              <h3>מעלים סרטון או אודיו</h3>
+              <p>גוררים קובץ לחלון או בוחרים אותו מהמחשב או מהטלפון.</p>
+              <div className="marketing-step-visual marketing-dropzone" aria-hidden="true">
+                <UploadFileRounded />
+                <b>בחרו קובץ וידאו או אודיו</b>
+                <span>ניתן לגרור קובץ לחלון או לבחור אותו מהמחשב שלכם</span>
+                <em>עד 500MB לקובץ</em>
+              </div>
+            </li>
+            <li>
+              <span className="marketing-step-number">02</span>
+              <h3>התמלול עובד בשבילכם</h3>
+              <p>תמלול מתוזמן, שיפור דיוק ותיקון שפה. בסוף מקבלים כתוביות מחולקות ומוכנות לעריכה.</p>
+              <div className="marketing-step-visual marketing-stages" aria-hidden="true">
+                {[["העלאה", "done"], ["תמלול מתוזמן", "done"], ["שיפור דיוק", "active"], ["תיקון שפה", "idle"]].map(([label, state]) => <span key={label} className={`is-${state}`}><i>{state === "done" && <CheckRounded />}</i>{label}</span>)}
+                <div className="marketing-stages-bar"><span /></div>
+              </div>
+            </li>
+            <li>
+              <span className="marketing-step-number">03</span>
+              <h3>מעצבים ומורידים</h3>
+              <p>מדייקים מילים ותזמון, בוחרים סגנון, ומורידים סרטון צרוב או קובץ כתוביות.</p>
+              <div className="marketing-step-visual marketing-menu" aria-hidden="true">
+                <span><SubtitlesRounded /> הורד קובץ כתוביות</span>
+                <span className="is-hover"><MovieFilterRounded /> הורד סרטון עם כתוביות</span>
+              </div>
+            </li>
+          </ol>
+        </div>
+      </section>
+
+      <section id="features" ref={featuresRef} className="marketing-features" aria-labelledby="marketing-features-title">
+        <div className="marketing-wrap">
+          <div className="marketing-section-title">
+            <span className="marketing-kicker">כל מה שצריך, בלי מה שלא</span>
+            <h2 id="marketing-features-title">עורך שנבנה לעברית.</h2>
+            <p>כלים מקצועיים שמרגישים פשוטים, במחשב ובטלפון.</p>
+          </div>
+          <div className="marketing-bento">
+            <article className="marketing-tile marketing-tile-timeline">
+              <div className="marketing-tile-copy"><span className="marketing-tile-icon"><TimelineRounded /></span><h3>ציר זמן מקצועי, פריים אחרי פריים</h3><p>גוררים, מקצרים, מפצלים ומחברים כתוביות. ניווט פריים־פריים, זום עם הגלגלת וקיצורי מקלדת.</p></div>
+              <div className="marketing-mini-timeline" aria-hidden="true">
+                <div className="marketing-mini-ruler">{["00:00:00:00", "00:00:02:00", "00:00:04:00", "00:00:06:00"].map(label => <span key={label}>{label}</span>)}</div>
+                <div className="marketing-mini-row"><b style={{ left: "3%", width: "22%" }}>העליתי את הסרטון</b><b className="is-selected" style={{ left: "27%", width: "24%" }}>והכתוביות כבר כאן</b><b style={{ left: "53%", width: "21%" }}>מתקנים מילה בקליק</b><b style={{ left: "76%", width: "22%" }}>בוחרים צבע</b></div>
+                <div className="marketing-mini-row is-words"><b style={{ left: "27%", width: "7%" }}>והכתוביות</b><b style={{ left: "35%", width: "5%" }}>כבר</b><b style={{ left: "41%", width: "5%" }}>כאן</b></div>
+                <i className="marketing-mini-cursor" />
+              </div>
+            </article>
+            <article className="marketing-tile marketing-tile-word">
+              <div className="marketing-tile-copy"><span className="marketing-tile-icon"><RecordVoiceOverRounded /></span><h3>מילה אקטיבית</h3><p>המילה שנאמרת נדלקת בזמן אמת, בתצוגה ובסרטון הצרוב.</p></div>
+              <div className="marketing-word-demo" aria-hidden="true"><span>כל</span> <span>מילה</span> <span>בזמן</span> <span>שלה</span></div>
+            </article>
+            <article className="marketing-tile marketing-tile-ai">
+              <div className="marketing-tile-copy"><span className="marketing-tile-icon"><AutoFixHighRounded /></span><h3>עריכה עם AI</h3><p>כותבים מה לשנות, והכתוביות מתעדכנות תוך שמירה על התזמון.</p></div>
+              <div className="marketing-ai-card" aria-hidden="true">
+                <b>עריכת כתוביות עם AI</b>
+                <span className="marketing-ai-input">תקצר את כל הכתוביות ל־5 מילים מקסימום<i /></span>
+                <span className="marketing-ai-chips"><em>תתקן שגיאות כתיב</em><em>תאחד כתוביות קצרות</em></span>
+                <span className="marketing-ai-button">בצע עריכה</span>
+              </div>
+            </article>
+            <article className="marketing-tile marketing-tile-phone">
+              <div className="marketing-tile-copy"><span className="marketing-tile-icon"><PhoneIphoneRounded /></span><h3>עורכים גם מהטלפון</h3><p>עורך מלא שמותאם למגע: ניגון, תיקון, תזמון ועיצוב.</p></div>
+              {wide && <PhoneEditorDemo demo={gallery} onStart={start} decorative />}
+            </article>
+            <article className="marketing-tile marketing-tile-rtl">
+              <div className="marketing-tile-copy"><span className="marketing-tile-icon"><FormatTextdirectionRToLRounded /></span><h3>עברית, מימין לשמאל</h3><p>פיסוק במקום, מילים באנגלית נשארות שלמות, ואפשר לעבור ל־LTR בלחיצה.</p></div>
+              <div className="marketing-rtl-demo" aria-hidden="true"><span>היי! זה עובד גם עם English.</span><em><b>RTL</b><i>LTR</i></em></div>
+            </article>
+            <article className="marketing-tile marketing-tile-burn">
+              <div className="marketing-tile-copy"><span className="marketing-tile-icon"><TuneRounded /></span><h3>מה שרואים, זה מה שנצרב</h3><p>אותו פונט ואותם חישובי גודל ומיקום בתצוגה ובסרטון הסופי.</p></div>
+              <div className="marketing-formats" aria-hidden="true">{["SRT", "VTT", "TXT", "MP4 צרוב"].map(format => <span key={format}>{format}</span>)}</div>
+            </article>
+            <article className="marketing-tile marketing-tile-history">
+              <div className="marketing-tile-copy"><span className="marketing-tile-icon"><VideoLibraryRounded /></span><h3>כל הפרויקטים במקום אחד</h3><p>היסטוריית הסרטונים נשמרת בחשבון, וחוזרים לערוך מתי שרוצים.</p></div>
+              <div className="marketing-history" aria-hidden="true">
+                {[["רילס-השקה.mp4", "היום"], ["פודקאסט פרק 12.mp3", "אתמול"], ["הדרכת-מוצר.mp4", "לפני 3 ימים"]].map(([name, when]) => <span key={name}><img src={DEMO_IMAGE} alt="" loading="lazy" />{name}<em>{when}</em></span>)}
+              </div>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section id="marketing-faq" className="marketing-faq" aria-labelledby="marketing-faq-title">
+        <div className="marketing-wrap">
+          <div className="marketing-faq-intro"><span className="marketing-kicker">טוב לדעת</span><h2 id="marketing-faq-title">לפני שמתחילים.</h2><p>כמה תשובות קצרות,<br />כדי שתוכלו להתמקד ביצירה.</p></div>
+          <div className="marketing-questions">{faqs.map(([question, answer]) => <details key={question}><summary>{question}<span aria-hidden="true">+</span></summary><p>{answer}</p></details>)}</div>
+        </div>
+      </section>
+
+      <section className="marketing-final" aria-labelledby="marketing-final-title">
+        <div className="marketing-wrap">
+          <div className="marketing-final-card">
+            <div className="marketing-aurora is-dark" aria-hidden="true"><i /><i /><i /></div>
+            <span className="marketing-kicker">המילים כבר אצלכם.</span>
+            <h2 id="marketing-final-title"><span>עכשיו</span> <span>תנו</span> <span>להן</span> <span>במה.</span></h2>
+            <Button className="marketing-primary is-light" variant="contained" onClick={start} disabled={authLoading} endIcon={<ArrowBackRounded />}>לסרטון הבא שלכם</Button>
+            <p>עברית. עיצוב. הסיפור שלכם.</p>
+          </div>
+        </div>
+      </section>
+
+      <footer className="marketing-footer">
+        <div className="marketing-wrap">
+          <img src="/quickcaption-logo.svg" width="165" height="36" alt="Quick Caption" />
+          <span>כתוביות בעברית, בדרך שלכם.</span>
+          <a href="#marketing-title" onClick={jump("marketing-title")}>בחזרה למעלה ↑</a>
+        </div>
+      </footer>
     </main>
   );
 }
