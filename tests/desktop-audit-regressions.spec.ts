@@ -66,7 +66,7 @@ async function setup(page: Page) {
 test('delayed acknowledgement preserves newer sidebar text and saves it on blur', async ({ page }) => {
   const { state, open } = await setup(page); await open();
   state.gate = deferred();
-  await page.getByRole('button', { name: 'הצג עורך', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'הסתר עורך', exact: true })).toBeVisible();
   const field = page.getByRole('textbox', { name: 'טקסט הכתובית', exact: true }).first();
   await field.fill('גרסה ראשונה'); await field.blur();
   await expect.poll(() => state.saves).toBe(1);

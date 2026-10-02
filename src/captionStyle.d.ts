@@ -19,4 +19,5 @@ export function fitCaptionFontSize(options: {
   videoHeight: number;
   marginPercent: number;
   offsetYPercent: number;
+  emRatio?: number;
 }): number;

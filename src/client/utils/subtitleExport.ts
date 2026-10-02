@@ -18,9 +18,9 @@ export function serializeSubtitles(segments: Segment[], format: string, directio
 }
 
 export function subtitleDownloadName(originalFilename: string, format: string) {
-  const base = originalFilename.replace(/\.[^.]+$/, "") || "subtitles";
+  const base = originalFilename.replace(/\.[^.]+$/, "");
   const extension = format.startsWith(".") ? format : `.${format}`;
-  return `${base}${extension}`;
+  return base ? `${base}_subtitle${extension}` : `subtitle${extension}`;
 }
 
 export function downloadTextFile(content: string, filename: string) {

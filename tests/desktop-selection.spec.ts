@@ -225,7 +225,7 @@ test('desktop blank space clears multiple selected captions without saving or af
     await expect(selected(page)).toHaveCount(2);
   };
   await chooseTwo();
-  await page.getByRole('button', { name: 'הצג עורך', exact: true }).click();
+  await page.getByRole('button', { name: 'הסתר עורך', exact: true }).click();
   await expect(selected(page)).toHaveCount(2);
   const editor = (await page.getByTestId('desktop-caption-editor').boundingBox())!;
   await page.mouse.click(editor.x + 20, editor.y + 160);

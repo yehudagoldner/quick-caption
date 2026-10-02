@@ -1,0 +1,62 @@
+/* Generated local static faces, also consumed by FFmpeg. Loaded on demand. */
+@font-face { font-family: "QC Caption Alef"; src: url("/fonts/alef.ttf") format("truetype"); font-weight: 700; font-style: normal; font-display: swap; }
+@font-face { font-family: "QC Caption Arimo"; src: url("/fonts/arimo.ttf") format("truetype"); font-weight: 700; font-style: normal; font-display: swap; }
+@font-face { font-family: "QC Caption Cascadia Code"; src: url("/fonts/cascadiacode.ttf") format("truetype"); font-weight: 700; font-style: normal; font-display: swap; }
+@font-face { font-family: "QC Caption Cascadia Mono"; src: url("/fonts/cascadiamono.ttf") format("truetype"); font-weight: 700; font-style: normal; font-display: swap; }
+@font-face { font-family: "QC Caption Fredoka"; src: url("/fonts/fredoka.ttf") format("truetype"); font-weight: 700; font-style: normal; font-display: swap; }
+@font-face { font-family: "QC Caption Google Sans"; src: url("/fonts/googlesans.ttf") format("truetype"); font-weight: 700; font-style: normal; font-display: swap; }
+@font-face { font-family: "QC Caption Heebo"; src: url("/fonts/heebo.ttf") format("truetype"); font-weight: 700; font-style: normal; font-display: swap; }
+@font-face { font-family: "QC Caption IBM Plex Sans Hebrew"; src: url("/fonts/ibmplexsanshebrew.ttf") format("truetype"); font-weight: 700; font-style: normal; font-display: swap; }
+@font-face { font-family: "QC Caption Lunasima"; src: url("/fonts/lunasima.ttf") format("truetype"); font-weight: 700; font-style: normal; font-display: swap; }
+@font-face { font-family: "QC Caption M PLUS 1p"; src: url("/fonts/mplus1p.ttf") format("truetype"); font-weight: 700; font-style: normal; font-display: swap; }
+@font-face { font-family: "QC Caption M PLUS Rounded 1c"; src: url("/fonts/mplusrounded1c.ttf") format("truetype"); font-weight: 700; font-style: normal; font-display: swap; }
+@font-face { font-family: "QC Caption Miriam Libre"; src: url("/fonts/miriamlibre.ttf") format("truetype"); font-weight: 700; font-style: normal; font-display: swap; }
+@font-face { font-family: "QC Caption Noto Sans Hebrew"; src: url("/fonts/notosanshebrew.ttf") format("truetype"); font-weight: 700; font-style: normal; font-display: swap; }
+@font-face { font-family: "QC Caption Open Sans"; src: url("/fonts/opensans.ttf") format("truetype"); font-weight: 700; font-style: normal; font-display: swap; }
+@font-face { font-family: "QC Caption Rubik"; src: url("/fonts/rubik.ttf") format("truetype"); font-weight: 700; font-style: normal; font-display: swap; }
+@font-face { font-family: "QC Caption Secular One"; src: url("/fonts/secularone.ttf") format("truetype"); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: "QC Caption Varela Round"; src: url("/fonts/varelaround.ttf") format("truetype"); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: "QC Caption Bellefair"; src: url("/fonts/bellefair.ttf") format("truetype"); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: "QC Caption Bona Nova"; src: url("/fonts/bonanova.ttf") format("truetype"); font-weight: 700; font-style: normal; font-display: swap; }
+@font-face { font-family: "QC Caption Bona Nova SC"; src: url("/fonts/bonanovasc.ttf") format("truetype"); font-weight: 700; font-style: normal; font-display: swap; }
+@font-face { font-family: "QC Caption Cardo"; src: url("/fonts/cardo.ttf") format("truetype"); font-weight: 700; font-style: normal; font-display: swap; }
+@font-face { font-family: "QC Caption David Libre"; src: url("/fonts/davidlibre.ttf") format("truetype"); font-weight: 700; font-style: normal; font-display: swap; }
+@font-face { font-family: "QC Caption Frank Ruhl Libre"; src: url("/fonts/frankruhllibre.ttf") format("truetype"); font-weight: 700; font-style: normal; font-display: swap; }
+@font-face { font-family: "QC Caption Libertinus Serif"; src: url("/fonts/libertinusserif.ttf") format("truetype"); font-weight: 700; font-style: normal; font-display: swap; }
+@font-face { font-family: "QC Caption Noto Rashi Hebrew"; src: url("/fonts/notorashihebrew.ttf") format("truetype"); font-weight: 700; font-style: normal; font-display: swap; }
+@font-face { font-family: "QC Caption Noto Serif Hebrew"; src: url("/fonts/notoserifhebrew.ttf") format("truetype"); font-weight: 700; font-style: normal; font-display: swap; }
+@font-face { font-family: "QC Caption Suez One"; src: url("/fonts/suezone.ttf") format("truetype"); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: "QC Caption Tinos"; src: url("/fonts/tinos.ttf") format("truetype"); font-weight: 700; font-style: normal; font-display: swap; }
+@font-face { font-family: "QC Caption Amatic SC"; src: url("/fonts/amaticsc.ttf") format("truetype"); font-weight: 700; font-style: normal; font-display: swap; }
+@font-face { font-family: "QC Caption Gveret Levin"; src: url("/fonts/gveretlevin.ttf") format("truetype"); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: "QC Caption Playpen Sans Hebrew"; src: url("/fonts/playpensanshebrew.ttf") format("truetype"); font-weight: 700; font-style: normal; font-display: swap; }
+@font-face { font-family: "QC Caption Solitreo"; src: url("/fonts/solitreo.ttf") format("truetype"); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: "QC Caption Cousine"; src: url("/fonts/cousine.ttf") format("truetype"); font-weight: 700; font-style: normal; font-display: swap; }
+@font-face { font-family: "QC Caption Handjet"; src: url("/fonts/handjet.ttf") format("truetype"); font-weight: 700; font-style: normal; font-display: swap; }
+@font-face { font-family: "QC Caption Karantina"; src: url("/fonts/karantina.ttf") format("truetype"); font-weight: 700; font-style: normal; font-display: swap; }
+@font-face { font-family: "QC Caption Rubik 80s Fade"; src: url("/fonts/rubik80sfade.ttf") format("truetype"); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: "QC Caption Rubik Beastly"; src: url("/fonts/rubikbeastly.ttf") format("truetype"); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: "QC Caption Rubik Broken Fax"; src: url("/fonts/rubikbrokenfax.ttf") format("truetype"); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: "QC Caption Rubik Bubbles"; src: url("/fonts/rubikbubbles.ttf") format("truetype"); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: "QC Caption Rubik Burned"; src: url("/fonts/rubikburned.ttf") format("truetype"); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: "QC Caption Rubik Dirt"; src: url("/fonts/rubikdirt.ttf") format("truetype"); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: "QC Caption Rubik Distressed"; src: url("/fonts/rubikdistressed.ttf") format("truetype"); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: "QC Caption Rubik Doodle Shadow"; src: url("/fonts/rubikdoodleshadow.ttf") format("truetype"); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: "QC Caption Rubik Doodle Triangles"; src: url("/fonts/rubikdoodletriangles.ttf") format("truetype"); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: "QC Caption Rubik Gemstones"; src: url("/fonts/rubikgemstones.ttf") format("truetype"); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: "QC Caption Rubik Glitch"; src: url("/fonts/rubikglitch.ttf") format("truetype"); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: "QC Caption Rubik Glitch Pop"; src: url("/fonts/rubikglitchpop.ttf") format("truetype"); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: "QC Caption Rubik Iso"; src: url("/fonts/rubikiso.ttf") format("truetype"); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: "QC Caption Rubik Lines"; src: url("/fonts/rubiklines.ttf") format("truetype"); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: "QC Caption Rubik Maps"; src: url("/fonts/rubikmaps.ttf") format("truetype"); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: "QC Caption Rubik Marker Hatch"; src: url("/fonts/rubikmarkerhatch.ttf") format("truetype"); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: "QC Caption Rubik Maze"; src: url("/fonts/rubikmaze.ttf") format("truetype"); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: "QC Caption Rubik Microbe"; src: url("/fonts/rubikmicrobe.ttf") format("truetype"); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: "QC Caption Rubik Moonrocks"; src: url("/fonts/rubikmoonrocks.ttf") format("truetype"); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: "QC Caption Rubik Pixels"; src: url("/fonts/rubikpixels.ttf") format("truetype"); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: "QC Caption Rubik Puddles"; src: url("/fonts/rubikpuddles.ttf") format("truetype"); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: "QC Caption Rubik Scribble"; src: url("/fonts/rubikscribble.ttf") format("truetype"); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: "QC Caption Rubik Spray Paint"; src: url("/fonts/rubikspraypaint.ttf") format("truetype"); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: "QC Caption Rubik Storm"; src: url("/fonts/rubikstorm.ttf") format("truetype"); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: "QC Caption Rubik Vinyl"; src: url("/fonts/rubikvinyl.ttf") format("truetype"); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: "QC Caption Rubik Wet Paint"; src: url("/fonts/rubikwetpaint.ttf") format("truetype"); font-weight: 400; font-style: normal; font-display: swap; }

@@ -1,6 +1,7 @@
 import { useId, useState, type ChangeEvent, type ReactNode } from "react";
 import type { Segment, Word } from "../types";
 import { AUTO_CAPTION_FONT_SIZE, CAPTION_FONT_SIZES, type CaptionFontSizeSetting } from "../../captionStyle.js";
+import { CaptionFontPicker } from "./CaptionFontPicker";
 import {
   Box,
   Button,
@@ -41,6 +42,7 @@ export type BurnOptions = {
   words?: Word[];
   subtitleContent?: string;
   textDirection?: "rtl" | "ltr";
+  fontId?: string;
   fontSize: number;
   fontColor: string;
   outlineColor: string;
@@ -56,6 +58,7 @@ type BurnedVideo = {
 };
 
 type VideoToolbarProps = {
+  fontReady?: boolean;
   pendingEdits?: boolean;
   editorSettings: ReactNode;
   canBurn?: boolean;
@@ -86,6 +89,7 @@ type VideoToolbarProps = {
 };
 
 export function VideoToolbar({
+  fontReady = true,
   pendingEdits = false,
   editorSettings,
   canBurn = true,
@@ -345,9 +349,9 @@ export function VideoToolbar({
           <SubtitlesRounded sx={{ mr: 1 }} />
           הורד קובץ כתוביות
         </MenuItem>
-        <MenuItem onClick={handleBurnAndDownload} disabled={isBurning || !mediaUrl || !canBurn}>
+        <MenuItem onClick={handleBurnAndDownload} disabled={isBurning || !mediaUrl || !canBurn || !fontReady}>
           <MovieFilterRounded sx={{ mr: 1 }} />
-          {canBurn ? "הורד סרטון עם כתוביות" : "צריבה זמינה לקובץ וידאו בלבד"}
+          {canBurn ? (fontReady ? "הורד סרטון עם כתוביות" : "ממתינים לטעינת הפונט") : "צריבה זמינה לקובץ וידאו בלבד"}
         </MenuItem>
         {burnedVideo && (
           <MenuItem
@@ -421,11 +425,12 @@ export function VideoToolbar({
         open={Boolean(fontAnchorEl)}
         anchorEl={fontAnchorEl}
         onClose={() => setFontAnchorEl(null)}
-        anchorOrigin={{ vertical: 'center', horizontal: 'left' }}
-        transformOrigin={{ vertical: 'center', horizontal: 'right' }}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+        transformOrigin={{ vertical: 'top', horizontal: 'right' }}
       >
-        <Paper sx={{ p: 3, width: 250 }}>
+        <Paper sx={{ p: 2, width: 300, maxWidth: "calc(100vw - 32px)" }}>
           <Stack spacing={2}>
+            <CaptionFontPicker disabled={isBurning} />
             <FormControl fullWidth size="small">
               <InputLabel>גודל פונט</InputLabel>
               <Select

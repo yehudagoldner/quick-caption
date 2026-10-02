@@ -1,5 +1,5 @@
 import { useContext, useEffect, useMemo, useRef, useState } from "react";
-import { Alert, Button, Card, CardContent, Stack, useMediaQuery, useTheme } from "@mui/material";
+import { Alert, Button, Card, CardContent, Stack, Typography, useMediaQuery, useTheme } from "@mui/material";
 import type { ApiResponse, Segment } from "../types";
 import { useVideoPlayer } from "./VideoPlayer";
 import type { BurnOptions } from "./VideoToolbar";
@@ -8,6 +8,7 @@ import { TranscriptionMainContent } from "./TranscriptionMainContent";
 import { useTranscriptionState } from "../hooks/useTranscriptionState";
 import { usePreviewStyle } from "../hooks/usePreviewStyle";
 import { useAutoCaptionFontSize } from "../hooks/useAutoCaptionFontSize";
+import { useCaptionFont } from "../hooks/useCaptionFont";
 import { AUTO_CAPTION_FONT_SIZE } from "../../captionStyle.js";
 import { useTranscriptionHandlers } from "../hooks/useTranscriptionHandlers";
 import { useVideoControls } from "../hooks/useVideoControls";
@@ -50,6 +51,7 @@ export function TranscriptionResult({
   isEditable,
 }: TranscriptionResultProps) {
   const { preferences } = useEditorPreferences();
+  const { ready: fontReady, error: fontLoadError } = useCaptionFont(preferences.fontId);
   const [hasTimelineDrafts, setHasTimelineDrafts] = useState(false);
   const [loopEnabled, setLoopEnabled] = useState(false);
   const loopEnabledRef = useRef(loopEnabled);
@@ -127,10 +129,11 @@ export function TranscriptionResult({
     onSaveSegments,
   });
 
-  const autoFontSize = useAutoCaptionFontSize({ segments: editableSegments, videoDimensions, marginPercent, offsetYPercent });
+  const autoFontSize = useAutoCaptionFontSize({ segments: editableSegments, videoDimensions, marginPercent, offsetYPercent, fontId: preferences.fontId });
   const effectiveFontSize = fontSize === AUTO_CAPTION_FONT_SIZE ? autoFontSize : fontSize;
 
   const previewStyle = usePreviewStyle({
+    fontId: preferences.fontId,
     fontColor,
     fontSize: effectiveFontSize,
     offsetYPercent,
@@ -156,6 +159,27 @@ export function TranscriptionResult({
   const { isPlaying, handlePlayPause } = useVideoControls(videoPlayer);
   const narrow = useNarrowViewport();
   const desktop = useMediaQuery(useTheme().breakpoints.up("md"));
+  const playbackRoot = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!desktop || !videoPlayer) return;
+    const playbackKey = (event: KeyboardEvent) => {
+      if (event.code !== "Space" || event.defaultPrevented || event.isComposing
+        || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return;
+      const target = event.target;
+      if (!(target instanceof HTMLElement)) return;
+      // Page whitespace may leave focus on body. Header controls and portals
+      // keep their own keyboard behavior, while the editor owns plain Space.
+      if (target !== document.body && target !== document.documentElement && !playbackRoot.current?.contains(target)) return;
+      if (target.isContentEditable || target.closest('input,textarea,select,[role="textbox"],[role="combobox"],[role="dialog"],[role="alertdialog"],[role="menu"],[role="listbox"]')) return;
+      // Capture before word selection, timeline shortcuts and native video or
+      // button behavior, preventing two toggles from a single key press.
+      event.preventDefault();
+      event.stopPropagation();
+      if (!event.repeat) void handlePlayPause();
+    };
+    window.addEventListener("keydown", playbackKey, true);
+    return () => window.removeEventListener("keydown", playbackKey, true);
+  }, [desktop, videoPlayer, handlePlayPause]);
   const registerNavigation = useContext(EditorNavigationContext);
 
   const leaveEditor = async (destination: () => void) => {
@@ -213,6 +237,7 @@ export function TranscriptionResult({
     downloadName,
     burnedVideo,
     fontSize: effectiveFontSize,
+    fontReady,
     fontColor,
     outlineColor,
     offsetYPercent,
@@ -222,9 +247,11 @@ export function TranscriptionResult({
   });
 
   return (
-    <Card elevation={narrow ? 0 : 3} sx={{ overflow: "visible", ...(narrow ? { bgcolor: "transparent", boxShadow: "none" } : {}) }}>
+    <Card ref={playbackRoot} elevation={narrow ? 0 : 3} sx={{ overflow: "visible", ...(narrow ? { bgcolor: "transparent", boxShadow: "none" } : {}) }}>
       <CardContent sx={narrow ? { p: 0, "&:last-child": { pb: 0 } } : { p: { md: 1.5 }, "&:last-child": { pb: { md: 1.5 } } }}>
         <Stack spacing={narrow ? 0 : 1.5}>
+          {fontLoadError && <Alert severity="error">טעינת הפונט נכשלה. בחרו פונט אחר כדי לצרוב את הסרטון.</Alert>}
+          {!fontReady && !fontLoadError && <Typography role="status" variant="caption">טוען פונט...</Typography>}
           {!narrow && !desktop && (
           <TranscriptionResultHeader
             subtitleFormatLabel={subtitleFormatLabel}
@@ -239,6 +266,7 @@ export function TranscriptionResult({
           {!narrow && !desktop && activeWordEnabled && !hasEstimatedTimingWarning && editableWords.some(word => word.timingSource === "estimated") && <Alert severity="info">לחלק מהמילים הושלם תזמון משוער. אפשר לדייק אותן בציר המילים של המקטע; הטקסט המתוקן נשמר במלואו.</Alert>}
 
           <TranscriptionMainContent
+            fontReady={fontReady}
             hasTimelineDrafts={hasTimelineDrafts}
             timelineEditing={{ onSaveSegment: handleSaveSegment, onUndo: handleUndo, onRedo: handleRedo, canUndo, canRedo,
               onDraftStateChange: setHasTimelineDrafts, loopEnabled,

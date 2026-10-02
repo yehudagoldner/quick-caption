@@ -42,6 +42,7 @@ type UseTranscriptionHandlersProps = {
   downloadName: string;
   burnedVideo: BurnedVideo | null;
   fontSize: number;
+  fontReady?: boolean;
   fontColor: string;
   outlineColor: string;
   offsetYPercent: number;
@@ -74,6 +75,7 @@ export function useTranscriptionHandlers({
   downloadName,
   burnedVideo,
   fontSize,
+  fontReady = true,
   fontColor,
   outlineColor,
   offsetYPercent,
@@ -187,6 +189,7 @@ export function useTranscriptionHandlers({
     mediaUrl,
     activeWordEnabled,
     direction: preferences.direction,
+    fontId: preferences.fontId,
     fontSize,
     fontColor,
     outlineColor,
@@ -202,6 +205,10 @@ export function useTranscriptionHandlers({
   const latestBurnSignature = useRef(currentBurnSignature);
   latestBurnSignature.current = currentBurnSignature;
   const handleBurnVideo = useCallback(async (options?: { download?: boolean; reuse?: boolean }) => {
+    if (!fontReady) {
+      setBurnError("הפונט עדיין נטען. המתינו לסיום הטעינה או בחרו פונט אחר.");
+      return null;
+    }
     if (!response.subtitle?.content) {
       setBurnError("לא נמצאו כתוביות מתאימות לצריבה.");
       return null;
@@ -220,6 +227,7 @@ export function useTranscriptionHandlers({
         words: editableWords,
         subtitleContent: serializeSubtitles(editableSegments, ".srt", preferences.direction),
         textDirection: preferences.direction,
+        fontId: preferences.fontId,
         fontSize,
         fontColor,
         outlineColor,
@@ -262,6 +270,8 @@ export function useTranscriptionHandlers({
     editableWords,
     activeWordEnabled,
     preferences.direction,
+    preferences.fontId,
+    fontReady,
     fontSize,
     fontColor,
     outlineColor,

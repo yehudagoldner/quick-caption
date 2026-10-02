@@ -1,13 +1,11 @@
 import { useEffect, useMemo } from "react";
 import { createOutlineShadow } from "../utils/transcriptionUtils";
 import { useEditorPreferences } from "../contexts/EditorPreferences";
-import { CAPTION_FONT_EM_RATIO, CAPTION_FONT_FAMILY, CAPTION_FONT_WEIGHT, captionMarginPixels } from "../../captionStyle.js";
-
-const CAPTION_FONT_STACK = `"${CAPTION_FONT_FAMILY}", "Assistant", sans-serif`;
-// libass advances one full Fontsize per line, which is 1 / CAPTION_FONT_EM_RATIO em.
-const CAPTION_LINE_HEIGHT = 1 / CAPTION_FONT_EM_RATIO;
+import { captionMarginPixels } from "../../captionStyle.js";
+import { getCaptionFont } from "../../captionFonts.js";
 
 type UsePreviewStyleProps = {
+  fontId?: string;
   fontColor: string;
   fontSize: number;
   offsetYPercent: number;
@@ -25,8 +23,13 @@ export function usePreviewStyle({
   marginPercent,
   videoDimensions,
   renderDimensions,
+  fontId,
 }: UsePreviewStyleProps) {
   const { preferences } = useEditorPreferences();
+  const font = getCaptionFont(fontId);
+  const fontStack = `"${font.cssFamily}", "Assistant", sans-serif`;
+  // libass advances a full ASS Fontsize per line, independently of the font em.
+  const lineHeight = 1 / font.emRatio;
   const previewStyle = useMemo(() => {
     const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max);
     const clampedBottomPercent = clamp(offsetYPercent, 0, 100);
@@ -41,10 +44,10 @@ export function usePreviewStyle({
         bottom: `${clampedBottomPercent}%`,
         transform: "translate(-50%, 0)",
         color: fontColor,
-        fontFamily: CAPTION_FONT_STACK,
-        fontSize: `${fontSize * CAPTION_FONT_EM_RATIO}px`,
-        fontWeight: CAPTION_FONT_WEIGHT,
-        lineHeight: CAPTION_LINE_HEIGHT,
+        fontFamily: fontStack,
+        fontSize: `${fontSize * font.emRatio}px`,
+        fontWeight: font.weight,
+        lineHeight,
         textAlign: "center" as const,
         whiteSpace: "pre-wrap" as const,
         pointerEvents: "none" as const,
@@ -62,7 +65,7 @@ export function usePreviewStyle({
     const bottomVideo = (clampedBottomPercent / 100) * videoDimensions.height;
     const widthVideo = Math.max(1, videoDimensions.width - marginValueVideo * 2);
 
-    const fontSizePx = fontSize * CAPTION_FONT_EM_RATIO * scaleY;
+    const fontSizePx = fontSize * font.emRatio * scaleY;
     const widthPx = widthVideo * scaleX;
     const bottomPx = bottomVideo * scaleY;
 
@@ -72,10 +75,10 @@ export function usePreviewStyle({
       bottom: `${bottomPx}px`,
       transform: "translate(-50%, 0)",
       color: fontColor,
-      fontFamily: CAPTION_FONT_STACK,
+      fontFamily: fontStack,
       fontSize: `${fontSizePx}px`,
-      fontWeight: CAPTION_FONT_WEIGHT,
-      lineHeight: CAPTION_LINE_HEIGHT,
+      fontWeight: font.weight,
+      lineHeight,
       textAlign: "center" as const,
       whiteSpace: "pre-wrap" as const,
       pointerEvents: "none" as const,
@@ -84,7 +87,7 @@ export function usePreviewStyle({
       maxWidth: `${widthPx}px`,
       direction: preferences.direction,
     };
-  }, [fontColor, fontSize, offsetYPercent, outlineColor, marginPercent, videoDimensions, renderDimensions, preferences.direction]);
+  }, [fontColor, fontSize, offsetYPercent, outlineColor, marginPercent, videoDimensions, renderDimensions, preferences.direction, font, fontStack, lineHeight]);
 
   useEffect(() => {
     if (import.meta.env.DEV && videoDimensions && renderDimensions) {
@@ -96,12 +99,12 @@ export function usePreviewStyle({
         scaleX,
         scaleY,
         fontSize,
-        scaledFontSize: fontSize * CAPTION_FONT_EM_RATIO * scaleY,
+        scaledFontSize: fontSize * font.emRatio * scaleY,
         offsetYPercent,
         marginPercent,
       });
     }
-  }, [videoDimensions, renderDimensions, fontSize, offsetYPercent, marginPercent]);
+  }, [videoDimensions, renderDimensions, fontSize, offsetYPercent, marginPercent, font]);
 
   return previewStyle;
 }

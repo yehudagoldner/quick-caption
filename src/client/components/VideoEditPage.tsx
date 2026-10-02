@@ -6,6 +6,7 @@ import { useNarrowViewport } from "../hooks/useNarrowViewport";
 import type { AuthUser } from "../hooks/useTranscriptionWorkflow";
 import type { ApiResponse, Segment } from "../types";
 import type { BurnOptions } from "./TranscriptionResult";
+import { subtitleDownloadName } from "../utils/subtitleExport";
 
 interface VideoEditPageProps {
   user: AuthUser;
@@ -80,6 +81,7 @@ export function VideoEditPage({ user, videoToken, onSaveSegments, onNewUpload, o
       setVideoId(video.id);
       setFormat(videoFormat);
       setResponse({
+        originalFilename: video.original_filename,
         text: segments.map((s: Segment) => s.text).join("\n"),
         segments,
         words,
@@ -132,6 +134,7 @@ export function VideoEditPage({ user, videoToken, onSaveSegments, onNewUpload, o
       formData.append("words", JSON.stringify(options.words ?? []));
     }
     formData.append("fontSize", String(options.fontSize));
+    if (options.fontId) formData.append("fontId", options.fontId);
     formData.append("fontColor", options.fontColor);
     formData.append("outlineColor", options.outlineColor);
     formData.append("offsetYPercent", String(options.offsetYPercent));
@@ -211,7 +214,7 @@ export function VideoEditPage({ user, videoToken, onSaveSegments, onNewUpload, o
     return supportedFormats.find(option => option.value === format)?.label ?? format;
   })();
 
-  const downloadName = `subtitle${format}`;
+  const downloadName = subtitleDownloadName(response.originalFilename || "", format);
 
   return (
     <Container maxWidth={false} disableGutters>

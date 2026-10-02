@@ -33,6 +33,8 @@ for (const viewport of [{ width: 1366, height: 600 }, { width: 1366, height: 768
     await prepareApp(page);
     await page.goto('/?screen=edit&video=review-token');
     await expect.poll(() => page.locator('video').evaluate((v: HTMLVideoElement) => v.readyState)).toBeGreaterThan(0);
+    await expect(page.getByRole('button', { name: 'הסתר עורך', exact: true })).toBeVisible();
+    await expect(page.getByRole('textbox', { name: 'טקסט הכתובית', exact: true }).first()).toBeVisible();
     const fits = async () => {
       await expect.poll(() => page.evaluate(() => ({ x: document.documentElement.scrollWidth - innerWidth, y: document.documentElement.scrollHeight - innerHeight }))).toEqual({ x: 0, y: 0 });
       await expect(page.getByRole('group', { name: 'כלי עריכת כתוביות' })).toBeInViewport({ ratio: 1 });
@@ -49,7 +51,7 @@ for (const viewport of [{ width: 1366, height: 600 }, { width: 1366, height: 768
     await fits();
     await expect(page.getByTestId('word-track')).toBeInViewport({ ratio: 1 });
     await page.screenshot({ path: `tmp/review/desktop-${viewport.width}x${viewport.height}.png` });
-    await page.getByRole('button', { name: 'הצג עורך', exact: true }).click();
+    await page.getByRole('button', { name: 'הסתר עורך', exact: true }).click();
     await fits();
   });
 }

@@ -6,7 +6,8 @@ import { randomUUID } from "crypto";
 import { spawn } from "child_process";
 import { fileURLToPath } from "url";
 import { renderActiveWordSrt } from "../src/activeWordSubtitles.js";
-import { CAPTION_FONT_FAMILY, CAPTION_OUTLINE_WIDTH, captionMarginPixels, sanitizeCaptionFontSize } from "../src/captionStyle.js";
+import { CAPTION_OUTLINE_WIDTH, captionMarginPixels, sanitizeCaptionFontSize } from "../src/captionStyle.js";
+import { getCaptionFont } from "../src/captionFonts.js";
 
 const CAPTION_FONTS_DIR = fileURLToPath(new URL("../public/fonts", import.meta.url));
 const TEMP_SUBTITLE_DIR = path.join(os.tmpdir(), "subtitles-api-subtitle-temp");
@@ -57,6 +58,7 @@ export function createBurnSubtitlesRouter(upload) {
       const rtlSubtitleContent = req.body?.textDirection === "ltr" ? subtitleContent : wrapSubtitleLinesWithRTL(subtitleContent);
       await fsp.writeFile(subtitlePath, rtlSubtitleContent, "utf-8");
       const filter = buildSubtitlesFilter(subtitlePath, {
+        fontId: req.body?.fontId,
         fontSize,
         fontColor,
         outlineColor,
@@ -99,10 +101,12 @@ export function createBurnSubtitlesRouter(upload) {
   return router;
 }
 
-function buildSubtitlesFilter(subtitlePath, { fontSize, fontColor, outlineColor, offsetYPercent, marginPercent, videoWidth, videoHeight, wholeTextLayout }) {
+export function buildSubtitlesFilter(subtitlePath, { fontId, fontSize, fontColor, outlineColor, offsetYPercent, marginPercent, videoWidth, videoHeight, wholeTextLayout }) {
   const normalizedPath = subtitlePath.replace(/\\/g, "/");
+  const font = getCaptionFont(fontId);
   const styleParts = [
-    `Fontname=${CAPTION_FONT_FAMILY}`,
+    `Fontname=${font.family}`,
+    `Bold=${font.id !== "assistant" && font.weight >= 600 ? -1 : 0}`,
     `Fontsize=${fontSize}`,
     `PrimaryColour=${fontColor}`,
     `OutlineColour=${outlineColor}`,
@@ -243,6 +247,4 @@ function truncate(value, maxLength) {
   }
   return `${value.slice(0, maxLength)}...`;
 }
-
-
 

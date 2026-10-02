@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, type ReactNode } from "react";
 import { VideoSeekBar } from "./VideoSeekBar";
+import { CaptionFontPicker } from "./CaptionFontPicker";
 import {
   Alert,
   Box,
@@ -98,6 +99,7 @@ export type MobileCaptionEditorProps = {
   activeWordEnabled: boolean;
   hasTimelineDrafts: boolean;
   canBurn: boolean;
+  fontReady?: boolean;
   showSubtitles: boolean;
   onShowSubtitlesChange: (checked: boolean) => void;
   onVideoTimeUpdate: (nextTime: number) => void;
@@ -154,6 +156,7 @@ export function MobileCaptionEditor({
   activeWordEnabled,
   hasTimelineDrafts,
   canBurn,
+  fontReady = true,
   showSubtitles,
   onShowSubtitlesChange,
   onVideoTimeUpdate,
@@ -479,7 +482,7 @@ export function MobileCaptionEditor({
   );
 
   const hasCaptionDraft = mode === "edit" && selected !== null && (draftText.trim() !== selected.text.trim() || wordDraft !== null);
-  const canShareVideo = canBurn && Boolean(mediaUrl) && !hasTimelineDrafts && !hasCaptionDraft && !savingDraft && !isBurning && !sharing;
+  const canShareVideo = canBurn && fontReady && Boolean(mediaUrl) && !hasTimelineDrafts && !hasCaptionDraft && !savingDraft && !isBurning && !sharing;
 
   const shareBurnedFile = async (file: { url: string; name: string }) => {
     const blob = await fetch(file.url).then(result => result.blob());
@@ -493,7 +496,7 @@ export function MobileCaptionEditor({
   };
 
   const shareVideo = async () => {
-    if (!canBurn || !mediaUrl || hasTimelineDrafts || isBurning || sharing) return;
+    if (!canBurn || !fontReady || !mediaUrl || hasTimelineDrafts || isBurning || sharing) return;
     setSharing(true);
     try {
       const burned = await onBurnVideo({ download: false, reuse: true });
@@ -829,6 +832,7 @@ export function MobileCaptionEditor({
           <IconButton aria-label="סגירת עיצוב" onClick={() => setStyleOpen(false)} sx={{ p: 0.9 }}><CheckRounded sx={{ fontSize: 21.6 }} /></IconButton>
         </Stack>
         <Box sx={{ px: 1.8, pb: "max(14.4px, env(safe-area-inset-bottom, 0px))", overflowY: "auto", minHeight: 0 }}>
+          <CaptionFontPicker disabled={isBurning} />
           <Box sx={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 0.9, my: 1.35, "& > *": { minWidth: 0 } }}>
             <FormControl fullWidth size="small">
               <InputLabel id="mobile-caption-font-size">גודל פונט</InputLabel>
@@ -863,9 +867,9 @@ export function MobileCaptionEditor({
             <ListItemIcon><SubtitlesRounded /></ListItemIcon>
             <ListItemText primary="הורד קובץ כתוביות" />
           </ListItemButton>
-          <ListItemButton disabled={isBurning || !mediaUrl || !canBurn || hasTimelineDrafts} onClick={() => { setMoreOpen(false); onBurnVideo(); }}>
+          <ListItemButton disabled={isBurning || !mediaUrl || !canBurn || !fontReady || hasTimelineDrafts} onClick={() => { setMoreOpen(false); onBurnVideo(); }}>
             <ListItemIcon><MovieFilterRounded /></ListItemIcon>
-            <ListItemText primary={canBurn ? "הורד סרטון עם כתוביות" : "צריבה זמינה לקובץ וידאו בלבד"} />
+            <ListItemText primary={canBurn ? (fontReady ? "הורד סרטון עם כתוביות" : "ממתינים לטעינת הפונט") : "צריבה זמינה לקובץ וידאו בלבד"} />
           </ListItemButton>
           {burnedVideo && (
             <ListItemButton component="a" href={burnedVideo.url} download={burnedVideo.name} onClick={() => setMoreOpen(false)}>

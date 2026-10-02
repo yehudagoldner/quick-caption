@@ -6,6 +6,7 @@ import type { BurnOptions } from "../components/TranscriptionResult";
 import type { ApiResponse, StageEvent, StageState, StageStatus, Segment, Word } from "../types";
 import { useAuth } from "../contexts/AuthContext";
 import { useUploadProtection } from "./useUploadProtection";
+import { subtitleDownloadName } from "../utils/subtitleExport";
 
 export type AuthUser = ReturnType<typeof useAuth>["user"];
 
@@ -533,6 +534,7 @@ export function useTranscriptionWorkflow(): TranscriptionWorkflow {
         formData.append("words", JSON.stringify(options.words ?? []));
       }
       formData.append("fontSize", String(options.fontSize));
+      if (options.fontId) formData.append("fontId", options.fontId);
       formData.append("fontColor", options.fontColor);
       formData.append("outlineColor", options.outlineColor);
       formData.append("offsetYPercent", String(options.offsetYPercent));
@@ -708,12 +710,8 @@ function useSubtitleDownload(response: ApiResponse | null, file: File | null) {
       type: "text/plain;charset=utf-8",
     });
     const url = URL.createObjectURL(blob);
-    const extension = response.subtitle.format.replace(/^\./, "") || "txt";
-    const filename = file?.name || response.originalFilename;
-    const baseName = filename ? filename.replace(/\.[^.]+$/, "") : "subtitle";
-
     setDownloadUrl(url);
-    setDownloadName(`${baseName}.${extension}`);
+    setDownloadName(subtitleDownloadName(file?.name || response.originalFilename || "", response.subtitle.format || ".txt"));
 
     return () => {
       URL.revokeObjectURL(url);

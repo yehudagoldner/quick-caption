@@ -18,6 +18,7 @@ type BurnedVideo = {
 };
 
 type TranscriptionMainContentProps = {
+  fontReady?: boolean;
   timelineEditing: Pick<SubtitleTimelineProps, "onSaveSegment" | "onUndo" | "onRedo" | "canUndo" | "canRedo" | "onPlayFrom" | "loopEnabled" | "onLoopChange" | "onDraftStateChange">;
   hasTimelineDrafts: boolean;
   editorSettings: ReactNode;
@@ -80,6 +81,7 @@ type TranscriptionMainContentProps = {
 };
 
 export function TranscriptionMainContent({
+  fontReady = true,
   timelineEditing,
   hasTimelineDrafts,
   editorSettings,
@@ -137,7 +139,7 @@ export function TranscriptionMainContent({
   onMyVideos,
   backDisabled,
 }: TranscriptionMainContentProps) {
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
   const [showSubtitles, setShowSubtitles] = useState(true);
   const isNarrow = useNarrowViewport();
   const desktop = useMediaQuery(useTheme().breakpoints.up("md"));
@@ -179,6 +181,7 @@ export function TranscriptionMainContent({
         activeWordEnabled={activeWordEnabled}
         hasTimelineDrafts={hasTimelineDrafts}
         canBurn={Boolean(videoDimensions?.width)}
+        fontReady={fontReady}
         showSubtitles={showSubtitles}
         onShowSubtitlesChange={setShowSubtitles}
         onVideoTimeUpdate={onVideoTimeUpdate}
@@ -228,6 +231,7 @@ export function TranscriptionMainContent({
               burnedVideo={burnedVideo}
               mediaUrl={mediaUrl}
               canBurn={Boolean(videoDimensions?.width)}
+              fontReady={fontReady}
               downloadUrl={downloadUrl}
               downloadName={downloadName}
               sidebarOpen={sidebarOpen}

@@ -39,7 +39,7 @@ export function captionTextLines(text) {
  * the horizontal margins, and the tallest caption fits above the bottom offset.
  * `maxLineEmWidth` is the widest line's width divided by its CSS font size.
  */
-export function fitCaptionFontSize({ maxLineEmWidth, maxLineCount, videoWidth, videoHeight, marginPercent, offsetYPercent }) {
+export function fitCaptionFontSize({ maxLineEmWidth, maxLineCount, videoWidth, videoHeight, marginPercent, offsetYPercent, emRatio = CAPTION_FONT_EM_RATIO }) {
   if (!(videoWidth > 0) || !(videoHeight > 0)) return DEFAULT_CAPTION_FONT_SIZE;
   const margin = captionMarginPixels(marginPercent, videoWidth);
   const bottom = Math.round(Math.min(Math.max(Number(offsetYPercent) || 0, 0), 100) * (videoHeight / 100));
@@ -49,7 +49,7 @@ export function fitCaptionFontSize({ maxLineEmWidth, maxLineCount, videoWidth, v
   const lines = Math.max(1, maxLineCount || 1);
 
   const byHeight = availableHeight / lines;
-  const byWidth = maxLineEmWidth > 0 ? availableWidth / (maxLineEmWidth * CAPTION_FONT_EM_RATIO) : DEFAULT_CAPTION_FONT_SIZE;
+  const byWidth = maxLineEmWidth > 0 ? availableWidth / (maxLineEmWidth * emRatio) : DEFAULT_CAPTION_FONT_SIZE;
   const size = Math.floor(Math.min(byWidth, byHeight) * FIT_SAFETY);
   return Math.min(MAX_CAPTION_FONT_SIZE, Math.max(MIN_CAPTION_FONT_SIZE, size));
 }
