@@ -289,7 +289,6 @@ function App() {
 
           {currentScreen === "home" && !workflow.authLoading && workflow.user && !desktopHome && (
             <VideosPage
-              variant="workspace"
               onEditVideo={handleEditVideo}
               onNewVideo={handleNewVideo}
             />
@@ -304,7 +303,6 @@ function App() {
 
           {currentScreen === "videos" && (
             <VideosPage
-              variant="history"
               onEditVideo={handleEditVideo}
               onNewVideo={handleNewVideo}
             />

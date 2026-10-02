@@ -181,10 +181,10 @@ test('project 51 is reachable through pagination', async ({ page }) => {
   });
   await page.goto('/?screen=videos'); await expect(page.getByText('50+ פרויקטים')).toBeVisible();
   await page.getByRole('button', { name: 'טען פרויקטים נוספים' }).click();
-  await expect(page.getByText('project-51.webm').first()).toBeVisible(); await expect(page.getByText('51 פרויקטים')).toBeVisible();
+  await expect(page.getByText('project-51', { exact: true })).toBeVisible(); await expect(page.getByText('51 פרויקטים')).toBeVisible();
   await expect(page.getByRole('button', { name: 'טען פרויקטים נוספים' })).toHaveCount(0);
   await page.route('**/api/videos/51/token?**', route => route.fulfill({ json: { token: 'project-51-session' } }));
-  await page.getByRole('row').filter({ hasText: 'project-51.webm' }).getByRole('button', { name: 'המשך עריכה' }).click();
+  await page.getByRole('listitem').filter({ hasText: 'project-51' }).getByRole('button', { name: 'המשך עריכה' }).click();
   await expect(page).toHaveURL(/video=project-51-session/);
   await expect(page.getByTestId('caption-track')).toBeVisible();
 });
