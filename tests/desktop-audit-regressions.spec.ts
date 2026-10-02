@@ -81,7 +81,7 @@ test('delayed acknowledgement preserves newer sidebar text and saves it on blur'
 
 test('browser Back restores the editor while dirty and preserves Back/Forward after saving', async ({ page }) => {
   const { state } = await setup(page);
-  await page.goto('/'); await page.getByRole('button', { name: 'המשך עריכה' }).click();
+  await page.goto('/?screen=videos'); await page.getByRole('button', { name: 'המשך עריכה' }).click();
   await page.getByTestId('subtitle-clip').first().click();
   const field = page.getByRole('textbox', { name: 'טקסט המקטע' });
   state.gate = deferred(); await field.fill('טיוטה לפני חזרה');
@@ -192,7 +192,7 @@ test('project 51 is reachable through pagination', async ({ page }) => {
 test('failed project opening displays an actionable error and the same action can retry', async ({ page }) => {
   await setup(page); let fail = true;
   await page.route('**/api/videos/42/token?**', route => fail ? route.fulfill({ status: 500, json: { error: 'offline' } }) : route.fulfill({ json: { token: 'fixture-edit-token' } }));
-  await page.goto('/'); await page.getByRole('button', { name: 'המשך עריכה' }).click();
+  await page.goto('/?screen=videos'); await page.getByRole('button', { name: 'המשך עריכה' }).click();
   await expect(page.getByRole('alert')).toContainText('לא ניתן לפתוח'); await expect(page).not.toHaveURL(/screen=edit/);
   fail = false; await page.getByRole('button', { name: 'המשך עריכה' }).click(); await expect(page.getByTestId('caption-track')).toBeVisible();
   await expect(page.getByRole('alert')).toHaveCount(0);

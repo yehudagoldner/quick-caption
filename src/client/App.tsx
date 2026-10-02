@@ -1,6 +1,6 @@
 import { apiFetch } from "./api";
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Alert, Box, CircularProgress, Container, CssBaseline, Stack, ThemeProvider, createTheme } from "@mui/material";
+import { Alert, Box, CircularProgress, Container, CssBaseline, Stack, ThemeProvider, createTheme, useMediaQuery } from "@mui/material";
 import { AppHeader } from "./components/AppHeader";
 import { PromotionalHome } from "./components/PromotionalHome";
 import { TranscriptionPage } from "./components/TranscriptionPage";
@@ -61,6 +61,7 @@ function updateUrl(screen: AppScreen, videoToken?: string) {
 
 function App() {
   const workflow = useTranscriptionWorkflow();
+  const desktopHome = useMediaQuery(theme.breakpoints.up("md"));
   const [currentScreen, setCurrentScreen] = useState<AppScreen>("home");
   const [videoToken, setVideoToken] = useState<string | undefined>();
   const [projectError, setProjectError] = useState<string | null>(null);
@@ -275,14 +276,16 @@ function App() {
             </Stack>
           )}
 
-          {currentScreen === "home" && !workflow.authLoading && !workflow.user && (
+          {currentScreen === "home" && !workflow.authLoading && (!workflow.user || desktopHome) && (
             <PromotionalHome
               authLoading={workflow.authLoading}
               onSignIn={workflow.onSignIn}
+              isAuthenticated={Boolean(workflow.user)}
+              onStart={handleNewVideo}
             />
           )}
 
-          {currentScreen === "home" && !workflow.authLoading && workflow.user && (
+          {currentScreen === "home" && !workflow.authLoading && workflow.user && !desktopHome && (
             <VideosPage
               variant="workspace"
               onEditVideo={handleEditVideo}

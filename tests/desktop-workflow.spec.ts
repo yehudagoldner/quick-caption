@@ -1,6 +1,31 @@
 import { test, expect } from '@playwright/test';
 import { prepareApp, segments, testUid } from './app-fixtures';
 
+test('desktop home opens marketing for signed-in users and starts a new video', async ({ page }) => {
+  await page.setViewportSize({ width: 1366, height: 768 });
+  await prepareApp(page);
+  await page.goto('/?screen=videos');
+  await page.getByRole('button', { name: 'דף הבית', exact: true }).click();
+  await expect(page).toHaveURL(/\/$/);
+  await expect(page.getByRole('heading', { name: 'כתוביות בעברית בקלות' })).toBeVisible();
+  await expect(page.getByText('התחברו כדי להמשיך', { exact: true })).toHaveCount(0);
+  await page.reload();
+  await expect(page.getByRole('heading', { name: 'כתוביות בעברית בקלות' })).toBeVisible();
+  await page.getByRole('button', { name: 'התחילו ליצור כתוביות', exact: true }).click();
+  await expect(page).toHaveURL(/screen=transcription/);
+  await expect(page.getByTestId('media-dropzone')).toBeVisible();
+});
+
+test('mobile home retains the signed-in workspace', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await prepareApp(page);
+  await page.goto('/');
+  await expect(page.getByRole('heading', { name: 'כתוביות בעברית בקלות' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'סרטון חדש', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'סרטון חדש', exact: true }).click();
+  await expect(page.getByTestId('media-dropzone')).toBeVisible();
+});
+
 for (const viewport of [{ width: 1366, height: 600 }, { width: 1366, height: 768 }, { width: 1280, height: 720 }, { width: 1920, height: 1080 }]) {
   test(`desktop editor fits ${viewport.width}x${viewport.height}, including word editing`, async ({ page, browserName }) => {
     test.skip(browserName === 'webkit' && process.platform === 'win32', 'Windows WebKit cannot decode the media fixture; desktop media layout is verified in Chromium.');

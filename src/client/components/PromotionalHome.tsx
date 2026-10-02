@@ -4,9 +4,12 @@ import { Subtitles, Language, Download, Login } from "@mui/icons-material";
 interface PromotionalHomeProps {
   authLoading: boolean;
   onSignIn: () => Promise<void>;
+  isAuthenticated: boolean;
+  onStart: () => void;
 }
 
-export function PromotionalHome({ authLoading, onSignIn }: PromotionalHomeProps) {
+export function PromotionalHome({ authLoading, onSignIn, isAuthenticated, onStart }: PromotionalHomeProps) {
+  const start = isAuthenticated ? onStart : onSignIn;
   return (
     <Container maxWidth="lg">
       <Box sx={{ py: { xs: 8, md: 12 }, textAlign: "center" }}>
@@ -49,16 +52,16 @@ export function PromotionalHome({ authLoading, onSignIn }: PromotionalHomeProps)
               }}
             >
               <Typography variant="h6" gutterBottom color="text.primary">
-                התחברו כדי להמשיך
+                {isAuthenticated ? "הסרטון הבא שלכם מתחיל כאן" : "התחברו כדי להמשיך"}
               </Typography>
               <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-                נדרשת הרשמה פשוטה כדי לשמור ולנהל את הסרטונים שלכם
+                {isAuthenticated ? "העלו סרטון והתחילו ליצור כתוביות בעברית" : "נדרשת הרשמה פשוטה כדי לשמור ולנהל את הסרטונים שלכם"}
               </Typography>
               <Button
                 variant="contained"
-                onClick={onSignIn}
+                onClick={start}
                 disabled={authLoading}
-                startIcon={<Login />}
+                startIcon={isAuthenticated ? <Subtitles /> : <Login />}
                 sx={{
                   fontSize: "1.1rem",
                   py: 1.5,
@@ -66,7 +69,7 @@ export function PromotionalHome({ authLoading, onSignIn }: PromotionalHomeProps)
                   borderRadius: 3
                 }}
               >
-                {authLoading ? "מתחבר..." : "התחברות"}
+                {authLoading ? "מתחבר..." : isAuthenticated ? "סרטון חדש" : "התחברות"}
               </Button>
             </Paper>
           </Stack>
@@ -129,9 +132,9 @@ export function PromotionalHome({ authLoading, onSignIn }: PromotionalHomeProps)
             <Button
               variant="contained"
               size="large"
-              onClick={onSignIn}
+              onClick={start}
               disabled={authLoading}
-              startIcon={<Login />}
+              startIcon={isAuthenticated ? <Subtitles /> : <Login />}
               sx={{
                 fontSize: "1.1rem",
                 py: 1.5,
@@ -139,7 +142,7 @@ export function PromotionalHome({ authLoading, onSignIn }: PromotionalHomeProps)
                 borderRadius: 3
               }}
             >
-              {authLoading ? "מתחבר..." : "התחילו עכשיו - בחינם"}
+              {authLoading ? "מתחבר..." : isAuthenticated ? "התחילו ליצור כתוביות" : "התחילו עכשיו - בחינם"}
             </Button>
           </Box>
         </Stack>
