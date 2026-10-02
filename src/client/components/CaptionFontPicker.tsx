@@ -1,5 +1,5 @@
 import { Alert, Autocomplete, Box, TextField, Typography } from "@mui/material";
-import { CAPTION_FONTS } from "../../captionFonts.js";
+import { CAPTION_FONTS, DEFAULT_CAPTION_FONT_ID } from "../../captionFonts.js";
 import { useEditorPreferences } from "../contexts/EditorPreferences";
 import { useCaptionFont } from "../hooks/useCaptionFont";
 
@@ -7,22 +7,23 @@ const categories: Record<string, string> = {
   "Sans Serif": "מודרניים וקריאים", "Serif": "קלאסיים", "Handwriting": "כתב יד",
   "Monospace": "רוחב קבוע", "Display": "דקורטיביים",
 };
+const options = [...CAPTION_FONTS.filter(font => font.id === DEFAULT_CAPTION_FONT_ID), ...CAPTION_FONTS.filter(font => font.id !== DEFAULT_CAPTION_FONT_ID)];
 
-export function CaptionFontPicker({ disabled = false }: { disabled?: boolean }) {
+export function CaptionFontPicker({ disabled = false, fontId, onFontChange }: { disabled?: boolean; fontId?: string; onFontChange?: (id: string) => void }) {
   const { preferences, update } = useEditorPreferences();
-  const { font: selected, ready, error } = useCaptionFont(preferences.fontId);
+  const { font: selected, ready, error } = useCaptionFont(fontId ?? preferences.fontId);
   return <Box sx={{ minWidth: 0 }}>
     <Autocomplete
-      options={CAPTION_FONTS}
+      options={options}
       value={selected}
       disabled={disabled}
       disableClearable
       autoHighlight
       size="small"
-      groupBy={font => font.id === "assistant" ? "ברירת מחדל" : categories[font.category] ?? "נוספים"}
+      groupBy={font => font.id === DEFAULT_CAPTION_FONT_ID ? "ברירת מחדל" : categories[font.category] ?? "נוספים"}
       getOptionLabel={font => font.label}
       isOptionEqualToValue={(a, b) => a.id === b.id}
-      onChange={(_, font) => update({ fontId: font.id })}
+      onChange={(_, font) => onFontChange ? onFontChange(font.id) : update({ fontId: font.id })}
       renderInput={params => <TextField {...params} label="סוג פונט" placeholder="חיפוש פונט" />}
       renderOption={(props, font) => <li {...props} key={font.id} dir="ltr">{font.label}</li>}
       slotProps={{ listbox: { sx: { maxHeight: 260 } }, popper: { sx: { zIndex: 1500 } } }}

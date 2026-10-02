@@ -2,6 +2,7 @@ import { useId, useState, type ChangeEvent, type ReactNode } from "react";
 import type { Segment, Word } from "../types";
 import { AUTO_CAPTION_FONT_SIZE, CAPTION_FONT_SIZES, type CaptionFontSizeSetting } from "../../captionStyle.js";
 import { CaptionFontPicker } from "./CaptionFontPicker";
+import type { CaptionMotion, PopIntensity } from "../../captionMotion.js";
 import {
   Box,
   Button,
@@ -37,6 +38,9 @@ import {
 } from "@mui/icons-material";
 
 export type BurnOptions = {
+  activeWordColor?: string;
+  captionMotion?: CaptionMotion;
+  popIntensity?: PopIntensity;
   activeWordEnabled?: boolean;
   segments?: Segment[];
   words?: Word[];
@@ -61,6 +65,11 @@ type VideoToolbarProps = {
   fontReady?: boolean;
   pendingEdits?: boolean;
   editorSettings: ReactNode;
+  captionStyles?: ReactNode;
+  fontId?: string;
+  onFontChange?: (id: string) => void;
+  activeWordColor?: string;
+  onActiveWordColorChange?: (color: string) => void;
   canBurn?: boolean;
   fontSize: CaptionFontSizeSetting;
   autoFontSize: number;
@@ -92,6 +101,7 @@ export function VideoToolbar({
   fontReady = true,
   pendingEdits = false,
   editorSettings,
+  captionStyles, fontId, onFontChange, activeWordColor, onActiveWordColorChange,
   canBurn = true,
   fontSize,
   autoFontSize,
@@ -123,6 +133,9 @@ export function VideoToolbar({
   const [settingsAnchorEl, setSettingsAnchorEl] = useState<HTMLElement | null>(null);
   const settingsId = useId();
   const settingsTitleId = useId();
+  const [stylesAnchorEl, setStylesAnchorEl] = useState<HTMLElement | null>(null);
+  const stylesId = useId();
+  const stylesTitleId = useId();
 
   // Popover states
   const [positionAnchorEl, setPositionAnchorEl] = useState<null | HTMLElement>(null);
@@ -187,6 +200,9 @@ export function VideoToolbar({
         }}
       >
         {/* Download Button */}
+        {captionStyles && <Button size="small" variant="contained" startIcon={<PaletteRounded />}
+          aria-haspopup="dialog" aria-expanded={Boolean(stylesAnchorEl)} aria-controls={stylesAnchorEl ? stylesId : undefined}
+          onClick={event => setStylesAnchorEl(event.currentTarget)}>סגנונות</Button>}
         <Button
           variant="outlined"
           startIcon={<DownloadRounded />}
@@ -309,6 +325,15 @@ export function VideoToolbar({
         )}
       </Paper>
 
+      <Popover open={Boolean(stylesAnchorEl)} anchorEl={stylesAnchorEl} onClose={() => setStylesAnchorEl(null)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }} transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+        slotProps={{ paper: { id: stylesId, role: 'dialog', dir: 'rtl', 'aria-labelledby': stylesTitleId, sx: { width: 620, maxWidth: 'calc(100vw - 32px)', maxHeight: 'calc(100dvh - 32px)', borderRadius: 3 } } }}>
+        <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ px: 2, pt: 1.5 }}>
+          <Typography id={stylesTitleId} variant="subtitle1" fontWeight={700}>סגנונות כתוביות</Typography>
+          <IconButton aria-label="סגירת סגנונות" onClick={() => setStylesAnchorEl(null)} size="small"><CloseRounded /></IconButton>
+        </Stack>
+        {stylesAnchorEl && <Box sx={{ p: 2 }}>{captionStyles}</Box>}
+      </Popover>
       <Popover
         open={Boolean(settingsAnchorEl)}
         anchorEl={settingsAnchorEl}
@@ -430,7 +455,7 @@ export function VideoToolbar({
       >
         <Paper sx={{ p: 2, width: 300, maxWidth: "calc(100vw - 32px)" }}>
           <Stack spacing={2}>
-            <CaptionFontPicker disabled={isBurning} />
+            <CaptionFontPicker disabled={isBurning} fontId={fontId} onFontChange={onFontChange} />
             <FormControl fullWidth size="small">
               <InputLabel>גודל פונט</InputLabel>
               <Select
@@ -522,6 +547,7 @@ export function VideoToolbar({
               size="small"
               InputLabelProps={{ shrink: true }}
             />
+            {onActiveWordColorChange && <TextField label="צבע מילה פעילה" type="color" value={activeWordColor ?? '#ffd700'} onChange={event => onActiveWordColorChange(event.target.value)} disabled={isBurning} fullWidth size="small" InputLabelProps={{ shrink: true }} />}
           </Stack>
         </Paper>
       </Popover>

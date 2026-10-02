@@ -9,6 +9,7 @@ import { MobileCaptionEditor } from "./MobileCaptionEditor";
 import { useNarrowViewport } from "../hooks/useNarrowViewport";
 import type { CaptionFontSizeSetting } from "../../captionStyle.js";
 import type { CaptionBatchAction } from "../../captionBatchEditing.js";
+import type { CaptionMotion, PopIntensity } from "../../captionMotion.js";
 
 type SaveState = "idle" | "saving" | "success" | "error";
 
@@ -22,6 +23,11 @@ type TranscriptionMainContentProps = {
   timelineEditing: Pick<SubtitleTimelineProps, "onSaveSegment" | "onUndo" | "onRedo" | "canUndo" | "canRedo" | "onPlayFrom" | "loopEnabled" | "onLoopChange" | "onDraftStateChange">;
   hasTimelineDrafts: boolean;
   editorSettings: ReactNode;
+  captionStyles?: ReactNode;
+  fontId?: string;
+  onFontChange?: (id: string) => void;
+  activeWordColor?: string;
+  onActiveWordColorChange?: (color: string) => void;
   mediaUrl: string | null;
   activeSegmentText: string | null;
   previewStyle: React.CSSProperties;
@@ -48,6 +54,8 @@ type TranscriptionMainContentProps = {
   downloadUrl: string | null;
   downloadName: string;
   activeWordEnabled: boolean;
+  captionMotion?: CaptionMotion;
+  popIntensity?: PopIntensity;
   onVideoTimeUpdate: (nextTime: number) => void;
   onVideoLoadedMetadata: (dimensions: { width: number; height: number }, duration: number) => void;
   onVideoResize: (dimensions: { width: number; height: number }) => void;
@@ -85,6 +93,7 @@ export function TranscriptionMainContent({
   timelineEditing,
   hasTimelineDrafts,
   editorSettings,
+  captionStyles, fontId, onFontChange, activeWordColor, onActiveWordColorChange,
   mediaUrl,
   activeSegmentText,
   previewStyle,
@@ -109,6 +118,8 @@ export function TranscriptionMainContent({
   downloadUrl,
   downloadName,
   activeWordEnabled,
+  captionMotion,
+  popIntensity,
   videoDimensions,
   isPlaying,
   onPlayPause,
@@ -154,6 +165,10 @@ export function TranscriptionMainContent({
   if (isNarrow) {
     return (
       <MobileCaptionEditor
+        captionStyles={captionStyles} fontId={fontId} onFontChange={onFontChange} activeWordColor={activeWordColor}
+        onActiveWordColorChange={onActiveWordColorChange}
+        captionMotion={captionMotion}
+        popIntensity={popIntensity}
         timelineEditing={timelineEditing}
         editorSettings={editorSettingsBlock}
         mediaUrl={mediaUrl}
@@ -218,6 +233,8 @@ export function TranscriptionMainContent({
         <Stack className="preview-wrapper" spacing={desktop ? 1 : 2} sx={{ flex: 1, minWidth: 0, width: "100%", height: { md: "100%" } }}>
           <Stack direction="column" spacing={1.5} alignItems="center" justifyContent="center" sx={{ width: "100%", minWidth: 0 }}>
             <VideoToolbar
+              captionStyles={captionStyles} fontId={fontId} onFontChange={onFontChange}
+              activeWordColor={activeWordColor} onActiveWordColorChange={onActiveWordColorChange}
               pendingEdits={hasTimelineDrafts || saveState === "saving"}
               editorSettings={editorSettingsBlock}
               fontSize={fontSize}
@@ -251,6 +268,9 @@ export function TranscriptionMainContent({
           </Stack>
             <Box sx={{ minWidth: 0, width: "100%", flex: { md: 1 }, minHeight: { md: 96 }, position: { xs: selectedSegmentId !== null ? "sticky" : "static", sm: "static" }, top: 8, zIndex: 5, bgcolor: "background.paper", borderRadius: 2 }}>
               <VideoPlayer
+                activeWordColor={activeWordColor}
+                captionMotion={captionMotion}
+                popIntensity={popIntensity}
                 fill={desktop}
                 hideMeta={desktop}
                 compact={selectedSegmentId !== null}

@@ -19,7 +19,7 @@ const sources = {
 for (const [mode, content] of Object.entries(sources)) await fs.writeFile(path.join(outputDir, `${mode}.srt`), content);
 
 test("unrecognized font IDs fall back to the bundled default and cannot inject filter options", () => {
-  assert.equal(getCaptionFont("Arial,Bold=1':movie=/etc/passwd").id, "assistant");
+  assert.equal(getCaptionFont("Arial,Bold=1':movie=/etc/passwd").id, "heebo");
 });
 
 for (const font of CAPTION_FONTS) {

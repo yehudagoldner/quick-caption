@@ -14,6 +14,9 @@ import { useTranscriptionHandlers } from "../hooks/useTranscriptionHandlers";
 import { useVideoControls } from "../hooks/useVideoControls";
 import { useNarrowViewport } from "../hooks/useNarrowViewport";
 import { EditorSettings } from "./EditorSettings";
+import { CaptionMotionSettings } from "./CaptionMotionSettings";
+import { CaptionStylePicker } from "./CaptionStylePicker";
+import { popPeakScale } from "../../captionMotion.js";
 import { serializeSubtitles } from "../utils/subtitleExport";
 import { useEditorPreferences } from "../contexts/EditorPreferences";
 import { cleanSegmentText, fixSegmentOverlaps, findSegment } from "../utils/transcriptionUtils";
@@ -51,7 +54,6 @@ export function TranscriptionResult({
   isEditable,
 }: TranscriptionResultProps) {
   const { preferences } = useEditorPreferences();
-  const { ready: fontReady, error: fontLoadError } = useCaptionFont(preferences.fontId);
   const [hasTimelineDrafts, setHasTimelineDrafts] = useState(false);
   const [loopEnabled, setLoopEnabled] = useState(false);
   const loopEnabledRef = useRef(loopEnabled);
@@ -66,6 +68,7 @@ export function TranscriptionResult({
   const savedWords = useMemo(() => synchronizeWords(savedSegments, response.words), [savedSegments, response.words]);
 
   const {
+    fontId: projectFontId, setFontId, activeWordColor, setActiveWordColor, applyCaptionStyle,
     editableSegments,
     editableWords,
     setActiveSegmentId,
@@ -79,6 +82,10 @@ export function TranscriptionResult({
     setOffsetYPercent,
     marginPercent,
     setMarginPercent,
+    captionMotion,
+    setCaptionMotion,
+    popIntensity,
+    setPopIntensity,
     videoDimensions,
     setVideoDimensions,
     renderDimensions,
@@ -129,11 +136,22 @@ export function TranscriptionResult({
     onSaveSegments,
   });
 
-  const autoFontSize = useAutoCaptionFontSize({ segments: editableSegments, videoDimensions, marginPercent, offsetYPercent, fontId: preferences.fontId });
+  const fontId = projectFontId ?? preferences.fontId;
+  const { ready: fontReady, error: fontLoadError } = useCaptionFont(fontId);
+  const sizingSegments = useMemo(() => captionMotion === "pop"
+    ? editableWords.map((word, index) => ({ id: index, start: word.start, end: word.end, text: word.word }))
+    : editableSegments, [captionMotion, editableWords, editableSegments]);
+  const fittedFontSize = useAutoCaptionFontSize({ segments: sizingSegments, videoDimensions, marginPercent, offsetYPercent, fontId });
+  // Reserve room for the largest bounce and keep single words at a readable
+  // default size rather than stretching a short word across the entire frame.
+  const autoFontSize = captionMotion === "pop" && videoDimensions
+    ? Math.max(12, Math.floor(Math.min(fittedFontSize / popPeakScale(popIntensity), videoDimensions.height * .095)))
+    : fittedFontSize;
   const effectiveFontSize = fontSize === AUTO_CAPTION_FONT_SIZE ? autoFontSize : fontSize;
 
   const previewStyle = usePreviewStyle({
-    fontId: preferences.fontId,
+    scaleOutline: true,
+    fontId,
     fontColor,
     fontSize: effectiveFontSize,
     offsetYPercent,
@@ -214,6 +232,9 @@ export function TranscriptionResult({
     handleMarginChange,
     handleBurnVideo,
   } = useTranscriptionHandlers({
+    fontId, activeWordColor,
+    captionMotion,
+    popIntensity,
     mediaUrl,
     editableSegments,
     editableWords,
@@ -266,6 +287,9 @@ export function TranscriptionResult({
           {!narrow && !desktop && activeWordEnabled && !hasEstimatedTimingWarning && editableWords.some(word => word.timingSource === "estimated") && <Alert severity="info">לחלק מהמילים הושלם תזמון משוער. אפשר לדייק אותן בציר המילים של המקטע; הטקסט המתוקן נשמר במלואו.</Alert>}
 
           <TranscriptionMainContent
+            fontId={fontId} onFontChange={setFontId} activeWordColor={activeWordColor}
+            onActiveWordColorChange={setActiveWordColor}
+            captionStyles={<CaptionStylePicker appearance={{ fontId, fontSize, fontColor, outlineColor, activeWordColor, activeWordEnabled, offsetYPercent, marginPercent, captionMotion, popIntensity }} onApply={applyCaptionStyle} disabled={isBurning} />}
             fontReady={fontReady}
             hasTimelineDrafts={hasTimelineDrafts}
             timelineEditing={{ onSaveSegment: handleSaveSegment, onUndo: handleUndo, onRedo: handleRedo, canUndo, canRedo,
@@ -278,7 +302,12 @@ export function TranscriptionResult({
                 if (enabled && selected) { handleTimelineTimeChange(selected.start); void videoPlayer?.play().catch(() => setLoopEnabled(false)); }
               },
             }}
-            editorSettings={<EditorSettings disabled={!isEditable || saveState === "saving" || hasTimelineDrafts} onApply={handleCharacterReflow} onUndo={handleUndoReflow} canUndo={canUndoReflow} exportFormat={exportFormat} onExportFormatChange={setExportFormat} />}
+            editorSettings={<>
+              <CaptionMotionSettings motion={captionMotion} intensity={popIntensity} onMotionChange={setCaptionMotion} onIntensityChange={setPopIntensity} disabled={isBurning} />
+              <EditorSettings disabled={!isEditable || saveState === "saving" || hasTimelineDrafts} onApply={handleCharacterReflow} onUndo={handleUndoReflow} canUndo={canUndoReflow} exportFormat={exportFormat} onExportFormatChange={setExportFormat} />
+            </>}
+            captionMotion={captionMotion}
+            popIntensity={popIntensity}
             mediaUrl={mediaUrl}
             activeSegmentText={activeSegment?.text ?? null}
             previewStyle={previewStyle}

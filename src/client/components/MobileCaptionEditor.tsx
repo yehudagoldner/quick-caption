@@ -55,6 +55,7 @@ import type { Segment, Word } from "../types";
 import { wordsForSegment } from "../../timelineEditing.js";
 import { canMergeCaptions, canSplitCaptionAtTime, type CaptionBatchAction } from "../../captionBatchEditing.js";
 import { AUTO_CAPTION_FONT_SIZE, CAPTION_FONT_SIZES, type CaptionFontSizeSetting } from "../../captionStyle.js";
+import type { CaptionMotion, PopIntensity } from "../../captionMotion.js";
 import { synchronizeWords } from "../../wordAlignment.js";
 import { formatTimecode } from "../utils/timecode";
 import { useEditorPreferences } from "../contexts/EditorPreferences";
@@ -74,6 +75,11 @@ const STYLE_DRAWER_HEIGHT = "min(36dvh, 306px)";
 export type MobileCaptionEditorProps = {
   timelineEditing: Pick<SubtitleTimelineProps, "onSaveSegment" | "onUndo" | "onRedo" | "canUndo" | "canRedo" | "onPlayFrom" | "loopEnabled" | "onLoopChange" | "onDraftStateChange">;
   editorSettings: ReactNode;
+  captionStyles?: ReactNode;
+  fontId?: string;
+  onFontChange?: (id: string) => void;
+  activeWordColor?: string;
+  onActiveWordColorChange?: (color: string) => void;
   mediaUrl: string | null;
   activeSegmentText: string | null;
   previewStyle: React.CSSProperties;
@@ -97,6 +103,8 @@ export type MobileCaptionEditorProps = {
   downloadUrl: string | null;
   downloadName: string;
   activeWordEnabled: boolean;
+  captionMotion?: CaptionMotion;
+  popIntensity?: PopIntensity;
   hasTimelineDrafts: boolean;
   canBurn: boolean;
   fontReady?: boolean;
@@ -131,6 +139,7 @@ export type MobileCaptionEditorProps = {
 export function MobileCaptionEditor({
   timelineEditing,
   editorSettings,
+  captionStyles, fontId, onFontChange, activeWordColor, onActiveWordColorChange,
   mediaUrl,
   activeSegmentText,
   previewStyle,
@@ -154,6 +163,8 @@ export function MobileCaptionEditor({
   downloadUrl,
   downloadName,
   activeWordEnabled,
+  captionMotion,
+  popIntensity,
   hasTimelineDrafts,
   canBurn,
   fontReady = true,
@@ -453,6 +464,9 @@ export function MobileCaptionEditor({
 
   const player = (
     <VideoPlayer
+      activeWordColor={activeWordColor}
+      captionMotion={captionMotion}
+      popIntensity={popIntensity}
       fill
       hideMeta
       mediaUrl={mediaUrl}
@@ -832,7 +846,8 @@ export function MobileCaptionEditor({
           <IconButton aria-label="סגירת עיצוב" onClick={() => setStyleOpen(false)} sx={{ p: 0.9 }}><CheckRounded sx={{ fontSize: 21.6 }} /></IconButton>
         </Stack>
         <Box sx={{ px: 1.8, pb: "max(14.4px, env(safe-area-inset-bottom, 0px))", overflowY: "auto", minHeight: 0 }}>
-          <CaptionFontPicker disabled={isBurning} />
+          {captionStyles}
+          <Box sx={{ mt: captionStyles ? 2 : 0 }}><CaptionFontPicker disabled={isBurning} fontId={fontId} onFontChange={onFontChange} /></Box>
           <Box sx={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 0.9, my: 1.35, "& > *": { minWidth: 0 } }}>
             <FormControl fullWidth size="small">
               <InputLabel id="mobile-caption-font-size">גודל פונט</InputLabel>
@@ -843,6 +858,7 @@ export function MobileCaptionEditor({
             </FormControl>
             <TextField label="צבע טקסט" type="color" value={fontColor} onChange={onFontColorChange} fullWidth size="small" InputLabelProps={{ shrink: true }} />
             <TextField label="צבע מסגרת" type="color" value={outlineColor} onChange={onOutlineColorChange} fullWidth size="small" InputLabelProps={{ shrink: true }} />
+            {onActiveWordColorChange && <TextField label="צבע מילה פעילה" type="color" value={activeWordColor ?? '#ffd700'} onChange={event => onActiveWordColorChange(event.target.value)} disabled={isBurning} fullWidth size="small" InputLabelProps={{ shrink: true }} />}
           </Box>
           <Typography variant="body2" sx={{ mt: 0.9 }}>מיקום</Typography>
           <Slider aria-label="מיקום הכתובית" value={offsetYPercent} onChange={onOffsetYChange} min={0} max={100} valueLabelDisplay="auto" />

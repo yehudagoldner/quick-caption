@@ -9,7 +9,8 @@ const timestamp = ms => {
 // Render the entire caption in each interval, colouring only the active token.
 // Inline colour tags survive FFmpeg/libass burning; ordinary SRT/VTT exports
 // remain unchanged. Millisecond boundaries prevent rounded, overlapping cues.
-export function renderActiveWordSrt(segments, sourceWords, direction = "rtl") {
+export function renderActiveWordSrt(segments, sourceWords, direction = "rtl", activeWordColor = "#FFD700") {
+  const highlight = typeof activeWordColor === 'string' && /^#[0-9a-f]{6}$/i.test(activeWordColor) ? activeWordColor : '#FFD700';
   const words = synchronizeWords(segments, sourceWords);
   const events = [];
   for (const segment of segments) {
@@ -26,7 +27,7 @@ export function renderActiveWordSrt(segments, sourceWords, direction = "rtl") {
       const content = String(segment.text).replace(/[\u202a-\u202e]/g, "").split(/(\s+)/).map(part => {
         if (!part.trim()) return part;
         const text = escapeText(part);
-        return wordIndex++ === active ? `<font color="#FFD700">${text}</font>` : text;
+        return wordIndex++ === active ? `<font color="${highlight}">${text}</font>` : text;
       }).join("");
       const text = content.split("\n").map(line => `${direction === "ltr" ? "\u202a" : "\u202b"}${line}\u202c`).join("\n");
       if (last?.text === text && last.end === from) last.end = to;

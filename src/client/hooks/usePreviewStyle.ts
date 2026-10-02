@@ -2,10 +2,12 @@ import { useEffect, useMemo } from "react";
 import { createOutlineShadow } from "../utils/transcriptionUtils";
 import { useEditorPreferences } from "../contexts/EditorPreferences";
 import { captionMarginPixels } from "../../captionStyle.js";
+import { CAPTION_OUTLINE_WIDTH } from "../../captionStyle.js";
 import { getCaptionFont } from "../../captionFonts.js";
 
 type UsePreviewStyleProps = {
   fontId?: string;
+  scaleOutline?: boolean;
   fontColor: string;
   fontSize: number;
   offsetYPercent: number;
@@ -24,6 +26,7 @@ export function usePreviewStyle({
   videoDimensions,
   renderDimensions,
   fontId,
+  scaleOutline = false,
 }: UsePreviewStyleProps) {
   const { preferences } = useEditorPreferences();
   const font = getCaptionFont(fontId);
@@ -51,7 +54,7 @@ export function usePreviewStyle({
         textAlign: "center" as const,
         whiteSpace: "pre-wrap" as const,
         pointerEvents: "none" as const,
-        textShadow: createOutlineShadow(outlineColor),
+        textShadow: createOutlineShadow(outlineColor, scaleOutline ? CAPTION_OUTLINE_WIDTH : undefined),
         width: `${widthPercent}%`,
         maxWidth: `${widthPercent}%`,
         direction: preferences.direction,
@@ -82,12 +85,12 @@ export function usePreviewStyle({
       textAlign: "center" as const,
       whiteSpace: "pre-wrap" as const,
       pointerEvents: "none" as const,
-      textShadow: createOutlineShadow(outlineColor),
+      textShadow: createOutlineShadow(outlineColor, scaleOutline ? CAPTION_OUTLINE_WIDTH * scaleY : undefined),
       width: `${widthPx}px`,
       maxWidth: `${widthPx}px`,
       direction: preferences.direction,
     };
-  }, [fontColor, fontSize, offsetYPercent, outlineColor, marginPercent, videoDimensions, renderDimensions, preferences.direction, font, fontStack, lineHeight]);
+  }, [fontColor, fontSize, offsetYPercent, outlineColor, marginPercent, videoDimensions, renderDimensions, preferences.direction, font, fontStack, lineHeight, scaleOutline]);
 
   useEffect(() => {
     if (import.meta.env.DEV && videoDimensions && renderDimensions) {

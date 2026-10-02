@@ -44,7 +44,9 @@ export function useTranscriptionState({
   const [historyVersion, setHistoryVersion] = useState(0);
   const [activeSegmentId, setActiveSegmentId] = useState<Segment["id"] | null>(null);
   const { fontSize, setFontSize, fontColor, setFontColor, outlineColor, setOutlineColor,
-    offsetYPercent, setOffsetYPercent, marginPercent, setMarginPercent } = useProjectCaptionStyle(videoId);
+    offsetYPercent, setOffsetYPercent, marginPercent, setMarginPercent,
+    captionMotion, setCaptionMotion, popIntensity, setPopIntensity,
+    fontId, setFontId, activeWordEnabled, setActiveWordEnabled, activeWordColor, setActiveWordColor, applyCaptionStyle } = useProjectCaptionStyle(videoId);
   // Saved props are acknowledgements, not replacements for a newer local edit.
   const ownsRevision = useRef(false);
   const project = useRef(videoId);
@@ -67,14 +69,6 @@ export function useTranscriptionState({
     left: Pick<Segment, "start" | "end" | "text">;
     right: Pick<Segment, "start" | "end" | "text">;
   } | null>(null);
-  const [activeWordEnabled, setActiveWordEnabled] = useState(() => {
-    try {
-      const stored = localStorage.getItem("activeWordEnabled");
-      return stored === "true";
-    } catch {
-      return false;
-    }
-  });
 
   useEffect(() => {
     if (project.current !== videoId) {
@@ -255,17 +249,7 @@ export function useTranscriptionState({
     [editableSegments, persistSegments, videoDuration],
   );
 
-  const handleToggleActiveWord = useCallback(() => {
-    setActiveWordEnabled((prev) => {
-      const newValue = !prev;
-      try {
-        localStorage.setItem("activeWordEnabled", String(newValue));
-      } catch (error) {
-        console.warn("Failed to save activeWordEnabled to localStorage:", error);
-      }
-      return newValue;
-    });
-  }, []);
+  const handleToggleActiveWord = () => setActiveWordEnabled(!activeWordEnabled);
 
   const handleWordsChange = useCallback(
     async (words: Word[], segmentId?: Segment["id"], text?: string) => {
@@ -497,6 +481,7 @@ export function useTranscriptionState({
   };
 
   return {
+    fontId, setFontId, activeWordColor, setActiveWordColor, applyCaptionStyle,
     // State
     editableSegments,
     editableWords,
@@ -512,6 +497,10 @@ export function useTranscriptionState({
     setOffsetYPercent,
     marginPercent,
     setMarginPercent,
+    captionMotion,
+    setCaptionMotion,
+    popIntensity,
+    setPopIntensity,
     videoDimensions,
     setVideoDimensions,
     renderDimensions,

@@ -807,5 +807,5 @@ export const CAPTION_FONTS = [
     "source": "https://raw.githubusercontent.com/google/fonts/main/ofl/rubikwetpaint/"
   }
 ];
-export const DEFAULT_CAPTION_FONT_ID = "assistant";
-export function getCaptionFont(id) { return CAPTION_FONTS.find(font => font.id === id) ?? CAPTION_FONTS[0]; }
+export const DEFAULT_CAPTION_FONT_ID = "heebo";
+export function getCaptionFont(id) { return CAPTION_FONTS.find(font => font.id === id) ?? CAPTION_FONTS.find(font => font.id === DEFAULT_CAPTION_FONT_ID); }

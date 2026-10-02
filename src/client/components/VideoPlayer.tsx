@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Alert, Box, Stack, Typography } from "@mui/material";
 import type { Segment, Word } from "../types";
 import { useActiveWord } from "../hooks/useActiveWord";
+import { escapeAssText, wordPopCues, wordPopScale, type CaptionMotion, type PopIntensity } from "../../captionMotion.js";
 
 type VideoPlayerProps = {
   compact?: boolean;
@@ -15,6 +16,9 @@ type VideoPlayerProps = {
   words?: Word[];
   currentTime: number;
   activeWordEnabled: boolean;
+  activeWordColor?: string;
+  captionMotion?: CaptionMotion;
+  popIntensity?: PopIntensity;
   onTimeUpdate?: (currentTime: number) => void;
   onLoadedMetadata?: (dimensions: { width: number; height: number }, duration: number) => void;
   onResize?: (dimensions: { width: number; height: number }) => void;
@@ -23,13 +27,15 @@ type VideoPlayerProps = {
 const SIZE_DVH = { full: 48, mid: 28, mini: 16 } as const;
 const VIDEO_PLAYER_CHANGED = "quickcaption:video-player-changed";
 
-export function VideoPlayer({ compact, size, fill, hideMeta, mediaUrl, activeSegmentText, activeSegmentId, previewStyle, words, currentTime, activeWordEnabled, onTimeUpdate, onLoadedMetadata, onResize }: VideoPlayerProps) {
+export function VideoPlayer({ compact, size, fill, hideMeta, mediaUrl, activeSegmentText, activeSegmentId, previewStyle, words, currentTime, activeWordEnabled, activeWordColor = "#ffd700", captionMotion = "none", popIntensity = "gentle", onTimeUpdate, onLoadedMetadata, onResize }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [dimensions, setDimensions] = useState({ width: 16, height: 9 });
   const [isAudio, setIsAudio] = useState(false);
   const [error, setError] = useState(false);
   const captionWords = useMemo(() => words?.filter(w => w.segmentId === activeSegmentId) ?? [], [words, activeSegmentId]);
   const activeWord = useActiveWord({ words: captionWords, currentTime, enabled: activeWordEnabled });
+  const popWords = useMemo(() => wordPopCues(captionWords), [captionWords]);
+  const popWord = captionMotion === "pop" ? popWords.find(word => currentTime >= word.start && currentTime < word.end) : null;
   const captionParts = useMemo(() => {
     let wordIndex = 0;
     return (activeSegmentText ?? "").split(/(\s+)/).map(text => ({ text, wordIndex: text.trim() ? wordIndex++ : undefined }));
@@ -124,10 +130,12 @@ export function VideoPlayer({ compact, size, fill, hideMeta, mediaUrl, activeSeg
           onSeeking={e => onTimeUpdate?.(e.currentTarget.currentTime)}
           onTimeUpdate={e => onTimeUpdate?.(e.currentTarget.currentTime)} onError={() => setError(true)}
           sx={{ width: "100%", height: isAudio ? 54 : "100%", display: "block", objectFit: "contain", ...(isAudio ? { position: "absolute", bottom: 0 } : {}) }} />
-        {activeSegmentText && <Box data-testid="subtitle-overlay" sx={{ ...previewStyle, ...(isAudio ? { fontSize: 24, bottom: 75, width: "90%" } : {}) }}>
-          {activeWordEnabled ? captionParts.map((part, index) => {
+        {activeSegmentText && (captionMotion !== "pop" || popWord) && <Box data-testid="subtitle-overlay" sx={{ ...previewStyle, ...(isAudio ? { fontSize: 24, bottom: 75, width: "90%" } : {}) }}>
+          {captionMotion === "pop" && popWord ? <span data-testid="caption-pop-word" data-word-index={popWord.wordIndex}
+            style={{ display: "inline-block", whiteSpace: "nowrap", transformOrigin: "50% 100%", transform: `scale(${wordPopScale(popWord, currentTime, popIntensity)})` }}>{escapeAssText(popWord.word)}</span>
+          : activeWordEnabled ? captionParts.map((part, index) => {
             const active = part.wordIndex !== undefined && activeWord?.wordIndex === part.wordIndex;
-            return <span key={index} data-word-index={part.wordIndex} data-active-word={active ? "true" : undefined} style={{ color: active ? "#FFD700" : "inherit" }}>{part.text}</span>;
+            return <span key={index} data-word-index={part.wordIndex} data-active-word={active ? "true" : undefined} style={{ color: active ? activeWordColor : "inherit" }}>{part.text}</span>;
           }) : activeSegmentText}
         </Box>}
       </> : <Typography sx={{ p: 3 }}>אין תצוגה זמינה לקובץ הנוכחי.</Typography>}

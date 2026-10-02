@@ -4,7 +4,11 @@ export function findSegment(segments: Segment[], time: number) {
   return segments.find((segment) => time >= segment.start && time < segment.end);
 }
 
-export function createOutlineShadow(color: string) {
+export function createOutlineShadow(color: string, radius?: number) {
+  if (radius !== undefined) return Array.from({ length: 16 }, (_, index) => {
+    const angle = index * Math.PI / 8;
+    return `${(Math.cos(angle) * radius).toFixed(3)}px ${(Math.sin(angle) * radius).toFixed(3)}px 0 ${color}`;
+  }).join(", ");
   return [
     `-2px 0 0 ${color}`,
     `2px 0 0 ${color}`,

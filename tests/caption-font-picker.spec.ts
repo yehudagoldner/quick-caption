@@ -34,7 +34,7 @@ async function burn(page: Page, mobile = false) {
   await download;
 }
 
-test('all bundled Hebrew faces load in Chromium; initial editor loads only the default face', async ({ page }) => {
+test('all bundled Hebrew faces load in Chromium; initial editor loads only default and interface faces', async ({ page }) => {
   test.setTimeout(90000);
   await setup(page);
   const requested: string[] = [];
@@ -42,7 +42,10 @@ test('all bundled Hebrew faces load in Chromium; initial editor loads only the d
   await page.goto('/?screen=edit&video=review-token');
   await expect(page.getByTestId('caption-track')).toBeVisible();
   await expect(page.getByText('טוען פונט...', { exact: true })).toBeHidden();
-  expect(requested.every(url => url.endsWith('/Assistant-SemiBold.ttf'))).toBe(true);
+  expect(requested.length).toBeGreaterThan(0);
+  expect(requested.some(url => url.endsWith('/heebo.ttf'))).toBe(true);
+  // Assistant is also used by the editor's own controls, independently of captions.
+  expect(requested.every(url => /\/(heebo|Assistant-SemiBold)\.ttf$/.test(url))).toBe(true);
   const loaded = await page.evaluate(async fonts => Promise.all(fonts.map(async font => {
     const faces = await document.fonts.load(`${font.weight} 32px "${font.cssFamily}"`, 'שלום עולם ABC 123?!');
     return { id: font.id, loaded: faces.length > 0 && faces.every(face => face.status === 'loaded') };
@@ -103,11 +106,11 @@ test('new transcription also sends the selected font to burning', async ({ page 
 
 test('failed font loading is visible and blocks burning with a substituted face', async ({ page }) => {
   await setup(page);
-  await page.route('**/fonts/heebo.ttf', route => route.abort());
+  await page.route('**/fonts/rubik.ttf', route => route.abort());
   await page.goto('/?screen=edit&video=review-token');
   await page.getByRole('button', { name: 'פונט', exact: true }).click();
-  await page.getByRole('combobox', { name: 'סוג פונט', exact: true }).fill('Heebo');
-  await page.getByRole('option', { name: 'Heebo', exact: true }).click();
+  await page.getByRole('combobox', { name: 'סוג פונט', exact: true }).fill('Rubik');
+  await page.getByRole('option', { name: 'Rubik', exact: true }).click();
   await expect(page.getByRole('alert').filter({ hasText: 'טעינת הפונט נכשלה' })).toBeVisible();
   await page.keyboard.press('Escape');
   await page.getByRole('button', { name: 'הורדה', exact: true }).click();

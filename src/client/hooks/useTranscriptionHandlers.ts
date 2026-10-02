@@ -2,6 +2,7 @@ import type { ChangeEvent } from "react";
 import { useCallback, useEffect, useRef } from "react";
 import type { ApiResponse, Segment, Word } from "../types";
 import type { BurnOptions } from "../components/VideoToolbar";
+import type { CaptionMotion, PopIntensity } from "../../captionMotion.js";
 import { findSegment } from "../utils/transcriptionUtils";
 import { serializeSubtitles } from "../utils/subtitleExport";
 import { useEditorPreferences } from "../contexts/EditorPreferences";
@@ -19,9 +20,13 @@ type BurnedVideo = {
 };
 
 type UseTranscriptionHandlersProps = {
+  fontId: string;
+  activeWordColor: string;
   editableSegments: Segment[];
   editableWords: Word[];
   activeWordEnabled: boolean;
+  captionMotion: CaptionMotion;
+  popIntensity: PopIntensity;
   setActiveSegmentId: (id: Segment["id"] | null) => void;
   setCurrentTime: (time: number) => void;
   setVideoDimensions: (dimensions: { width: number; height: number }) => void;
@@ -52,9 +57,12 @@ type UseTranscriptionHandlersProps = {
 };
 
 export function useTranscriptionHandlers({
+  fontId, activeWordColor,
   editableSegments,
   editableWords,
   activeWordEnabled,
+  captionMotion,
+  popIntensity,
   setActiveSegmentId,
   setCurrentTime,
   setVideoDimensions,
@@ -188,8 +196,11 @@ export function useTranscriptionHandlers({
     words: editableWords.map(word => [word.word, word.start, word.end, word.segmentId]),
     mediaUrl,
     activeWordEnabled,
+    captionMotion,
+    popIntensity,
     direction: preferences.direction,
-    fontId: preferences.fontId,
+    fontId,
+    activeWordColor,
     fontSize,
     fontColor,
     outlineColor,
@@ -222,12 +233,15 @@ export function useTranscriptionHandlers({
     setBurnError(null);
     try {
       const result = await onBurn({
+        captionMotion,
+        popIntensity,
         activeWordEnabled,
         segments: editableSegments,
         words: editableWords,
         subtitleContent: serializeSubtitles(editableSegments, ".srt", preferences.direction),
         textDirection: preferences.direction,
-        fontId: preferences.fontId,
+        fontId,
+        activeWordColor,
         fontSize,
         fontColor,
         outlineColor,
@@ -269,8 +283,11 @@ export function useTranscriptionHandlers({
     editableSegments,
     editableWords,
     activeWordEnabled,
+    captionMotion,
+    popIntensity,
     preferences.direction,
-    preferences.fontId,
+    fontId,
+    activeWordColor,
     fontReady,
     fontSize,
     fontColor,

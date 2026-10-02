@@ -528,8 +528,11 @@ export function useTranscriptionWorkflow(): TranscriptionWorkflow {
       formData.append("media", media);
       formData.append("subtitleContent", options.subtitleContent ?? response.subtitle.content);
       formData.append("textDirection", options.textDirection ?? "rtl");
-      if (options.activeWordEnabled) {
-        formData.append("activeWordEnabled", "true");
+      formData.append("captionMotion", options.captionMotion ?? "none");
+      formData.append("popIntensity", options.popIntensity ?? "gentle");
+      formData.append("activeWordColor", options.activeWordColor ?? "#ffd700");
+      if (options.activeWordEnabled) formData.append("activeWordEnabled", "true");
+      if (options.activeWordEnabled || options.captionMotion === "pop") {
         formData.append("segments", JSON.stringify(options.segments ?? []));
         formData.append("words", JSON.stringify(options.words ?? []));
       }

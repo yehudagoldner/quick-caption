@@ -6,6 +6,7 @@ import { randomUUID } from "crypto";
 import { spawn } from "child_process";
 import { fileURLToPath } from "url";
 import { renderActiveWordSrt } from "../src/activeWordSubtitles.js";
+import { renderWordPopAss, sanitizeCaptionMotion, sanitizePopIntensity } from "../src/captionMotion.js";
 import { CAPTION_OUTLINE_WIDTH, captionMarginPixels, sanitizeCaptionFontSize } from "../src/captionStyle.js";
 import { getCaptionFont } from "../src/captionFonts.js";
 
@@ -30,15 +31,19 @@ export function createBurnSubtitlesRouter(upload) {
       return res.status(400).json({ error: "נדרש תוכן כתוביות לצריבה." });
     }
 
-    if (req.body?.activeWordEnabled === "true") {
+    const motion = sanitizeCaptionMotion(req.body?.captionMotion);
+    let timedSegments, timedWords;
+    if (req.body?.activeWordEnabled === "true" || motion === "pop") {
       try {
         const segments = JSON.parse(req.body.segments);
         const words = JSON.parse(req.body.words ?? "[]");
         if (!Array.isArray(segments) || !segments.length || !Array.isArray(words) || segments.some(s => !s || typeof s.text !== "string" || !Number.isFinite(s.start) || !Number.isFinite(s.end) || s.end <= s.start)) throw new Error("Invalid word timing data");
-        subtitleContent = renderActiveWordSrt(segments, words, req.body.textDirection);
+        timedSegments = segments;
+        timedWords = words;
+        if (motion !== "pop") subtitleContent = renderActiveWordSrt(segments, words, req.body.textDirection, req.body.activeWordColor);
       } catch {
         await safeUnlink(req.file.path);
-        return res.status(400).json({ error: "נתוני המילה האקטיבית אינם תקינים. נסו לשמור את הכתוביות ולצרוב שוב." });
+        return res.status(400).json({ error: "נתוני תזמון המילים אינם תקינים. נסו לשמור את הכתוביות ולצרוב שוב." });
       }
     }
 
@@ -49,13 +54,19 @@ export function createBurnSubtitlesRouter(upload) {
     const marginPercent = sanitizePercent(req.body?.marginPercent, 5);
     const videoWidth = sanitizeDimension(req.body?.videoWidth);
     const videoHeight = sanitizeDimension(req.body?.videoHeight);
+    if (motion === "pop" && (!videoWidth || !videoHeight)) {
+      await safeUnlink(req.file.path);
+      return res.status(400).json({ error: "נדרש גודל וידאו תקין לאנימציה. המתינו לטעינת הסרטון ונסו שוב." });
+    }
 
-    const subtitlePath = path.join(TEMP_SUBTITLE_DIR, `${randomUUID()}.srt`);
+    const subtitlePath = path.join(TEMP_SUBTITLE_DIR, `${randomUUID()}.${motion === "pop" ? "ass" : "srt"}`);
     const outputPath = path.join(TEMP_OUTPUT_DIR, `${randomUUID()}.mp4`);
 
     try {
       // Wrap subtitle lines with RTL markers for proper Hebrew punctuation rendering
-      const rtlSubtitleContent = req.body?.textDirection === "ltr" ? subtitleContent : wrapSubtitleLinesWithRTL(subtitleContent);
+      const rtlSubtitleContent = motion === "pop"
+        ? renderWordPopAss(timedSegments, timedWords, { intensity: sanitizePopIntensity(req.body?.popIntensity), direction: req.body?.textDirection === "ltr" ? "ltr" : "rtl", videoWidth, videoHeight, outlineWidth: CAPTION_OUTLINE_WIDTH })
+        : req.body?.textDirection === "ltr" ? subtitleContent : wrapSubtitleLinesWithRTL(subtitleContent);
       await fsp.writeFile(subtitlePath, rtlSubtitleContent, "utf-8");
       const filter = buildSubtitlesFilter(subtitlePath, {
         fontId: req.body?.fontId,
@@ -66,7 +77,7 @@ export function createBurnSubtitlesRouter(upload) {
         marginPercent,
         videoWidth,
         videoHeight,
-        wholeTextLayout: req.body?.activeWordEnabled === "true",
+        wholeTextLayout: req.body?.activeWordEnabled === "true" || motion === "pop",
       });
 
       await runFfmpeg([
