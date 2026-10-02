@@ -87,6 +87,7 @@ function App() {
     setNavigationBlocked(blocked);
   }, []);
   const editing = currentScreen === "edit" || (currentScreen === "transcription" && workflow.activePage === "preview");
+  const marketingHome = currentScreen === "home" && (desktopHome || !workflow.user);
 
   useEffect(() => {
     window.history.replaceState({ ...window.history.state, editorIndex: historyIndex.current }, '', window.location.href);
@@ -154,6 +155,7 @@ function App() {
   }, []);
 
   const navigateToScreen = (screen: AppScreen, token?: string) => {
+    window.scrollTo({ top: 0, left: 0, behavior: "instant" });
     setCurrentScreen(screen);
     setVideoToken(token);
     updateUrl(screen, token);
@@ -257,11 +259,11 @@ function App() {
           }}
         />
 
-        <Container maxWidth={false} sx={{
-          pt: { xs: currentScreen === "transcription" ? 7 : 2, md: editing ? 1 : 6 },
-          pb: { xs: currentScreen === "transcription" ? 1 : 2, md: editing ? 1 : 6 },
-          px: { xs: 1.5, md: 3 },
-          mt: { xs: currentScreen === "transcription" ? 0 : 10, md: editing ? 8 : 10 },
+        <Container maxWidth={false} disableGutters={marketingHome} sx={{
+          pt: marketingHome ? 0 : { xs: currentScreen === "transcription" ? 7 : 2, md: editing ? 1 : 6 },
+          pb: marketingHome ? 0 : { xs: currentScreen === "transcription" ? 1 : 2, md: editing ? 1 : 6 },
+          px: marketingHome ? 0 : { xs: 1.5, md: 3 },
+          mt: marketingHome ? { xs: 6, md: 8 } : { xs: currentScreen === "transcription" ? 0 : 10, md: editing ? 8 : 10 },
         }}>
           {projectError && <Alert severity="error" onClose={() => setProjectError(null)} sx={{ mb: 2 }}>{projectError}</Alert>}
           {currentScreen === "home" && workflow.error && (
@@ -270,13 +272,13 @@ function App() {
             </Alert>
           )}
 
-          {currentScreen === "home" && workflow.authLoading && (
+          {currentScreen === "home" && workflow.authLoading && !desktopHome && (
             <Stack alignItems="center" py={8}>
               <CircularProgress />
             </Stack>
           )}
 
-          {currentScreen === "home" && !workflow.authLoading && (!workflow.user || desktopHome) && (
+          {currentScreen === "home" && (desktopHome || (!workflow.authLoading && !workflow.user)) && (
             <PromotionalHome
               authLoading={workflow.authLoading}
               onSignIn={workflow.onSignIn}

@@ -1,0 +1,98 @@
+.marketing { --ink: #201c37; --muted: #716b82; --purple: #6951d9; color: var(--ink); background: #faf9fe; font-family: "Assistant", "Segoe UI", sans-serif; }
+.marketing *, .marketing *::before, .marketing *::after { box-sizing: border-box; }
+.marketing-wrap { max-width: 1240px; margin: auto; padding: 0 48px; }
+.marketing-nav { display: flex; justify-content: flex-end; gap: 28px; padding: 25px 0 8px; font-size: 15px; font-weight: 600; }
+.marketing a { color: inherit; text-decoration: none; }
+.marketing a:hover { color: var(--purple); }
+.marketing a:focus-visible, .marketing button:focus-visible, .marketing summary:focus-visible { outline: 3px solid #9986ec; outline-offset: 5px; }
+.marketing-hero { display: grid; grid-template-columns: 1fr 1fr; gap: 60px; align-items: center; padding: 34px 0 58px; }
+.marketing-copy { padding-bottom: 10px; }
+.marketing-eyebrow { display: inline-flex; align-items: center; gap: 7px; font-size: 15px; font-weight: 600; color: #6252a8; margin-bottom: 20px; }
+.marketing-eyebrow svg { font-size: 18px; }
+.marketing h1 { font-size: clamp(44px, 4.7vw, 66px); line-height: 1.09; letter-spacing: -1.9px; margin: 0 0 25px; font-weight: 800; }
+.marketing h1 > span { color: var(--purple); }
+.marketing-intro { font-size: 22px; line-height: 1.55; color: var(--muted); margin: 0 0 27px; }
+.marketing-actions { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.marketing .marketing-primary { background: var(--purple); color: #fff; font-family: inherit; font-size: 18px; font-weight: 700; padding: 13px 23px; border-radius: 12px; box-shadow: 0 6px 16px #6951d929; text-transform: none; gap: 7px; }
+.marketing .marketing-primary:hover { background: #5540b8; box-shadow: 0 7px 20px #6951d940; }
+.marketing .marketing-primary:disabled { background: #e3def4; color: #70698d; box-shadow: none; }
+.marketing .marketing-watch { color: var(--ink); font-size: 17px; font-weight: 600; font-family: inherit; padding: 12px 14px; border-radius: 12px; gap: 6px; }
+.marketing-action-note { font-size: 14px; color: var(--muted); margin: 13px 0 28px; }
+.marketing-benefits { display: flex; flex-wrap: wrap; gap: 8px 15px; font-size: 14px; color: #5c566d; }
+.marketing-benefits span { display: inline-flex; align-items: center; gap: 4px; }
+.marketing-benefits svg { color: var(--purple); font-size: 17px; }
+.marketing-demo { background: #242335; border-radius: 20px; padding: 17px; position: relative; box-shadow: 0 26px 60px -20px #4b3b7855; min-width: 0; scroll-margin-top: 90px; }
+.marketing-demo-top { display: flex; align-items: center; justify-content: space-between; color: #eae7f4; font-size: 13px; margin-bottom: 15px; }
+.marketing-demo-top > span:first-child { display: flex; align-items: center; gap: 7px; }
+.marketing-live-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #b3a0fa; }
+.marketing-demo-label { color: #aca7c0; font-size: 12px; border: 1px solid #565166; border-radius: 6px; padding: 2px 6px; }
+.marketing-demo-body { display: grid; grid-template-columns: minmax(0, 1fr) 103px; gap: 13px; }
+.marketing-preview { position: relative; height: 354px; background: #423929; border-radius: 11px; overflow: hidden; }
+.marketing-preview img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: center 32%; }
+.marketing-preview::after { content: ""; position: absolute; bottom: 0; left: 0; right: 0; height: 40%; background: linear-gradient(transparent, #10102199); pointer-events: none; }
+.marketing-preview-tag { position: absolute; top: 12px; right: 12px; background: #1f1d2c80; color: #fff; font-size: 11px; border-radius: 6px; padding: 4px 8px; backdrop-filter: blur(6px); }
+.marketing-caption { position: absolute; z-index: 1; bottom: 20%; left: 9px; right: 9px; text-align: center; font-family: "Assistant SemiBold", "Assistant", sans-serif; font-size: 27px; font-weight: 600; color: #fff; line-height: 1.45; display: flex; justify-content: center; flex-wrap: wrap; gap: 0 5px; }
+.marketing-caption > span { display: inline-block; border-radius: 5px; padding: 0 3px; }
+.marketing-caption-active { text-shadow: 0 2px 4px #000b; }
+.marketing-caption-active .is-active { background: #cfbcff; color: #27203d; text-shadow: none; }
+.marketing-caption-clean { gap: 0; width: fit-content; max-width: calc(100% - 18px); margin: auto; background: #fffffff0; border-radius: 7px; padding: 3px 8px; color: #25222d; font-size: 24px; }
+.marketing-caption-bold { font-size: 30px; color: #f7ef8c; text-shadow: 2px 2px 0 #191526, -1px -1px 0 #191526, 0 3px 8px #000; }
+.marketing-preview-bottom { position: absolute; z-index: 1; left: 12px; right: 12px; bottom: 13px; display: flex; justify-content: space-between; gap: 8px; font-size: 9px; color: #ece7e0; letter-spacing: .3px; }
+.marketing-style-picker { display: flex; flex-direction: column; gap: 9px; }
+.marketing-style-heading { color: #c2bcce; font-size: 12px; display: flex; gap: 4px; align-items: center; padding: 6px 0 4px; }
+.marketing-style-heading svg { font-size: 15px; }
+.marketing-style-option { font: inherit; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 6px; background: #302d43; border: 1px solid #49445f; border-radius: 9px; padding: 11px 5px 8px; font-size: 11px; color: #d4cee2; }
+.marketing-style-option:hover { background: #3c3654; }
+.marketing-style-option.is-selected { border-color: #b49bff; background: #4a3c6a; color: #fff; }
+.marketing-style-sample { font-family: "Segoe UI", sans-serif; font-size: 22px; font-weight: 800; line-height: 1.1; }
+.marketing-style-sample-active { color: #dccfff; }
+.marketing-style-sample-clean { background: #eee; color: #302d43; border-radius: 3px; padding: 0 5px; }
+.marketing-style-sample-bold { color: #f7ef8c; }
+.marketing-demo-tip { color: #a8a0bd; font-size: 11px; line-height: 1.5; text-align: center; margin-top: 7px; }
+.marketing-demo-tip svg { display: block; margin: 0 auto 4px; font-size: 15px; color: #baa5f5; }
+.marketing-demo-controls { display: flex; align-items: center; gap: 10px; direction: ltr; padding-top: 13px; }
+.marketing-demo-controls button { border: 0; background: #413950; color: #fff; cursor: pointer; border-radius: 7px; width: 31px; height: 29px; display: grid; place-items: center; }
+.marketing-demo-controls button svg { font-size: 19px; }
+.marketing-demo-progress { height: 4px; flex: 1; background: #504760; border-radius: 5px; overflow: hidden; }
+.marketing-demo-progress span { display: block; height: 100%; background: #bc9cff; }
+.marketing-demo-time { font-size: 10px; color: #beb7ca; }
+.marketing-demo-note { color: #b8aecb; text-align: center; font-size: 12px; margin: 9px 0 0; }
+.marketing-use-cases { border-top: 1px solid #e8e4f1; border-bottom: 1px solid #e8e4f1; display: flex; justify-content: space-between; align-items: center; padding: 23px 0; gap: 20px; }
+.marketing-use-cases > span { font-size: 14px; color: var(--muted); }
+.marketing-use-cases > div { display: flex; gap: 28px; align-items: center; font-size: 18px; font-weight: 600; }
+.marketing-use-cases i { width: 4px; height: 4px; background: #b9aacd; border-radius: 50%; }
+.marketing-process { padding: 82px 0; scroll-margin-top: 95px; }
+.marketing-section-title { text-align: center; margin-bottom: 34px; }
+.marketing-kicker { color: var(--purple); font-size: 14px; font-weight: 600; }
+.marketing h2 { font-size: 36px; line-height: 1.2; font-weight: 700; letter-spacing: -.7px; margin: 12px 0; }
+.marketing-section-title > p, .marketing-faq > div > p { color: var(--muted); font-size: 18px; line-height: 1.5; margin: 13px 0 0; }
+.marketing-steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+.marketing-steps article { background: #fff; border: 1px solid #e9e5f2; padding: 27px 25px 21px; border-radius: 17px; }
+.marketing-step-icon { display: flex; align-items: center; justify-content: space-between; color: var(--purple); }
+.marketing-step-icon > svg { width: 44px; height: 44px; padding: 10px; border-radius: 12px; background: #f0ebfb; }
+.marketing-step-icon > span { font: 13px "Segoe UI", sans-serif; color: #a69ab7; }
+.marketing-steps h3 { font-size: 24px; margin: 20px 0 10px; }
+.marketing-steps p { font-size: 17px; color: var(--muted); line-height: 1.55; margin: 0 0 22px; min-height: 80px; }
+.marketing-step-detail { border-radius: 10px; background: #f7f5fc; color: #817299; padding: 14px; font-size: 15px; min-height: 54px; display: flex; justify-content: space-between; align-items: center; }
+.marketing-step-detail > span:last-child { color: var(--purple); }
+.marketing-word-detail { font-size: 19px; justify-content: center; gap: 6px; color: var(--ink); }
+.marketing-word-detail mark { background: #e6d9ff; color: #6243a1; padding: 0 6px; border-radius: 4px; }
+.marketing-formats { direction: ltr; justify-content: center; gap: 15px; }
+.marketing-formats span { font: 11px "Segoe UI", sans-serif; border: 1px solid #e1d9ef; padding: 5px 10px; border-radius: 5px; color: #756384; background: #fff; }
+.marketing-faq { display: grid; grid-template-columns: 1fr 1.65fr; gap: 70px; padding: 0 0 80px; scroll-margin-top: 100px; }
+.marketing-questions details { border-bottom: 1px solid #e3deee; }
+.marketing-questions summary { display: flex; justify-content: space-between; align-items: center; gap: 20px; cursor: pointer; list-style: none; font-size: 18px; font-weight: 600; padding: 19px 0; }
+.marketing-questions summary::-webkit-details-marker { display: none; }
+.marketing-questions summary > span { color: var(--purple); font: 24px "Segoe UI", sans-serif; }
+.marketing-questions details[open] summary > span { transform: rotate(45deg); }
+.marketing-questions details p { color: var(--muted); font-size: 17px; line-height: 1.65; margin: 0 0 20px; padding-left: 30px; }
+.marketing-final { background: #ece6fa; border-radius: 22px; text-align: center; padding: 45px 22px 35px; }
+.marketing-final h2 { margin: 14px 0 24px; }
+.marketing-final p { color: #77698c; margin: 18px 0 0; font-size: 14px; }
+.marketing-footer { display: flex; justify-content: space-between; align-items: center; gap: 20px; padding: 32px 0; font-size: 13px; color: var(--muted); }
+.marketing-footer img { max-width: 140px; height: auto; }
+@media (min-width: 1500px) { .marketing-wrap { max-width: 1360px; } .marketing-hero { gap: 95px; padding-top: 55px; } .marketing-preview { height: 415px; } .marketing-caption { font-size: 32px; } }
+@media (max-width: 1100px) { .marketing-wrap { padding: 0 30px; } .marketing-hero { gap: 30px; } .marketing h1 { font-size: 50px; } .marketing-preview { height: 326px; } .marketing-use-cases > div { gap: 16px; } .marketing-use-cases > span { font-size: 13px; } .marketing-caption { font-size: 23px; } }
+@media (max-width: 899px) { .marketing-hero { grid-template-columns: 1fr; gap: 35px; padding: 30px 0 40px; } .marketing-copy { text-align: center; } .marketing h1 { font-size: 57px; } .marketing-actions, .marketing-benefits { justify-content: center; } .marketing-demo { max-width: 520px; width: 100%; margin: auto; } .marketing-preview { height: 390px; } .marketing-caption { font-size: 30px; } .marketing-use-cases { flex-direction: column; gap: 12px; } .marketing-steps { gap: 12px; } .marketing-steps article { padding: 20px 15px; } .marketing-steps h3 { font-size: 21px; } .marketing-steps p { font-size: 16px; min-height: 100px; } .marketing-faq { gap: 30px; grid-template-columns: 1fr 1.5fr; } }
+@media (max-width: 599px) { .marketing-wrap { padding: 0 20px; } .marketing-nav { justify-content: center; gap: 19px; padding: 20px 0 5px; font-size: 13px; } .marketing-hero { padding-top: 27px; gap: 24px; } .marketing-eyebrow { font-size: 13px; margin-bottom: 17px; } .marketing h1 { font-size: clamp(37px, 10.3vw, 54px); letter-spacing: -1px; line-height: 1.14; margin-bottom: 21px; } .marketing-intro { font-size: 19px; margin-bottom: 22px; } .marketing-actions { gap: 5px; } .marketing .marketing-primary { font-size: 16px; padding: 12px 17px; } .marketing .marketing-watch { font-size: 15px; padding: 12px 9px; } .marketing-action-note { font-size: 12px; margin: 12px 0 20px; } .marketing-benefits { font-size: 12px; gap: 7px 12px; } .marketing-benefits svg { font-size: 14px; } .marketing-demo { padding: 13px; border-radius: 16px; } .marketing-demo-body { grid-template-columns: minmax(0, 1fr) 82px; gap: 9px; } .marketing-preview { height: 318px; } .marketing-caption { font-size: 23px; bottom: 22%; gap: 0 2px; } .marketing-caption-clean { font-size: 21px; } .marketing-caption-bold { font-size: 25px; } .marketing-style-heading { font-size: 10px; } .marketing-style-option { font-size: 10px; padding: 9px 3px 7px; } .marketing-style-sample { font-size: 21px; } .marketing-demo-tip { font-size: 10px; } .marketing-preview-bottom { left: 8px; right: 8px; font-size: 8px; flex-direction: column; gap: 3px; } .marketing-use-cases > div { flex-wrap: wrap; justify-content: center; gap: 9px 14px; font-size: 15px; } .marketing-process { padding: 55px 0; } .marketing h2 { font-size: 29px; } .marketing-section-title > p, .marketing-faq > div > p { font-size: 16px; } .marketing-steps { grid-template-columns: 1fr; gap: 14px; } .marketing-steps article { padding: 23px; } .marketing-steps p { min-height: 0; margin-bottom: 17px; } .marketing-steps h3 { font-size: 23px; margin-top: 15px; } .marketing-faq { grid-template-columns: 1fr; gap: 17px; padding-bottom: 50px; } .marketing-questions summary { font-size: 17px; } .marketing-questions details p { font-size: 16px; } .marketing-final { padding: 33px 20px; } .marketing-footer { flex-wrap: wrap; justify-content: center; gap: 12px 25px; padding: 27px 0; } .marketing-footer > span { display: none; } }
+@media (prefers-reduced-motion: reduce) { .marketing *, .marketing *::before, .marketing *::after { scroll-behavior: auto !important; transition: none !important; } }
