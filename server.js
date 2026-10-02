@@ -17,10 +17,10 @@ import pool from "./db.js";
 import { createAdminStore } from "./src/adminStore.js";
 import { createAdminRouter } from "./routes/admin.js";
 import { createFirebaseVerifier, createIdentityMiddleware } from "./src/firebaseIdentity.js";
-import { configureUsageRecorder, usageContext } from "./src/aiUsage.js";
+import { configureUsageRecorder, measureAICost, usageContext } from "./src/aiUsage.js";
 import { ensureSchema, upsertUser, saveVideo, updateVideoSubtitles, getUserVideos, getVideoById, getUserCredits, deductCredits, ensureDevDummyUser, createTranscriptionJob, getTranscriptionJob, finishTranscriptionJob, updateTranscriptionProgress, completeTranscriptionJob } from "./db.js";
 import { trackTranscriptionProgress } from "./src/transcriptionJobs.js";
-import { estimateTranscriptionCredits, creditsToDollars, calculateTotalWorkflowCredits } from "./src/creditCalculator.js";
+import { estimateTranscriptionCredits, creditsToDollars, transcriptionCredits, workflowCost } from "./src/creditCalculator.js";
 import { getDevAuthUid, isDevAuthBypassEnabled } from "./src/devAuth.js";
 
 const app = express();
@@ -555,14 +555,14 @@ app.post("/api/transcribe", upload.single("media"), async (req, res) => {
 
   let savedVideoId = null;
   try {
-    const result = await transcribeMedia({
+    const { value: result, costUSD: measuredCostUSD, unpricedCalls } = await measureAICost(() => transcribeMedia({
       inputPath: req.file.path,
       format,
       maxWordsPerSubtitle,
       maxCharactersPerSubtitle,
       logger: createRequestLogger(req),
       onStage: emitStage,
-    });
+    }));
 
     let storedPath = null;
     if (userUid && req.file) {
@@ -634,8 +634,8 @@ app.post("/api/transcribe", upload.single("media"), async (req, res) => {
     }
 
     // Calculate actual credits used based on API usage
-    const actualCredits = calculateTotalWorkflowCredits(result.usage || {});
-    console.log(`Actual credits used: ${actualCredits} credits (${creditsToDollars(actualCredits)})`);
+    const actualCredits = transcriptionCredits(result.usage || {}, measuredCostUSD);
+    console.log(`Actual credits used: ${actualCredits} credits (${creditsToDollars(actualCredits)}) for AI cost $${measuredCostUSD.toFixed(4)} measured, $${workflowCost(result.usage || {}).toFixed(4)} by stage, ${unpricedCalls} unpriced call(s)`);
     console.log(`Usage breakdown:`, JSON.stringify(result.usage, null, 2));
 
     // Deduct actual credits

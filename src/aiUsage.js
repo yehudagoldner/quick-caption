@@ -8,6 +8,16 @@ export function usageContext(req, _res, next) {
   context.run({ operation: req.path, getUserUid: () => req.identity?.uid ?? req.body?.userUid ?? null }, next);
 }
 
+// Sums the priced cost of every AI call made inside fn, for charging that job by its real cost.
+// unpricedCalls counts completed calls whose cost is unknown, so callers can fall back to an estimate.
+export async function measureAICost(fn) {
+  const parent = context.getStore();
+  const tally = { costUSD: 0, unpricedCalls: 0, calls: 0 };
+  if (!parent || !persistUsage) return { value: await fn(), ...tally, measured: false };
+  const value = await context.run({ ...parent, tally }, fn);
+  return { value, ...tally, measured: true };
+}
+
 // USD / million tokens. Snapshot: 2026-09-30, https://developers.openai.com/api/docs/pricing
 // Unknown models/tiers remain unpriced rather than borrowing another model's rate.
 const TEXT_RATES = {
@@ -64,6 +74,11 @@ export function instrumentOpenAI(client, getAudioDuration) {
       const usage = response?.usage ?? null;
       const priced = priceUsage({ model, usage, serviceTier, durationSeconds, audio });
       if (apiError) { priced.costUSD = null; priced.costBasis = 'unknown-failed'; }
+      else if (scope.tally) {
+        scope.tally.calls++;
+        if (Number.isFinite(priced.costUSD)) scope.tally.costUSD += priced.costUSD;
+        else scope.tally.unpricedCalls++;
+      }
       const uid = scope.getUserUid();
       const row = { id: randomUUID(), userUid: typeof uid === 'string' ? uid.slice(0, 128) : null,
         operation: scope.operation.slice(0, 100), model, serviceTier, status: apiError ? 'failed' : 'completed', ...priced, usage };
