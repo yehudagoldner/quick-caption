@@ -62,7 +62,7 @@ export function AppHeader({
     <AppBar position="fixed" color="default" elevation={0} sx={{ borderBottom: 1, borderColor: "divider" }}>
       <Toolbar variant={narrow ? "dense" : "regular"} sx={narrow ? { minHeight: 48, px: 1 } : undefined}>
         <Box sx={{ flexGrow: 1, display: "flex", alignItems: "center", gap: 2 }}>
-          <Box component="img" src="/quickcaption-logo.svg" alt="QuickCaption" sx={{ height: narrow ? 24 : 32 }} />
+          <Box component="img" src={`${import.meta.env.BASE_URL}quickcaption-logo.svg`} alt="QuickCaption" sx={{ height: narrow ? 24 : 32 }} />
           {isDevBypass && !narrow && (
             <Chip size="small" color="warning" variant="outlined" label="משתמש דמה מקומי" />
           )}

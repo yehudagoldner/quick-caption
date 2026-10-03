@@ -298,7 +298,7 @@ export function PromotionalHome({ authLoading, onSignIn, isAuthenticated, onStar
 
       <footer className="marketing-footer">
         <div className="marketing-wrap">
-          <img src="/quickcaption-logo.svg" width="165" height="36" alt="Quick Caption" />
+          <img src={`${import.meta.env.BASE_URL}quickcaption-logo.svg`} width="165" height="36" alt="Quick Caption" />
           <span>כתוביות בעברית, בדרך שלכם.</span>
           <a href="#marketing-title" onClick={jump("marketing-title")}>בחזרה למעלה ↑</a>
         </div>
