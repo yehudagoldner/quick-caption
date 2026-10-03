@@ -24,6 +24,7 @@ JS
 [[ "$old" == "$root"/release-* ]] || { echo 'Unexpected QA directory' >&2; exit 1; }
 test -f "$old/caption-qa.ecosystem.config.cjs"
 cd "$old"
+git diff --quiet && git diff --cached --quiet || { echo 'QA has tracked changes; review and preserve them before deployment' >&2; exit 1; }
 git fetch origin
 [[ $(git rev-parse "$sha^{commit}") == "$sha" ]]
 release=$(mktemp -d "$root/release-${sha:0:7}-XXXXXXXX")
@@ -46,11 +47,14 @@ const require=createRequire(import.meta.url);const old=process.env.QA_OLD;const 
 const source=require(old+'/caption-qa.ecosystem.config.cjs');
 if(source.apps.length!==1 || source.apps[0].name!=='caption-qa')throw Error('Config is not QA only');
 const env=dotenv.parse(fs.readFileSync('/home/quick-caption-qa/shared/.env'));
-if(env.DB_NAME!=='quickcaption_qa' || env.DB_USER!=='quickcaption_qa' || env.PORT!=='3100' || env.VITE_API_BASE_URL!=='/qa' || env.VITE_APP_BASE_PATH!=='/qa/' || env.PAYPAL_CLIENT_ID || env.PAYPAL_SECRET)throw Error('Unsafe QA environment');
+if(env.DB_NAME!=='quickcaption_qa' || env.DB_USER!=='quickcaption_qa' || env.PORT!=='3100' || env.VITE_API_BASE_URL!=='/qa' || env.VITE_APP_BASE_PATH!=='/qa/' || env.VITE_APP_ENV!=='qa' || env.PAYPAL_CLIENT_ID || env.PAYPAL_SECRET)throw Error('Unsafe QA environment');
 const app={...source.apps[0],name:'caption-qa',cwd:release,script:release+'/server.js',env:{...env,NODE_ENV:'production',PWD:release}};
 fs.writeFileSync(release+'/caption-qa.ecosystem.config.cjs','module.exports = '+JSON.stringify({apps:[app]},null,2)+';\n',{mode:0o600});
 JS
 npm run build
+# Older feature branches must gain base-path support before they can be deployed to QA.
+grep -q 'src="/qa/assets/' dist/index.html || { echo 'Build does not support the QA base path' >&2; exit 1; }
+if grep -qE '(src|href)="/assets/' dist/index.html; then echo 'Build references production assets' >&2; exit 1; fi
 node --test tests/timeline-editing.test.mjs tests/word-alignment.test.mjs tests/active-word-export.test.mjs tests/paypal-checkout.test.mjs tests/video-security.test.mjs
 if test -d "$old/dist/assets"; then cp -an "$old/dist/assets/." dist/assets/; fi
 current=$(pm2 jlist | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const a=JSON.parse(s).filter(a=>a.name==="caption-qa");if(a.length!==1)process.exit(1);process.stdout.write(a[0].pm2_env.pm_cwd)})')
