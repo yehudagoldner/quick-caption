@@ -4,6 +4,7 @@ import { creditPayment } from "./src/creditPayments.js";
 import { completeJob, JOB_STALE_SECONDS } from "./src/transcriptionJobs.js";
 import { ensureVideoRetention, touchVideo } from "./src/videoRetention.js";
 import { ensureAdminSchema } from "./src/adminStore.js";
+import { ensureIssueReportSchema } from "./src/issueReports.js";
 
 const pool = mysql.createPool({
   host: process.env.DB_HOST,
@@ -101,6 +102,7 @@ export async function ensureSchema() {
   }
 
   await ensureAdminSchema(pool);
+  await ensureIssueReportSchema(pool);
 
   // Add credits column to existing users table
   const [creditsColumns] = await pool.query("SHOW COLUMNS FROM users LIKE 'credits'");

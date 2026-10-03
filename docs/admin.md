@@ -12,6 +12,30 @@ server. User synchronization now sends a Firebase token and takes identity field
 from that verified token, preventing forged user profiles.
 
 Database tables are created automatically by `ensureSchema()` at startup.
+The **שגיאות** tab at `/admin` lists server API failures and selected browser
+upload/save failures. Only existing administrators can read this log. Each
+request loads exactly one page of up to **50** records from MySQL, newest first.
+Pagination retains a sequence snapshot so incoming records do not shift rows
+between pages; Refresh starts a new snapshot at page 1. Empty/loading/error and
+retry states are handled without retaining every record in the browser.
+
+The `application_errors` table stores the source, operation, status, timestamp,
+verified user UID and request ID. Request bodies, media, captions, authorization
+headers and query tokens are not collected. Common credential patterns are
+redacted from messages. Browser reports use fixed event codes, authenticated
+ownership, deduplication IDs and a per-user rate limit. An offline browser keeps
+at most 50 reports in its session and submits them when connectivity returns.
+The server retries a DB outage using a bounded 500-record memory queue, without
+blocking customer requests. Pending server records can be lost if the process
+exits during the outage or the queue fills. Existing historical errors cannot be
+backfilled from this new log.
+
+Subtitle saves require a structured success acknowledgment, so an HTML 200 or
+unacknowledged JSON response cannot mark a draft as saved. Failed drafts retain
+the existing retry and navigation protection. Uploads with unreadable responses
+check the existing transcription job instead of submitting a second chargeable
+job; checking has a bounded timeout and handles expired sessions explicitly.
+
 Credit grants require a reason and use an idempotency key; retries of the same
 operation add credits once. Grants and administrator additions are audited.
 Manual grants do not count as purchases or revenue.
@@ -38,12 +62,31 @@ are stored in the usage ledger.
 
 Checks:
 
+Signed-in users can open **דיווח על תקלה** from the profile menu. Reports include
+title, description, current screen and identity from the application's verified
+authentication. They are persisted in `issue_reports`, created automatically on
+startup. The existing owner and delegated admins see them under
+**דיווחי משתמשים** in `/admin`, with filtering, pagination and treatment status.
+This uses the existing admin permissions; no separate admin environment settings
+or Firebase Admin SDK are required.
+
+- `POST /api/issue-reports`: submit a user report.
+- `GET /api/admin/issue-reports?status=open&page=1`: list reports (admin only).
+- `POST /api/admin/issue-reports/:id/status`: change `status` to `open`,
+  `in_progress`, or `resolved` (admin only).
+- `GET /api/admin/issue-reports/:id/screenshot`: authenticated image response
+  (admin only, no public URL). Reports may include one PNG, JPEG or WebP screenshot
+  up to 5 MiB. Users can upload it or paste it with Ctrl+V. The draft shows a
+  preview and supports replacing/removing the
+  image. The image is stored with the report in MySQL; report lists contain only
+  `has_screenshot`, and the admin viewer loads image bytes on demand.
+
 ```powershell
 npm run build
-node --test tests/admin.test.mjs tests/transcription-models.test.mjs
+node --test tests/admin.test.mjs tests/error-monitoring.test.mjs tests/transcription-models.test.mjs
 $env:RUN_MYSQL_TESTS = '1'
-node --test tests/admin.mysql.test.mjs
-npx playwright test tests/admin-ui.spec.ts --workers=1 --reporter=line
+node --test tests/admin.mysql.test.mjs tests/error-monitoring.mysql.test.mjs
+npx playwright test tests/admin-ui.spec.ts tests/error-monitoring-ui.spec.ts --workers=1 --reporter=line
 ```
 
 The MySQL test uses connection-local temporary tables; it never writes test

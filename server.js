@@ -15,7 +15,9 @@ import { createBurnSubtitlesRouter } from "./routes/burnSubtitles.js";
 import paypalRouter from "./routes/paypal.js";
 import pool from "./db.js";
 import { createAdminStore } from "./src/adminStore.js";
+import { createIssueReportsRouter } from "./routes/issueReports.js";
 import { createAdminRouter } from "./routes/admin.js";
+import { captureApiErrors, createClientErrorHandler, createErrorRecorder } from "./src/errorMonitoring.js";
 import { createFirebaseVerifier, createIdentityMiddleware } from "./src/firebaseIdentity.js";
 import { configureUsageRecorder, measureAICost, usageContext } from "./src/aiUsage.js";
 import { ensureSchema, upsertUser, saveVideo, updateVideoSubtitles, getUserVideos, getVideoById, getUserCredits, deductCredits, ensureDevDummyUser, createTranscriptionJob, getTranscriptionJob, finishTranscriptionJob, updateTranscriptionProgress, completeTranscriptionJob } from "./db.js";
@@ -30,6 +32,9 @@ const allowedOrigins = process.env.CORS_ORIGIN
   ? process.env.CORS_ORIGIN.split(",").map((origin) => origin.trim()).filter(Boolean)
   : undefined;
 
+const adminStore = createAdminStore(pool);
+const errorRecorder = createErrorRecorder(adminStore);
+app.use(captureApiErrors(errorRecorder));
 app.use(cors({ origin: allowedOrigins ?? true }));
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
@@ -39,7 +44,6 @@ const videosStorageDir = path.join(process.cwd(), "stored-videos");
 await fsp.mkdir(uploadDir, { recursive: true });
 await fsp.mkdir(videosStorageDir, { recursive: true });
 await ensureSchema();
-const adminStore = createAdminStore(pool);
 const verifyIdentity = createFirebaseVerifier({ projectId: process.env.FIREBASE_PROJECT_ID || process.env.VITE_FIREBASE_PROJECT_ID });
 const authenticate = createIdentityMiddleware(verifyIdentity);
 configureUsageRecorder(row => adminStore.recordUsage(row));
@@ -77,6 +81,8 @@ app.use('/api', (req, res, next) => {
   });
 });
 const upload = createMediaUpload(uploadDir);
+app.post('/api/client-errors', createClientErrorHandler(errorRecorder));
+app.use('/api/issue-reports', createIssueReportsRouter({ store: adminStore }));
 app.use("/api/burn-subtitles", createBurnSubtitlesRouter(upload));
 app.use("/api/payments", paypalRouter);
 
@@ -790,8 +796,14 @@ app.use(express.static(path.join(process.cwd(), 'dist')));
 
 // Handle all unhandled routes by serving the React app
 app.use(mediaUploadError);
+app.use((error, req, res, next) => {
+  if (res.headersSent) return next(error);
+  const status = error.status >= 400 && error.status <= 599 ? error.status : 500;
+  res.status(status).json({ error: status === 500 ? 'אירעה שגיאה בשרת. אפשר לנסות שוב.' : 'הבקשה אינה תקינה.' });
+});
 
 // This must be after all API routes
+app.use('/api', (req, res) => res.status(404).json({ error: 'נתיב ה־API לא נמצא.' }));
 app.get(/.*/, (req, res) => {
   res.sendFile(path.join(process.cwd(), 'dist', 'index.html'));
 });

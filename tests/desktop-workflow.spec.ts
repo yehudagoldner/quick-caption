@@ -16,13 +16,18 @@ test('desktop home opens marketing for signed-in users and starts a new video', 
   await expect(page.getByTestId('media-dropzone')).toBeVisible();
 });
 
-test('mobile home retains the signed-in workspace', async ({ page }) => {
+test('mobile home shows marketing with workspace shortcuts for signed-in users', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await prepareApp(page);
   await page.goto('/');
-  await expect(page.getByRole('heading', { level: 1, name: /שעוצרות את הגלילה/ })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'סרטון חדש', exact: true })).toBeVisible();
-  await page.getByRole('button', { name: 'סרטון חדש', exact: true }).click();
+  await expect(page.getByRole('heading', { level: 1, name: /שעוצרות את הגלילה/ })).toBeVisible();
+  const dock = page.getByRole('region', { name: 'פעולות מהירות' });
+  await expect(dock.getByRole('button', { name: 'סרטון חדש', exact: true })).toBeInViewport({ ratio: 1 });
+  await dock.getByRole('button', { name: 'הסרטונים שלי', exact: true }).click();
+  await expect(page).toHaveURL(/screen=videos/);
+  await page.goBack();
+  await expect(page.getByRole('heading', { level: 1, name: /שעוצרות את הגלילה/ })).toBeVisible();
+  await dock.getByRole('button', { name: 'סרטון חדש', exact: true }).click();
   await expect(page.getByTestId('media-dropzone')).toBeVisible();
 });
 

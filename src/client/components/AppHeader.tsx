@@ -34,6 +34,7 @@ type AppHeaderProps = {
   navigationBlocked?: boolean;
   isAdmin?: boolean;
   onAdmin?: () => void;
+  onReportIssue?: () => void;
 };
 
 export function AppHeader({
@@ -51,6 +52,7 @@ export function AppHeader({
   navigationBlocked = false,
   isAdmin = false,
   onAdmin,
+  onReportIssue,
 }: AppHeaderProps) {
   const { isDevBypass } = useAuth();
   const narrow = useNarrowViewport();
@@ -148,6 +150,7 @@ export function AppHeader({
                 רכישת קרדיטים
               </MenuItem>
               {isAdmin && <MenuItem disabled={navigationBlocked} onClick={() => { onProfileClose(); onAdmin?.(); }}>ניהול</MenuItem>}
+              <MenuItem onClick={() => { onProfileClose(); onReportIssue?.(); }}>דיווח על תקלה</MenuItem>
               <MenuItem disabled={navigationBlocked} onClick={onSignOut}>התנתקות</MenuItem>
             </Menu>
           </>

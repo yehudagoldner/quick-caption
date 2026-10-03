@@ -7,6 +7,7 @@ import type { ApiResponse, StageEvent, StageState, StageStatus, Segment, Word } 
 import { useAuth } from "../contexts/AuthContext";
 import { useUploadProtection } from "./useUploadProtection";
 import { subtitleDownloadName } from "../utils/subtitleExport";
+import { reportClientError } from "../errorReporting";
 
 export type AuthUser = ReturnType<typeof useAuth>["user"];
 
@@ -248,6 +249,10 @@ export function useTranscriptionWorkflow(): TranscriptionWorkflow {
     };
     const poll = async () => {
       if (!isCurrentJob() || inFlight || document.hidden) return;
+      if (Date.now() - startedChecking >= 20 * 60 * 1000) {
+        stopWatching("לא ניתן לאמת את מצב העיבוד כרגע. בדקו את הווידאו שלי לפני העלאה נוספת.");
+        return;
+      }
       if (!navigator.onLine) {
         setError("אין חיבור לאינטרנט. נבדוק את העיבוד שוב כשהחיבור יחזור.");
         return;
@@ -262,7 +267,8 @@ export function useTranscriptionWorkflow(): TranscriptionWorkflow {
         if (!isCurrentJob()) return;
         if (res.status === 404 && Date.now() - startedChecking < 120_000) return;
         if (!res.ok) {
-          if (res.status === 404) stopWatching("העלאת הקובץ לא הושלמה. יש לבחור אותו מחדש.");
+          if (res.status === 401 || res.status === 403) stopWatching("נדרשת התחברות מחדש כדי לבדוק את העיבוד.");
+          else if (res.status === 404) stopWatching("העלאת הקובץ לא הושלמה. יש לבחור אותו מחדש.");
           else setError("לא ניתן לבדוק כרגע את העיבוד בשרת. מנסים להתחבר שוב; אפשר גם לחזור לבחירת קובץ.");
           return;
         }
@@ -376,6 +382,7 @@ export function useTranscriptionWorkflow(): TranscriptionWorkflow {
 
       xhr.open("POST", TRANSCRIBE_ENDPOINT);
       xhr.responseType = "json";
+      xhr.timeout = 20 * 60 * 1000;
       xhr.setRequestHeader("Accept", "application/json");
 
       xhr.upload.onprogress = (ev) => {
@@ -393,12 +400,19 @@ export function useTranscriptionWorkflow(): TranscriptionWorkflow {
 
       xhr.onerror = () => {
         if (!isCurrentRequest()) return;
+        reportClientError('upload-connection-lost');
         setError("החיבור נותק. בודקים אם העיבוד ממשיך בשרת...");
         setActiveJobId(jobId);
       };
 
       xhr.onabort = () => {
         if (!isCurrentRequest()) return;
+        setActiveJobId(jobId);
+      };
+      xhr.ontimeout = () => {
+        if (!isCurrentRequest()) return;
+        reportClientError('upload-timeout');
+        setError("זמן ההמתנה הסתיים. בודקים אם העיבוד ממשיך בשרת...");
         setActiveJobId(jobId);
       };
 
@@ -408,40 +422,55 @@ export function useTranscriptionWorkflow(): TranscriptionWorkflow {
           setActiveJobId(jobId);
           return;
         }
-        const payload: ApiResponse = xhr.response && typeof xhr.response === "object" ? xhr.response : {} as ApiResponse;
-
-        if (xhr.status >= 200 && xhr.status < 300) {
-          setResponse(payload);
-          setVideoId(payload?.videoId ?? null);
-          setError(null);
-          setActivePage("preview");
-        } else {
-          // Handle insufficient credits error (402 Payment Required)
-          let errorMessage = payload?.error ?? `אירעה שגיאה (${xhr.status})`;
-          if (/incorrect api key|invalid_api_key|authentication.*401/i.test(errorMessage)) {
-            errorMessage = "שירות התמלול אינו זמין: מפתח הגישה של השרת נדחה. יש לעדכן את הגדרת השירות ולנסות שוב.";
+        let recoverThroughJob = false;
+        try {
+          const payload: ApiResponse = xhr.response && typeof xhr.response === "object" ? xhr.response : {} as ApiResponse;
+          if (!xhr.response || (xhr.status >= 200 && xhr.status < 300 &&
+              (!Array.isArray(payload.segments) || typeof payload.subtitle?.content !== 'string'))) {
+            recoverThroughJob = true;
+            reportClientError('upload-invalid-response', xhr.status);
+            setError("התקבלה תשובה לא תקינה. בודקים אם העיבוד ממשיך בשרת; אפשר לחזור לבחירת קובץ.");
+            setActiveJobId(jobId);
+            return;
           }
-          if (xhr.status === 402) {
-            const { required, available, shortfall, cost } = payload as any;
-            if (required && available !== undefined) {
-              errorMessage = `אין מספיק קרדיטים! נדרשים ${required} קרדיטים (${cost || ''}), יש לך רק ${available}. חסרים ${shortfall} קרדיטים.`;
-            } else {
-              errorMessage = `אין מספיק קרדיטים לביצוע הפעולה. ${payload?.error || ''}`;
+
+          if (xhr.status >= 200 && xhr.status < 300) {
+            setResponse(payload);
+            setVideoId(payload?.videoId ?? null);
+            setError(null);
+            setActivePage("preview");
+          } else {
+            // Handle insufficient credits error (402 Payment Required)
+            let errorMessage = payload?.error ?? `אירעה שגיאה (${xhr.status})`;
+            if (/incorrect api key|invalid_api_key|authentication.*401/i.test(errorMessage)) {
+              errorMessage = "שירות התמלול אינו זמין: מפתח הגישה של השרת נדחה. יש לעדכן את הגדרת השירות ולנסות שוב.";
             }
+            if (xhr.status === 402) {
+              const { required, available, shortfall, cost } = payload as any;
+              if (required && available !== undefined) {
+                errorMessage = `אין מספיק קרדיטים! נדרשים ${required} קרדיטים (${cost || ''}), יש לך רק ${available}. חסרים ${shortfall} קרדיטים.`;
+              } else {
+                errorMessage = `אין מספיק קרדיטים לביצוע הפעולה. ${payload?.error || ''}`;
+              }
+            }
+
+            setError(errorMessage);
+            setVideoId(null);
+            setStages((prev) =>
+              prev.map((stage) =>
+                stage.id === "complete"
+                  ? { ...stage, status: "error", message: errorMessage }
+                  : stage,
+              ),
+            );
           }
 
-          setError(errorMessage);
-          setVideoId(null);
-          setStages((prev) =>
-            prev.map((stage) =>
-              stage.id === "complete"
-                ? { ...stage, status: "error", message: errorMessage }
-                : stage,
-            ),
-          );
+        } catch {
+          reportClientError('upload-invalid-response', xhr.status);
+          setError("לא ניתן לקרוא את תשובת השרת. הקובץ נשאר זמין לניסיון נוסף.");
+        } finally {
+          if (!recoverThroughJob) releaseCurrentJob();
         }
-
-        releaseCurrentJob();
       };
 
       try {

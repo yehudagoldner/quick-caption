@@ -8,6 +8,7 @@ import { VideoEditPage } from "./components/VideoEditPage";
 import { VideosPage } from "./components/VideosPage";
 import { BuyCreditsPage } from "./components/BuyCreditsPage";
 import { AdminPage } from "./components/AdminPage";
+import { IssueReportDialog } from "./components/IssueReportDialog";
 import { adminRequest } from "./adminApi";
 import { useTranscriptionWorkflow } from "./hooks/useTranscriptionWorkflow";
 import { EditorNavigationContext, type EditorNavigationGuard } from "./contexts/EditorNavigationContext";
@@ -69,6 +70,8 @@ function App() {
   const historyIndex = useRef(Number(window.history.state?.editorIndex ?? 0));
   const [credits, setCredits] = useState<number | null>(null);
   const [adminUid, setAdminUid] = useState<string | null>(null);
+  const [reportOpen, setReportOpen] = useState(false);
+  useEffect(() => { setReportOpen(false); }, [workflow.user?.uid]);
   useEffect(() => {
     let cancelled = false;
     setAdminUid(null);
@@ -87,7 +90,7 @@ function App() {
     setNavigationBlocked(blocked);
   }, []);
   const editing = currentScreen === "edit" || (currentScreen === "transcription" && workflow.activePage === "preview");
-  const marketingHome = currentScreen === "home" && (desktopHome || !workflow.user);
+  const marketingHome = currentScreen === "home";
 
   useEffect(() => {
     window.history.replaceState({ ...window.history.state, editorIndex: historyIndex.current }, '', window.location.href);
@@ -251,6 +254,7 @@ function App() {
             else navigate();
           }}
           onBuyCredits={handleBuyCredits}
+          onReportIssue={() => setReportOpen(true)}
           isAdmin={Boolean(workflow.user && adminUid === workflow.user.uid)}
           onAdmin={() => {
             const navigate = () => navigateToScreen('admin');
@@ -258,6 +262,8 @@ function App() {
             else navigate();
           }}
         />
+
+        {reportOpen && workflow.user && <IssueReportDialog user={workflow.user} screen={currentScreen} onClose={() => setReportOpen(false)} />}
 
         <Container maxWidth={false} disableGutters={marketingHome} sx={{
           pt: marketingHome ? 0 : { xs: currentScreen === "transcription" ? 7 : 2, md: editing ? 1 : 6 },
@@ -278,19 +284,13 @@ function App() {
             </Stack>
           )}
 
-          {currentScreen === "home" && (desktopHome || (!workflow.authLoading && !workflow.user)) && (
+          {currentScreen === "home" && (desktopHome || !workflow.authLoading) && (
             <PromotionalHome
               authLoading={workflow.authLoading}
               onSignIn={workflow.onSignIn}
               isAuthenticated={Boolean(workflow.user)}
               onStart={handleNewVideo}
-            />
-          )}
-
-          {currentScreen === "home" && !workflow.authLoading && workflow.user && !desktopHome && (
-            <VideosPage
-              onEditVideo={handleEditVideo}
-              onNewVideo={handleNewVideo}
+              onMyVideos={() => navigateToScreen("videos")}
             />
           )}
 

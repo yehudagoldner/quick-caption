@@ -1,7 +1,16 @@
+import { createIssueReportStore } from './issueReports.js';
+
 export const OWNER_EMAIL = 'goldnery@gmail.com';
 export const normalizeEmail = value => typeof value === 'string' ? value.trim().toLowerCase() : '';
 
 export const ADMIN_TABLES = [
+  `CREATE TABLE IF NOT EXISTS application_errors (
+    sequence BIGINT AUTO_INCREMENT PRIMARY KEY, event_id CHAR(36) NOT NULL UNIQUE,
+    source VARCHAR(16) NOT NULL, operation VARCHAR(160) NOT NULL,
+    message VARCHAR(1000) NOT NULL, http_status SMALLINT NULL, http_method VARCHAR(10) NULL,
+    user_uid VARCHAR(128) NULL, request_id CHAR(36) NULL, created_at DATETIME(3) NOT NULL,
+    INDEX idx_application_errors_created (created_at, sequence)
+  ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`,
   `CREATE TABLE IF NOT EXISTS admin_access (
     email VARCHAR(255) PRIMARY KEY, granted_by VARCHAR(255) NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -40,6 +49,27 @@ export async function ensureAdminSchema(db) {
 
 export function createAdminStore(pool) {
   return {
+    ...createIssueReportStore(pool),
+    async recordError(row) {
+      await pool.execute(`INSERT INTO application_errors
+        (event_id, source, operation, message, http_status, http_method, user_uid, request_id, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE event_id = event_id`,
+      [row.id, row.source, row.operation, row.message, row.status ?? null, row.method ?? null,
+        row.userUid ?? null, row.requestId ?? null, row.createdAt]);
+    },
+    async errors(page, snapshot) {
+      if (!Number.isSafeInteger(page) || page < 0 || page > 100000) throw new Error('Invalid page');
+      if (snapshot == null) {
+        const [[last]] = await pool.execute('SELECT COALESCE(MAX(sequence), 0) AS snapshot FROM application_errors');
+        snapshot = Number(last.snapshot);
+      }
+      const [rows] = await pool.execute(`SELECT sequence AS id, source, operation, message,
+        http_status AS status, http_method AS method, user_uid AS userUid, request_id AS requestId,
+        created_at AS createdAt FROM application_errors WHERE sequence <= ?
+        ORDER BY sequence DESC LIMIT 50 OFFSET ${page * 50}`, [snapshot]);
+      const [[count]] = await pool.execute('SELECT COUNT(*) AS total FROM application_errors WHERE sequence <= ?', [snapshot]);
+      return { errors: rows, total: Number(count.total), page, pageSize: 50, snapshot };
+    },
     async isAdmin(email) {
       if (email === OWNER_EMAIL) return true;
       const [rows] = await pool.execute('SELECT email FROM admin_access WHERE email = ?', [email]);

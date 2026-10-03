@@ -71,6 +71,36 @@ for (const width of [320, 390, 900, 1366, 1920]) {
   });
 }
 
+test('phone layout shows the start dock after the hero and swipes features with dots', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await guest(page);
+  await page.goto('/');
+  const dock = page.getByRole('region', { name: 'פעולות מהירות' });
+  const dockStart = dock.getByRole('button', { name: 'התחילו עכשיו' });
+  await expect(page.getByRole('button', { name: 'התחילו ליצור כתוביות' })).toBeInViewport({ ratio: 1 });
+  await expect(dockStart).toBeHidden();
+  await expect(page.getByRole('navigation', { name: 'ניווט בעמוד השיווקי' })).toBeHidden();
+
+  await page.locator('#how-it-works').scrollIntoViewIfNeeded();
+  await expect(dockStart).toBeInViewport({ ratio: 1 });
+  await expect(page.locator('#how-it-works li').first()).toBeInViewport();
+
+  const dots = page.getByRole('group', { name: 'מעבר בין יכולות' });
+  await dots.scrollIntoViewIfNeeded();
+  await expect(dots.getByRole('button')).toHaveCount(6);
+  await expect(dots.getByRole('button', { name: '1 מתוך 6' })).toHaveAttribute('aria-current', 'true');
+  await dots.getByRole('button', { name: '3 מתוך 6' }).click();
+  await expect(dots.getByRole('button', { name: '3 מתוך 6' })).toHaveAttribute('aria-current', 'true');
+  await expect(page.getByRole('heading', { name: 'עריכה עם AI' })).toBeInViewport({ ratio: 1 });
+
+  await page.getByRole('button', { name: 'לסרטון הבא שלכם' }).scrollIntoViewIfNeeded();
+  await expect(dockStart).toBeHidden();
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBe(0);
+  await page.locator('#how-it-works').scrollIntoViewIfNeeded();
+  await dockStart.click();
+  expect(await page.evaluate(() => (window as any).signInCalls)).toBe(1);
+});
+
 test('demo does not autoplay with reduced motion', async ({ page }) => {
   await page.setViewportSize({ width: 1366, height: 768 });
   await page.emulateMedia({ reducedMotion: 'reduce' });
