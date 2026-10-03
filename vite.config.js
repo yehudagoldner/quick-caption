@@ -6,6 +6,7 @@ export default defineConfig(({ command, mode }) => {
   const devAuthBypass = command === "serve" && mode === "development" && devAuth.DEV_AUTH_BYPASS === "1";
 
   return {
+    base: loadEnv(mode, process.cwd(), "VITE_").VITE_APP_BASE_PATH || "/",
     plugins: [react()],
     define: {
       __DEV_AUTH_BYPASS__: JSON.stringify(devAuthBypass),

@@ -44,7 +44,7 @@ const TRANSCRIBE_ENDPOINT = `${API_BASE_URL || ""}/api/transcribe`;
 const BURN_ENDPOINT = `${API_BASE_URL || ""}/api/burn-subtitles`;
 const INITIAL_CHARACTER_LIMIT_KEY = "quickcaption:initial-character-limit";
 const INITIAL_SETTINGS_KEY = "quickcaption:initial-transcription-settings";
-const jobStorageKey = (uid: string) => `quickcaption:transcription-job:${uid}`;
+const jobStorageKey = (uid: string) => `${import.meta.env.BASE_URL === "/" ? "" : import.meta.env.BASE_URL}quickcaption:transcription-job:${uid}`;
 
 function readInitialCharacterLimit() {
   try {
@@ -76,6 +76,7 @@ function clearPendingJob(uid: string, jobId: string) {
 }
 
 const SOCKET_OPTIONS: Partial<ManagerOptions & SocketOptions> = {
+  path: `${import.meta.env.BASE_URL}socket.io`,
   transports: ["websocket"],
   autoConnect: true,
 };
@@ -177,7 +178,8 @@ export function useTranscriptionWorkflow(): TranscriptionWorkflow {
   }, []);
 
   useEffect(() => {
-    const socket = API_BASE_URL ? io(API_BASE_URL, SOCKET_OPTIONS) : io(undefined, SOCKET_OPTIONS);
+    const socketOrigin = API_BASE_URL ? new URL(API_BASE_URL, window.location.origin).origin : undefined;
+    const socket = io(socketOrigin, SOCKET_OPTIONS);
 
     const handleStageEvent = (event: StageEvent) => {
       if (!currentJobRef.current || event.jobId !== currentJobRef.current.jobId) return;
