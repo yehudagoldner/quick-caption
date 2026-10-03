@@ -63,6 +63,11 @@ export function AppHeader({
       <Toolbar variant={narrow ? "dense" : "regular"} sx={narrow ? { minHeight: 48, px: 1 } : undefined}>
         <Box sx={{ flexGrow: 1, display: "flex", alignItems: "center", gap: 2 }}>
           <Box component="img" src={`${import.meta.env.BASE_URL}quickcaption-logo.svg`} alt="QuickCaption" sx={{ height: narrow ? 24 : 32 }} />
+          {import.meta.env.VITE_APP_ENV === "qa" && (
+            <Tooltip title="סביבת בדיקות — התשלומים כבויים">
+              <Chip size="small" color="warning" label="QA" />
+            </Tooltip>
+          )}
           {isDevBypass && !narrow && (
             <Chip size="small" color="warning" variant="outlined" label="משתמש דמה מקומי" />
           )}

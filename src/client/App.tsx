@@ -223,7 +223,6 @@ function App() {
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
-      {import.meta.env.VITE_APP_ENV === "qa" && <Alert severity="warning" sx={{ borderRadius: 0 }}>סביבת QA — נתוני בדיקה, התשלומים כבויים</Alert>}
       <EditorNavigationContext.Provider value={registerEditorNavigation}>
       <Box sx={{ minHeight: "100vh", display: "flow-root", bgcolor: "background.default" }}>
         <AppHeader
