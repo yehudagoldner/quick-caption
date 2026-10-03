@@ -8,7 +8,8 @@ import type { AuthUser } from "../hooks/useTranscriptionWorkflow";
 const API_BASE_URL = ((import.meta.env.VITE_API_BASE_URL as string | undefined)?.trim() ?? "").replace(/\/?$/, "");
 type CreditPackage = { credits: number; priceUSD: string };
 type PaymentConfig = { available?: boolean; clientId: string | null; packages: CreditPackage[] };
-const paymentKey = (uid: string) => `quickcaption:pending-payment:${uid}`;
+const storagePrefix = import.meta.env.BASE_URL === "/" ? "" : import.meta.env.BASE_URL;
+const paymentKey = (uid: string) => `${storagePrefix}quickcaption:pending-payment:${uid}`;
 function readPending(uid?: string) {
   try { return uid ? localStorage.getItem(paymentKey(uid)) : null; } catch { return null; }
 }
@@ -149,7 +150,7 @@ export function BuyCreditsPage({ user, currentCredits, onCreditsUpdated }: BuyCr
   const clearUnpaidOrder = () => {
     // Keep an unavailable order's reference for support instead of destroying it.
     if (user && pendingOrder && canDiscardPending) {
-      try { localStorage.setItem(`quickcaption:unresolved-payment:${user.uid}:${pendingOrder}`, pendingOrder); } catch { /* Storage may be unavailable. */ }
+      try { localStorage.setItem(`${storagePrefix}quickcaption:unresolved-payment:${user.uid}:${pendingOrder}`, pendingOrder); } catch { /* Storage may be unavailable. */ }
     }
     if (user) savePending(user.uid, null);
     setPendingOrder(null);

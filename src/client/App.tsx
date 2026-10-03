@@ -26,11 +26,12 @@ const theme = createTheme({
 
 const RAW_API_BASE = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.trim() ?? "";
 const API_BASE_URL = RAW_API_BASE.replace(/\/?$/, "");
+const APP_BASE_PATH = import.meta.env.BASE_URL;
 
 type AppScreen = "home" | "transcription" | "videos" | "edit" | "buy-credits" | "admin";
 
 function getScreenFromUrl(): { screen: AppScreen; videoToken?: string } {
-  if (window.location.pathname.replace(/\/$/, '') === '/admin') return { screen: 'admin' };
+  if (window.location.pathname.replace(/\/$/, '') === `${APP_BASE_PATH}admin`) return { screen: 'admin' };
   const params = new URLSearchParams(window.location.search);
   const screen = params.get("screen") as AppScreen;
   const videoToken = params.get("video");
@@ -47,7 +48,7 @@ function getScreenFromUrl(): { screen: AppScreen; videoToken?: string } {
 }
 
 function updateUrl(screen: AppScreen, videoToken?: string) {
-  if (screen === 'admin') { window.history.pushState({ editorIndex: Number(window.history.state?.editorIndex ?? 0) + 1 }, '', '/admin'); return; }
+  if (screen === 'admin') { window.history.pushState({ editorIndex: Number(window.history.state?.editorIndex ?? 0) + 1 }, '', `${APP_BASE_PATH}admin`); return; }
   const params = new URLSearchParams();
   if (screen !== "home") {
     params.set("screen", screen);
@@ -56,7 +57,7 @@ function updateUrl(screen: AppScreen, videoToken?: string) {
     params.set("video", videoToken);
   }
 
-  const newUrl = params.toString() ? `/?${params.toString()}` : '/';
+  const newUrl = params.toString() ? `${APP_BASE_PATH}?${params.toString()}` : APP_BASE_PATH;
   window.history.pushState({ editorIndex: Number(window.history.state?.editorIndex ?? 0) + 1 }, "", newUrl);
 }
 
@@ -222,6 +223,7 @@ function App() {
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
+      {import.meta.env.VITE_APP_ENV === "qa" && <Alert severity="warning" sx={{ borderRadius: 0 }}>סביבת QA — נתוני בדיקה, התשלומים כבויים</Alert>}
       <EditorNavigationContext.Provider value={registerEditorNavigation}>
       <Box sx={{ minHeight: "100vh", display: "flow-root", bgcolor: "background.default" }}>
         <AppHeader

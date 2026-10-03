@@ -23,7 +23,7 @@ function read(key: string | null): Style {
 }
 
 export function useProjectCaptionStyle(videoId: number | null) {
-  const key = videoId ? `caption-style:${apiUserUid()}:${videoId}` : null;
+  const key = videoId ? `${import.meta.env.BASE_URL === "/" ? "" : import.meta.env.BASE_URL}caption-style:${apiUserUid()}:${videoId}` : null;
   const loaded = useMemo(() => read(key), [key]);
   const [state, setState] = useState(() => ({ key, value: loaded }));
   const value = state.key === key ? state.value : loaded;
