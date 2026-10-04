@@ -35,13 +35,12 @@ for (const viewport of [{ width: 320, height: 568 }, { width: 390, height: 844 }
     await page.locator('input[type=file]').setInputFiles({ name: 'portrait.webm', mimeType: 'video/webm', buffer: portraitVideo });
     await expect(page.locator('video')).toBeVisible();
     await expect.poll(() => page.locator('video').evaluate((v: HTMLVideoElement) => v.readyState)).toBeGreaterThan(0);
-    const slider = page.getByRole('slider', { name: 'מספר תווים בכתובית לפני תמלול' });
-    const sliderTrack = slider.locator('..').locator('..');
-    await expect(sliderTrack).toBeInViewport();
+    const characterLimit = page.getByRole('spinbutton', { name: 'מספר תווים' });
+    await expect(characterLimit).toBeInViewport();
     const submit = page.getByRole('button', { name: 'שלחו לעיבוד' });
-    expect((await submit.boundingBox())!.y).toBeLessThan((await sliderTrack.boundingBox())!.y);
+    expect((await submit.boundingBox())!.y).toBeGreaterThan((await characterLimit.boundingBox())!.y);
     expect(await overflow()).toEqual({ x: 0, y: 0 });
-    await slider.fill('7');
+    await characterLimit.fill('7');
     let postedCharacters: string | undefined;
     await page.route('**/api/transcribe', async route => {
       postedCharacters = route.request().postData()?.match(/name="maxCharactersPerSubtitle"\r\n\r\n(\d+)/)?.[1];

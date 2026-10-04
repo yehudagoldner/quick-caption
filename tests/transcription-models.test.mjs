@@ -89,6 +89,34 @@ test('legacy transcription configuration remains usable without a service tier o
   assert.equal(Object.hasOwn(context.textRequests[0], 'service_tier'), false);
 });
 
+test('multiple selected languages replace the environment hint throughout transcription', async t => {
+  const context = await setup(t);
+  await transcribeMedia({ ...context, languages: ['en', 'ar'] });
+  const [timed, accurate] = context.audioRequests;
+  assert.equal(timed.language, undefined);
+  assert.match(timed.prompt, /English, Arabic/);
+  assert.deepEqual(accurate.languages, ['en', 'ar']);
+  assert.equal(Object.hasOwn(accurate, 'language'), false);
+  assert.match(context.textRequests[0].input[0].content[0].text, /en, ar/);
+});
+
+test('automatic language detection clears the server language preference', async t => {
+  const context = await setup(t, { legacy: true });
+  const result = await transcribeMedia({ ...context, languages: [] });
+  assert.equal(context.audioRequests[0].language, undefined);
+  assert.equal(context.audioRequests[1].language, undefined);
+  assert.equal(context.audioRequests[1].prompt, undefined);
+  assert.deepEqual(result.segments, [segment]);
+});
+
+test('word limits and unlimited captions produce distinct output', async t => {
+  const context = await setup(t);
+  const limited = await transcribeMedia({ ...context, maxWordsPerSubtitle: 1 });
+  const unlimited = await transcribeMedia({ ...context, maxWordsPerSubtitle: 0 });
+  assert.deepEqual(limited.segments.map(s => s.text), ['שלום', 'עולם']);
+  assert.deepEqual(unlimited.segments, [segment]);
+});
+
 test('failed new models preserve the timed transcript and report both stage failures', async t => {
   const context = await setup(t, { failAudio: true, failCorrection: true });
   const result = await transcribeMedia(context);

@@ -275,10 +275,10 @@ function App() {
         {reportOpen && workflow.user && <IssueReportDialog user={workflow.user} screen={currentScreen} onClose={() => setReportOpen(false)} />}
 
         <Container maxWidth={false} disableGutters={marketingHome} sx={{
-          pt: marketingHome ? 0 : narrow && currentScreen === "transcription" ? `${headerHeight}px` : { xs: currentScreen === "transcription" ? 7 : 2, md: editing ? 1 : 6 },
-          pb: marketingHome ? 0 : { xs: currentScreen === "transcription" ? 1 : 2, md: editing ? 1 : 6 },
+          pt: marketingHome ? 0 : narrow && currentScreen === "transcription" ? `${headerHeight}px` : { xs: currentScreen === "transcription" ? 7 : 2, md: editing ? 1 : currentScreen === "transcription" ? 1.5 : 6 },
+          pb: marketingHome ? 0 : { xs: currentScreen === "transcription" ? 1 : 2, md: editing ? 1 : currentScreen === "transcription" ? 1.5 : 6 },
           px: marketingHome ? 0 : { xs: 1.5, md: 3 },
-          mt: marketingHome ? `${headerHeight}px` : { xs: currentScreen === "transcription" ? 0 : 10, md: editing ? 7 : 10 },
+          mt: marketingHome ? `${headerHeight}px` : { xs: currentScreen === "transcription" ? 0 : 10, md: currentScreen === "transcription" ? 7 : editing ? 7 : 10 },
         }}>
           {projectError && <Alert severity="error" onClose={() => setProjectError(null)} sx={{ mb: 2 }}>{projectError}</Alert>}
           {currentScreen === "home" && workflow.error && (

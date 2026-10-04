@@ -6,6 +6,7 @@ import OpenAI from "openai";
 import { instrumentOpenAI } from "./aiUsage.js";
 import "./loadAppEnv.js";
 import { limitSubtitleCharacters } from "./subtitleSegmentation.js";
+import { transcriptionLanguageOptions, validateTranscriptionLanguages } from "./transcriptionSettings.js";
 import { synchronizeWords, mergeCorrectedSegments, subtitleTokens } from "./wordAlignment.js";
 
 const AUDIO_EXTENSIONS = new Set([".mp3", ".wav", ".m4a", ".aac", ".ogg", ".flac", ".opus"]);
@@ -432,6 +433,7 @@ export async function transcribeMedia({
   format = ".srt",
   maxWordsPerSubtitle = 5,
   maxCharactersPerSubtitle = null,
+  languages,
   logger = console,
   onStage,
 } = {}) {
@@ -445,6 +447,7 @@ export async function transcribeMedia({
 
   const client = createOpenAIClient();
   const options = getTranscriptionOptions();
+  if (languages !== undefined) Object.assign(options, transcriptionLanguageOptions(validateTranscriptionLanguages(languages)));
   const warnings = [];
   const usage = {}; // Track API usage for billing
 
@@ -674,7 +677,7 @@ function getTranscriptionOptions() {
 }
 
 async function transcribeWithTimedModel(client, audioPath, options, logger) {
-  const { timedModel, temperature, translate, language } = options;
+  const { timedModel, temperature, translate, language, prompt } = options;
   const responseFormat = timedModel.includes("whisper") ? "verbose_json" : "json";
 
   logger?.log?.(`Uploading audio to ${timedModel} for timestamped transcription...`);
@@ -686,6 +689,7 @@ async function transcribeWithTimedModel(client, audioPath, options, logger) {
     response_format: responseFormat,
     translate,
     language,
+    ...(prompt ? { prompt } : {}),
     timestamp_granularities: ["word", "segment"],
   });
 
@@ -722,15 +726,16 @@ function shouldRunHighAccuracy(modelName) {
 }
 
 async function transcribeWithHighAccuracyModel(client, audioPath, options, logger, timedDuration = 0) {
-  const { highAccuracyModel, temperature, translate, language } = options;
+  const { highAccuracyModel, temperature, translate, language, languages, prompt } = options;
   const isGptTranscribe = highAccuracyModel === "gpt-transcribe";
 
   const transcription = await client.audio.transcriptions.create({
     file: fs.createReadStream(audioPath),
     model: highAccuracyModel,
     ...(isGptTranscribe
-      ? (language ? { languages: [language] } : {})
+      ? ((languages?.length || language) ? { languages: languages?.length ? languages : [language] } : {})
       : { temperature, response_format: "json", translate, language }),
+    ...(prompt ? { prompt } : {}),
   });
 
   const segments = extractSegmentsFromTranscription(transcription);
@@ -809,7 +814,7 @@ async function refineTranscriptWithGPT(client, baseResult, highAccuracyResult, o
         content: [
           {
             type: "input_text",
-            text: "You are an expert Hebrew transcription editor. Improve accuracy and grammar while preserving meaning, speaker intent, and timestamps.",
+            text: `You are an expert multilingual transcription editor. Improve accuracy and grammar while preserving meaning, speaker intent, timestamps, and every original spoken language. Never translate the transcript.${options.languages?.length ? ` Expected language codes: ${options.languages.join(", ")}.` : ""}`,
           },
         ],
       },
