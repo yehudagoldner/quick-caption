@@ -62,6 +62,25 @@ are stored in the usage ledger.
 
 Checks:
 
+Signed-in users can open **דיווח על תקלה** from the profile menu. Reports include
+title, description, current screen and identity from the application's verified
+authentication. They are persisted in `issue_reports`, created automatically on
+startup. The existing owner and delegated admins see them under
+**דיווחי משתמשים** in `/admin`, with filtering, pagination and treatment status.
+This uses the existing admin permissions; no separate admin environment settings
+or Firebase Admin SDK are required.
+
+- `POST /api/issue-reports`: submit a user report.
+- `GET /api/admin/issue-reports?status=open&page=1`: list reports (admin only).
+- `POST /api/admin/issue-reports/:id/status`: change `status` to `open`,
+  `in_progress`, or `resolved` (admin only).
+- `GET /api/admin/issue-reports/:id/screenshot`: authenticated image response
+  (admin only, no public URL). Reports may include one PNG, JPEG or WebP screenshot
+  up to 5 MiB. Users can upload it or paste it with Ctrl+V. The draft shows a
+  preview and supports replacing/removing the
+  image. The image is stored with the report in MySQL; report lists contain only
+  `has_screenshot`, and the admin viewer loads image bytes on demand.
+
 ```powershell
 npm run build
 node --test tests/admin.test.mjs tests/error-monitoring.test.mjs tests/transcription-models.test.mjs

@@ -82,7 +82,7 @@ export function AppHeader({ user, authLoading, profileAnchorEl, currentPage, cre
               <AccountBalanceWalletRounded sx={{ ml: 1.5 }} />רכישת קרדיטים
             </MenuItem>
             {isAdmin && <MenuItem disabled={navigationBlocked} onClick={() => { onProfileClose(); onAdmin?.(); }}>ניהול</MenuItem>}
-            {onReportIssue && <MenuItem onClick={() => { onProfileClose(); onReportIssue(); }}>דיווח על תקלה</MenuItem>}
+            <MenuItem onClick={() => { onProfileClose(); onReportIssue?.(); }}>דיווח על תקלה</MenuItem>
             <Divider />
             <MenuItem disabled={navigationBlocked} onClick={() => { onProfileClose(); void onSignOut(); }}>התנתקות</MenuItem>
           </Menu>

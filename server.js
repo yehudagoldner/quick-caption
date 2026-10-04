@@ -16,6 +16,7 @@ import { createBurnSubtitlesRouter } from "./routes/burnSubtitles.js";
 import paypalRouter from "./routes/paypal.js";
 import pool from "./db.js";
 import { createAdminStore } from "./src/adminStore.js";
+import { createIssueReportsRouter } from "./routes/issueReports.js";
 import { createAdminRouter } from "./routes/admin.js";
 import { captureApiErrors, createClientErrorHandler, createErrorRecorder } from "./src/errorMonitoring.js";
 import { createFirebaseVerifier, createIdentityMiddleware } from "./src/firebaseIdentity.js";
@@ -82,6 +83,7 @@ app.use('/api', (req, res, next) => {
 });
 const upload = createMediaUpload(uploadDir);
 app.post('/api/client-errors', createClientErrorHandler(errorRecorder));
+app.use('/api/issue-reports', createIssueReportsRouter({ store: adminStore }));
 app.use("/api/burn-subtitles", createBurnSubtitlesRouter(upload));
 app.use("/api/payments", paypalRouter);
 

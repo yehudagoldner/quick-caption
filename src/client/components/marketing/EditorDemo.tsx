@@ -270,7 +270,7 @@ function useSubtitleFile(segments: Segment[], direction: "rtl" | "ltr") {
 function DemoAppBar({ onStart }: { onStart: () => void }) {
   return <Box aria-hidden="true" sx={{ height: 64, flexShrink: 0, display: "flex", alignItems: "center", px: 3, bgcolor: "grey.100", borderBottom: 1, borderColor: "divider" }}>
     <Box sx={{ flexGrow: 1, display: "flex", alignItems: "center", gap: 2 }}>
-      <Box component="img" src="/quickcaption-logo.svg" alt="" sx={{ height: 32 }} />
+      <Box component="img" src={`${import.meta.env.BASE_URL}quickcaption-logo.svg`} alt="" sx={{ height: 32 }} />
       <Box sx={{ display: "flex", gap: 1 }}>
         <Button tabIndex={-1} startIcon={<HomeRounded />} variant="outlined" size="small">דף הבית</Button>
         <Button tabIndex={-1} startIcon={<VideoLibraryRounded />} variant="contained" size="small">היסטוריית סרטונים</Button>
@@ -355,7 +355,7 @@ export function PhoneEditorDemo({ demo, onStart, decorative = false }: { demo: C
       <Box className="qc-app" dir="ltr" sx={{ width: PHONE.width, height: PHONE.height, display: "flex", flexDirection: "column", bgcolor: "#fff" }}>
         <div className="qc-phone-status" aria-hidden="true"><b>9:41</b><span><i /><i /><i /></span></div>
         <Box aria-hidden="true" sx={{ minHeight: 48, display: "flex", alignItems: "center", px: 1, bgcolor: "grey.100", borderBottom: 1, borderColor: "divider", flexShrink: 0 }}>
-          <Box sx={{ flexGrow: 1, display: "flex" }}><Box component="img" src="/quickcaption-logo.svg" alt="" sx={{ height: 24 }} /></Box>
+          <Box sx={{ flexGrow: 1, display: "flex" }}><Box component="img" src={`${import.meta.env.BASE_URL}quickcaption-logo.svg`} alt="" sx={{ height: 24 }} /></Box>
           <Chip icon={<AccountBalanceWalletRounded />} label="50 קרדיטים" color="success" size="small" sx={{ ml: .5, fontWeight: "bold" }} />
           <IconButton tabIndex={-1} size="small" sx={{ ml: 1 }}><Avatar sx={{ width: 38, height: 38 }} /></IconButton>
         </Box>

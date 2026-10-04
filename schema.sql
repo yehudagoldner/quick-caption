@@ -86,3 +86,20 @@ CREATE TABLE IF NOT EXISTS video_activity (
     duration_seconds INT NOT NULL DEFAULT 0, edited TINYINT NOT NULL DEFAULT 0,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
   ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS issue_reports (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  user_uid VARCHAR(128) NOT NULL,
+  user_email VARCHAR(255),
+  user_display_name VARCHAR(255),
+  title VARCHAR(200) NOT NULL,
+  description TEXT NOT NULL,
+  screen VARCHAR(32) NOT NULL,
+  screenshot MEDIUMBLOB NULL,
+  screenshot_mime_type VARCHAR(32) NULL,
+  status ENUM('open','in_progress','resolved') NOT NULL DEFAULT 'open',
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX idx_issue_reports_status_created (status, created_at),
+  INDEX idx_issue_reports_created (created_at)
+) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;

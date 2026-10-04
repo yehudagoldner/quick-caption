@@ -33,6 +33,7 @@ for (const width of [320, 390, 768, 1280]) {
     await expect(header.getByRole('button', { name: 'תפריט', exact: true, includeHidden: true })).toHaveAttribute('aria-expanded', 'true');
     await expect(page.getByRole('menu').getByText('Review', { exact: true })).toBeVisible();
     await expect(page.getByRole('menu').getByText('50 קרדיטים', { exact: true })).toBeVisible();
+    await expect(page.getByRole('menuitem', { name: 'דיווח על תקלה' })).toBeVisible();
     await expect(page.locator('#app-navigation-menu .MuiPaper-root')).toHaveCSS('opacity', '1');
     if (width === 390) await page.screenshot({ path: 'tmp/review/unified-header-menu.png' });
     await page.keyboard.press('Escape');

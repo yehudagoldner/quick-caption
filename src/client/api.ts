@@ -1,8 +1,13 @@
 import type { User } from 'firebase/auth';
 
 let currentUser: User | null = null;
-export function setApiUser(user: User | null) {
+let accountReady: Promise<void> = Promise.resolve();
+export function setApiUser(user: User | null, ready: Promise<void> = Promise.resolve()) {
   currentUser = user;
+  accountReady = ready;
+  // Keep the rejection available to requests, without an unhandled rejection
+  // when no request is waiting yet.
+  void ready.catch(() => {});
   if (user) void import('./errorReporting').then(module => module.flushErrorReports()).catch(() => {});
 }
 export function apiUserUid() { return currentUser?.uid ?? 'guest'; }
@@ -10,6 +15,8 @@ export async function apiHeaders(initial?: HeadersInit): Promise<Headers> {
   const headers = new Headers(initial);
   const user = currentUser;
   if (user) {
+    await accountReady;
+    if (currentUser !== user) throw new Error('The signed-in account changed during the request');
     const token = await user.getIdToken();
     if (currentUser !== user) throw new Error('The signed-in account changed during the request');
     headers.set('Authorization', `Bearer ${token}`);

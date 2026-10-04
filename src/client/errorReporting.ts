@@ -6,7 +6,8 @@ const base = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.replace(
 let flushing = false;
 let retryTimer: number | undefined;
 const memory = new Map<string, Report[]>();
-const key = (uid: string) => `quickcaption:error-reports:${uid}`;
+const storagePrefix = import.meta.env.BASE_URL === '/' ? '' : import.meta.env.BASE_URL;
+const key = (uid: string) => `${storagePrefix}quickcaption:error-reports:${uid}`;
 function read(uid: string): Report[] {
   if (memory.has(uid)) return memory.get(uid)!;
   let reports: Report[] = [];

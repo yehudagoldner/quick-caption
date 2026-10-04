@@ -8,6 +8,7 @@ import { VideoEditPage } from "./components/VideoEditPage";
 import { VideosPage } from "./components/VideosPage";
 import { BuyCreditsPage } from "./components/BuyCreditsPage";
 import { AdminPage } from "./components/AdminPage";
+import { IssueReportDialog } from "./components/IssueReportDialog";
 import { adminRequest } from "./adminApi";
 import { useTranscriptionWorkflow } from "./hooks/useTranscriptionWorkflow";
 import { useNarrowViewport } from "./hooks/useNarrowViewport";
@@ -28,11 +29,12 @@ const theme = createTheme({
 
 const RAW_API_BASE = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.trim() ?? "";
 const API_BASE_URL = RAW_API_BASE.replace(/\/?$/, "");
+const APP_BASE_PATH = import.meta.env.BASE_URL;
 
 type AppScreen = "home" | "transcription" | "videos" | "edit" | "buy-credits" | "admin";
 
 function getScreenFromUrl(): { screen: AppScreen; videoToken?: string } {
-  if (window.location.pathname.replace(/\/$/, '') === '/admin') return { screen: 'admin' };
+  if (window.location.pathname.replace(/\/$/, '') === `${APP_BASE_PATH}admin`) return { screen: 'admin' };
   const params = new URLSearchParams(window.location.search);
   const screen = params.get("screen") as AppScreen;
   const videoToken = params.get("video");
@@ -49,7 +51,7 @@ function getScreenFromUrl(): { screen: AppScreen; videoToken?: string } {
 }
 
 function updateUrl(screen: AppScreen, videoToken?: string) {
-  if (screen === 'admin') { window.history.pushState({ editorIndex: Number(window.history.state?.editorIndex ?? 0) + 1 }, '', '/admin'); return; }
+  if (screen === 'admin') { window.history.pushState({ editorIndex: Number(window.history.state?.editorIndex ?? 0) + 1 }, '', `${APP_BASE_PATH}admin`); return; }
   const params = new URLSearchParams();
   if (screen !== "home") {
     params.set("screen", screen);
@@ -58,7 +60,7 @@ function updateUrl(screen: AppScreen, videoToken?: string) {
     params.set("video", videoToken);
   }
 
-  const newUrl = params.toString() ? `/?${params.toString()}` : '/';
+  const newUrl = params.toString() ? `${APP_BASE_PATH}?${params.toString()}` : APP_BASE_PATH;
   window.history.pushState({ editorIndex: Number(window.history.state?.editorIndex ?? 0) + 1 }, "", newUrl);
 }
 
@@ -74,6 +76,8 @@ function App() {
   const historyIndex = useRef(Number(window.history.state?.editorIndex ?? 0));
   const [credits, setCredits] = useState<number | null>(null);
   const [adminUid, setAdminUid] = useState<string | null>(null);
+  const [reportOpen, setReportOpen] = useState(false);
+  useEffect(() => { setReportOpen(false); }, [workflow.user?.uid]);
   useEffect(() => {
     let cancelled = false;
     setAdminUid(null);
@@ -259,6 +263,7 @@ function App() {
             else navigate();
           }}
           onBuyCredits={handleBuyCredits}
+          onReportIssue={() => setReportOpen(true)}
           isAdmin={Boolean(workflow.user && adminUid === workflow.user.uid)}
           onAdmin={() => {
             const navigate = () => navigateToScreen('admin');
@@ -266,6 +271,8 @@ function App() {
             else navigate();
           }}
         />
+
+        {reportOpen && workflow.user && <IssueReportDialog user={workflow.user} screen={currentScreen} onClose={() => setReportOpen(false)} />}
 
         <Container maxWidth={false} disableGutters={marketingHome} sx={{
           pt: marketingHome ? 0 : narrow && currentScreen === "transcription" ? `${headerHeight}px` : { xs: currentScreen === "transcription" ? 7 : 2, md: editing ? 1 : currentScreen === "transcription" ? 1.5 : 6 },

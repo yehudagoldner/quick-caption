@@ -5,6 +5,7 @@ import { AddRounded, RefreshRounded, AdminPanelSettingsRounded } from '@mui/icon
 import { useAuth } from '../contexts/AuthContext';
 import { adminRequest } from '../adminApi';
 import { AdminErrorsPanel } from './AdminErrorsPanel';
+import { AdminReportsPage } from './AdminReportsPage';
 
 type Numeric = number | string;
 type Account = { uid: string; email: string; displayName: string | null; credits: number; paying: boolean; admin: boolean; createdAt: string };
@@ -40,7 +41,7 @@ export function AdminPage() {
   const [dialogError, setDialogError] = useState('');
   const pendingGrant = useRef<{ requestId: string; body: object; path: string } | null>(null);
   const generation = useRef(0);
-  const [tab, setTab] = useState<'overview' | 'errors'>('overview');
+  const [tab, setTab] = useState<'overview' | 'errors' | 'reports'>('overview');
   const [errorsReload, setErrorsReload] = useState(0);
 
   const refresh = useCallback(async () => {
@@ -104,13 +105,15 @@ export function AdminPage() {
   return <Box dir="rtl" sx={{ maxWidth: 1440, mx: 'auto' }}>
     <Stack direction="row" justifyContent="space-between" alignItems="center" mb={3} gap={2}>
       <Box><Typography variant="h4" fontWeight={800}>ניהול QuickCaption</Typography><Typography color="text.secondary">נתוני פעילות, הכנסות, משתמשים והוצאות AI</Typography></Box>
-      <Button startIcon={<RefreshRounded />} onClick={() => tab === 'errors' ? setErrorsReload(value => value + 1) : void refresh()} disabled={tab === 'overview' && loading}>רענון</Button>
+      <Button startIcon={<RefreshRounded />} onClick={() => tab !== 'overview' ? setErrorsReload(value => value + 1) : void refresh()} disabled={tab === 'overview' && loading}>רענון</Button>
     </Stack>
     <Tabs value={tab} onChange={(_, value) => setTab(value)} aria-label="טאבים של ניהול" sx={{ mb: 3 }}>
       <Tab value="overview" label="סקירה וניהול" id="admin-overview-tab" aria-controls="admin-overview-panel" />
       <Tab value="errors" label="שגיאות" id="admin-errors-tab" aria-controls="admin-errors-panel" />
+      <Tab value="reports" label="דיווחי משתמשים" id="admin-reports-tab" aria-controls="admin-reports-panel" />
     </Tabs>
     {tab === 'errors' && <AdminErrorsPanel key={user.uid} reloadKey={errorsReload} />}
+    {tab === 'reports' && <AdminReportsPage key={user.uid} reloadKey={errorsReload} />}
     <Box role="tabpanel" id="admin-overview-panel" aria-labelledby="admin-overview-tab" hidden={tab !== 'overview'}>
     {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
     {success && <Alert severity="success" onClose={() => setSuccess('')} sx={{ mb: 2 }}>{success}</Alert>}

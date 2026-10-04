@@ -3,7 +3,7 @@ import type { Segment } from "../../types";
 import { AUTO_CAPTION_FONT_SIZE, type CaptionFontSizeSetting } from "../../../captionStyle.js";
 import { useAutoCaptionFontSize } from "../../hooks/useAutoCaptionFontSize";
 
-export const DEMO_IMAGE = "/demo/creator.webp";
+export const DEMO_IMAGE = `${import.meta.env.BASE_URL}demo/creator.webp`;
 export const DEMO_VIDEO = { width: 1024, height: 1536 };
 export const DEMO_DURATION = 10;
 

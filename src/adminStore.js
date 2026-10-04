@@ -1,3 +1,5 @@
+import { createIssueReportStore } from './issueReports.js';
+
 export const OWNER_EMAIL = 'goldnery@gmail.com';
 export const normalizeEmail = value => typeof value === 'string' ? value.trim().toLowerCase() : '';
 
@@ -47,6 +49,7 @@ export async function ensureAdminSchema(db) {
 
 export function createAdminStore(pool) {
   return {
+    ...createIssueReportStore(pool),
     async recordError(row) {
       await pool.execute(`INSERT INTO application_errors
         (event_id, source, operation, message, http_status, http_method, user_uid, request_id, created_at)
