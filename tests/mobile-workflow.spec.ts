@@ -57,7 +57,7 @@ for (const viewport of [{ width: 320, height: 568 }, { width: 390, height: 844 }
   });
 }
 
-test('mobile styles drawer keeps a large, interactive video and restores normal navigation', async ({ page, browserName }) => {
+test('mobile styles drawer opens at 80% of the viewport and restores normal navigation', async ({ page, browserName }) => {
   test.skip(browserName === 'webkit' && process.platform === 'win32', 'Windows WebKit cannot decode the media fixture; media layout is verified in Chromium.');
   await page.setViewportSize({ width: 390, height: 844 });
   await prepareApp(page);
@@ -69,6 +69,9 @@ test('mobile styles drawer keeps a large, interactive video and restores normal 
   const drawer = page.getByRole('region', { name: 'עיצוב כתוביות' });
   await expect(drawer).toBeVisible();
   await expect(drawer).toHaveCSS('transform', 'none');
+  const drawerRect = (await drawer.boundingBox())!;
+  expect(drawerRect.height).toBeCloseTo(844 * 0.8, 0);
+  expect(drawerRect.y + drawerRect.height).toBeCloseTo(844, 0);
   const fontSize = drawer.getByRole('combobox', { name: 'גודל פונט', exact: true });
   await expect(fontSize).toHaveText(/^אוטומטי \(\d+\)$/);
   const autoSize = Number((await fontSize.textContent())!.match(/\d+/)![0]);
@@ -85,11 +88,11 @@ test('mobile styles drawer keeps a large, interactive video and restores normal 
   await expect(fontSize).toHaveText(`אוטומטי (${autoSize})`);
   await expect(page.getByRole('listbox', { includeHidden: true })).toHaveCount(0);
   const rect = await page.getByTestId('media-stage').boundingBox();
-  expect(rect!.height).toBeGreaterThan(280);
+  expect(rect!.height).toBeGreaterThan(0);
   expect(rect!.y + rect!.height).toBeLessThanOrEqual((await drawer.boundingBox())!.y + 2);
   expect(await editor.locator('video').evaluate(video => {
     const rect = video.getBoundingClientRect();
-    return document.elementFromPoint(rect.x + rect.width / 2, rect.y + 20) === video;
+    return document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2) === video;
   })).toBe(true);
   await page.screenshot({ path: 'tmp/review/editor-style.png' });
   await page.getByRole('button', { name: 'סגירת עיצוב' }).click();
