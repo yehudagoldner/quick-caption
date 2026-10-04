@@ -20,8 +20,8 @@ export function DownloadFeedbackDialog({ open, onClose, onSubmit }: {
     <DialogContent><Stack spacing={2} sx={{ pt: 1 }}>
       <Typography>הורדת הסרטון התחילה. נשמח לשמוע איך היה להשתמש ב־Quick Caption.</Typography>
       <Typography fontWeight={600}>דירוג החוויה: 1 עד 5 כוכבים</Typography>
-      <Rating name="download-experience-rating" value={rating} onChange={(_, value) => setRating(value)} disabled={saving}
-        getLabelText={value => `${value} ${value === 1 ? 'כוכב' : 'כוכבים'}`} size="large" sx={{ alignSelf: 'center', direction: 'ltr' }} />
+      <Rating name="download-experience-rating" value={rating} onChange={(_, value) => setRating(value)} disabled={saving} dir="rtl"
+        getLabelText={value => `${value} ${value === 1 ? 'כוכב' : 'כוכבים'}`} size="large" sx={{ alignSelf: 'center' }} />
       <TextField label="פידבק על החוויה (לא חובה)" multiline minRows={3} value={feedback} onChange={e => setFeedback(e.target.value)} disabled={saving}
         slotProps={{ htmlInput: { maxLength: 2000 } }} helperText={`${feedback.length}/2000`} />
       {error && <Alert severity="error">{error}</Alert>}

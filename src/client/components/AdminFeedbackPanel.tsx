@@ -38,7 +38,7 @@ export function AdminFeedbackPanel() {
         <TableCell align="right">{new Date(entry.createdAt).toLocaleString('he-IL', { timeZone: 'Asia/Jerusalem' })}</TableCell>
         <TableCell align="right"><Typography>{entry.displayName ?? 'ללא שם'}</Typography><Typography variant="body2" dir="ltr">{entry.email ?? 'משתמש שהוסר'}</Typography></TableCell>
         <TableCell align="right" sx={{ overflowWrap: 'anywhere' }}>{entry.filename ?? `סרטון ${entry.videoId}`}</TableCell>
-        <TableCell align="right"><Rating readOnly value={Number(entry.rating)} size="small" sx={{ direction: 'ltr' }} /><Typography variant="caption" display="block">{entry.rating}/5</Typography></TableCell>
+        <TableCell align="right"><Rating readOnly value={Number(entry.rating)} size="small" dir="rtl" /><Typography variant="caption" display="block">{entry.rating}/5</Typography></TableCell>
         <TableCell align="right" sx={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', minWidth: 180 }}>{entry.feedback || 'ללא פידבק כתוב'}</TableCell>
       </TableRow>)}</TableBody></Table></TableContainer>}
       <Stack direction="row" justifyContent="space-between" alignItems="center" mt={2}>

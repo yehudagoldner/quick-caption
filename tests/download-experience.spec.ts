@@ -31,6 +31,61 @@ async function rate(dialog: Locator, value: number) {
   await dialog.locator(`label[for="${id}"]`).click();
 }
 
+test('rating hover and clicks agree with every visible star', async ({ page }) => {
+  const state = await setup(page);
+  await page.goto('/?screen=edit&video=review-token');
+  const download = page.waitForEvent('download');
+  await selectDownload(page, false, 'הורד סרטון עם כתוביות', 'video');
+  await download;
+  const dialog = page.getByRole('dialog', { name: 'איך הייתה החוויה?' });
+  await expect(dialog).toBeVisible();
+  await expect(page.locator('.MuiDialog-container')).toHaveCSS('opacity', '1');
+  const rating = dialog.locator('.MuiRating-root');
+  for (const value of [1, 5, 2, 4, 3]) {
+    const name = `${value} ${value === 1 ? 'כוכב' : 'כוכבים'}`;
+    const radio = dialog.getByRole('radio', { name, exact: true });
+    const id = await radio.getAttribute('id');
+    const star = dialog.locator(`label[for="${id}"]`);
+    const box = (await star.boundingBox())!;
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    if (value === 1) await page.screenshot({ path: 'tmp/review/rating-hover.png' });
+    await expect(rating.locator('.MuiRating-iconFilled')).toHaveCount(value);
+    await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.move(0, 0);
+    await expect(radio).toBeChecked();
+    await expect(rating.locator('.MuiRating-iconFilled')).toHaveCount(value);
+  }
+  await dialog.getByRole('button', { name: 'שליחת דירוג' }).click();
+  await expect(dialog).toHaveCount(0);
+  expect(state.feedback[0].rating).toBe(3);
+});
+
+test.describe('touch rating', () => {
+  test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+
+  test('tapping every star selects and submits its displayed value', async ({ page }) => {
+    const state = await setup(page);
+    await page.goto('/?screen=edit&video=review-token');
+    const download = page.waitForEvent('download');
+    await selectDownload(page, true, 'הורד סרטון עם כתוביות', 'video');
+    await download;
+    const dialog = page.getByRole('dialog', { name: 'איך הייתה החוויה?' });
+    await expect(dialog).toBeVisible();
+    await expect(page.locator('.MuiDialog-container')).toHaveCSS('opacity', '1');
+    for (const value of [1, 2, 3, 4, 5]) {
+      const radio = dialog.getByRole('radio', { name: `${value} ${value === 1 ? 'כוכב' : 'כוכבים'}`, exact: true });
+      const id = await radio.getAttribute('id');
+      await dialog.locator(`label[for="${id}"]`).tap();
+      await expect(radio).toBeChecked();
+      await expect(dialog.locator('.MuiRating-iconFilled')).toHaveCount(value);
+    }
+    await page.screenshot({ path: 'tmp/review/rating-touch.png' });
+    await dialog.getByRole('button', { name: 'שליחת דירוג' }).tap();
+    await expect(dialog).toHaveCount(0);
+    expect(state.feedback[0].rating).toBe(5);
+  });
+});
+
 for (const mobile of [false, true]) {
   test(`${mobile ? 'mobile' : 'desktop'} subtitle download is recorded without requesting a rating`, async ({ page }) => {
     await page.setViewportSize(mobile ? { width: 390, height: 844 } : { width: 1366, height: 768 });
