@@ -13,11 +13,12 @@ type AuthContextValue = {
 };
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.trim().replace(/\/$/, "") ?? "";
 
 async function syncUser(user: User) {
   try {
     const idToken = await user.getIdToken();
-    await fetch("/api/users/sync", {
+    const response = await fetch(`${API_BASE_URL}/api/users/sync`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` },
       body: JSON.stringify({
@@ -31,8 +32,10 @@ async function syncUser(user: User) {
         lastLoginAt: user.metadata?.lastSignInTime ?? null,
       }),
     });
+    if (!response.ok) throw new Error("Account synchronization failed");
   } catch (error) {
     console.error("Failed to sync user", error);
+    throw error;
   }
 }
 
@@ -42,7 +45,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setApiUser(initial);
     return initial;
   });
-  const setUser = (next: User | null) => { setApiUser(next); setUserState(next); };
+  const setUser = (next: User | null, ready?: Promise<void>) => { setApiUser(next, ready); setUserState(next); };
   const [loading, setLoading] = useState(!isDevAuthBypass);
 
   useEffect(() => {
@@ -58,11 +61,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     void import("../firebase").then(({ auth }) => {
       if (cancelled) return;
       unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
-        setUser(firebaseUser);
+        setUser(firebaseUser, firebaseUser ? syncUser(firebaseUser) : undefined);
         setLoading(false);
-        if (firebaseUser) {
-          void syncUser(firebaseUser);
-        }
       });
     });
 
@@ -84,7 +84,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const provider = new GoogleAuthProvider();
       provider.setCustomParameters({ prompt: "select_account" });
       const credential = await signInWithPopup(auth, provider);
-      await syncUser(credential.user);
+      const ready = syncUser(credential.user);
+      setUser(credential.user, ready);
+      await ready;
     } finally {
       setLoading(false);
     }

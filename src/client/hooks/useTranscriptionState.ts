@@ -285,7 +285,7 @@ export function useTranscriptionState({
       setSaveState("saving");
       setSaveError(null);
       try {
-        const response = await apiFetch("/api/resegment", {
+        const response = await apiFetch(`${import.meta.env.VITE_API_BASE_URL?.replace(/\/$/, "") ?? ""}/api/resegment`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ words: editableWords, maxWords, customInstructions }),
@@ -325,7 +325,7 @@ export function useTranscriptionState({
       setSaveState("saving");
       setSaveError(null);
       try {
-        const response = await apiFetch("/api/ai-edit-subtitles", {
+        const response = await apiFetch(`${import.meta.env.VITE_API_BASE_URL?.replace(/\/$/, "") ?? ""}/api/ai-edit-subtitles`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
