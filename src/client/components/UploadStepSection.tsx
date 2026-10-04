@@ -2,8 +2,9 @@
 import { Alert, Card, CardContent, Fade, Stack } from "@mui/material";
 import { UploadForm } from "./UploadForm";
 import type { StageState } from "../types";
+import type { InitialTranscriptionSettingsProps } from "./InitialTranscriptionSettings";
 
-type UploadStepSectionProps = {
+type UploadStepSectionProps = InitialTranscriptionSettingsProps & {
   active: boolean;
   file: File | null;
   isSubmitting: boolean;
@@ -29,13 +30,15 @@ export function UploadStepSection({
   onMaxCharactersChange,
   onSubmit,
   onBackToUpload,
+  ...settings
 }: UploadStepSectionProps) {
   return (
     <Fade in={active} mountOnEnter unmountOnExit>
       <Card elevation={3}>
-        <CardContent sx={{ px: { xs: 1.5, sm: 2 }, py: { xs: "clamp(8px, calc(5dvh - 20px), 24px)", sm: 2 }, "&:last-child": { pb: { xs: "clamp(8px, calc(5dvh - 20px), 24px)", sm: 2 } } }}>
-          <Stack spacing={{ xs: 1, sm: 3 }}>
+        <CardContent sx={{ p: 1.5, "&:last-child": { pb: 1.5 } }}>
+          <Stack spacing={1}>
             <UploadForm
+              {...settings}
               file={file}
               isSubmitting={isSubmitting}
               uploadProgress={uploadProgress}

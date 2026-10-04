@@ -1,4 +1,4 @@
-import { useCallback, useRef, type MouseEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type MouseEvent, type RefObject } from "react";
 import { Button, useMediaQuery } from "@mui/material";
 import {
   ArrowBackRounded, AutoAwesomeRounded, AutoFixHighRounded, CheckRounded, DownloadRounded, FormatTextdirectionRToLRounded,
@@ -15,6 +15,7 @@ interface PromotionalHomeProps {
   onSignIn: () => Promise<void>;
   isAuthenticated: boolean;
   onStart: () => void;
+  onMyVideos?: () => void;
 }
 
 const useCases = ["רילס וטיקטוק", "פודקאסטים", "יוטיוב שורטס", "סרטוני הדרכה", "הרצאות ווובינרים", "מודעות ותוכן לעסק", "ראיונות", "וולוגים"];
@@ -47,16 +48,60 @@ function LookCard({ name, note, look, demo, selected, onApply }: { name: string;
   </article>;
 }
 
-export function PromotionalHome({ authLoading, onSignIn, isAuthenticated, onStart }: PromotionalHomeProps) {
+function useCarouselIndex(ref: RefObject<HTMLElement | null>) {
+  const [index, setIndex] = useState(0);
+  useEffect(() => {
+    const element = ref.current;
+    if (!element) return;
+    let frame = 0;
+    const update = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        const box = element.getBoundingClientRect();
+        const center = box.left + box.width / 2;
+        let nearest = 0;
+        let distance = Infinity;
+        Array.from(element.children).forEach((child, position) => {
+          const rect = child.getBoundingClientRect();
+          const offset = Math.abs(rect.left + rect.width / 2 - center);
+          if (offset < distance) { distance = offset; nearest = position; }
+        });
+        setIndex(nearest);
+      });
+    };
+    update();
+    element.addEventListener("scroll", update, { passive: true });
+    return () => { element.removeEventListener("scroll", update); cancelAnimationFrame(frame); };
+  }, [ref]);
+  return index;
+}
+
+function CarouselDots({ target, count, label, behavior }: { target: RefObject<HTMLElement | null>; count: number; label: string; behavior: ScrollBehavior }) {
+  const index = useCarouselIndex(target);
+  const go = (position: number) => (target.current?.children[position] as HTMLElement | undefined)?.scrollIntoView({ behavior, inline: "center", block: "nearest" });
+  return <div className="marketing-dots" role="group" aria-label={label}>
+    {Array.from({ length: count }, (_, position) => <button key={position} type="button" className={position === index ? "is-active" : undefined}
+      aria-label={`${position + 1} מתוך ${count}`} aria-current={position === index || undefined} onClick={() => go(position)} />)}
+  </div>;
+}
+
+export function PromotionalHome({ authLoading, onSignIn, isAuthenticated, onStart, onMyVideos }: PromotionalHomeProps) {
   const reducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)", { noSsr: true });
   const wide = useMediaQuery("(min-width: 760px)", { noSsr: true });
   const demoRef = useRef<HTMLElement>(null);
   const stylesRef = useRef<HTMLElement>(null);
   const featuresRef = useRef<HTMLElement>(null);
+  const actionsRef = useRef<HTMLDivElement>(null);
+  const finalRef = useRef<HTMLElement>(null);
+  const looksRef = useRef<HTMLDivElement>(null);
+  const bentoRef = useRef<HTMLDivElement>(null);
   const demo = useCaptionDemo({ autoplay: !reducedMotion, visible: useInView(demoRef) });
   const stylesVisible = useInView(stylesRef);
   const featuresVisible = useInView(featuresRef);
   const gallery = useCaptionDemo({ autoplay: !reducedMotion, visible: stylesVisible || featuresVisible });
+  const heroActionsVisible = useInView(actionsRef, 0, true);
+  const finalVisible = useInView(finalRef);
+  const dockVisible = isAuthenticated || (!heroActionsVisible && !finalVisible);
   const start = useCallback(() => { if (isAuthenticated) onStart(); else void onSignIn(); }, [isAuthenticated, onStart, onSignIn]);
   const behavior: ScrollBehavior = reducedMotion ? "instant" : "smooth";
   const scrollTo = (id: string) => document.getElementById(id)?.scrollIntoView({ behavior, block: "start" });
@@ -77,7 +122,7 @@ export function PromotionalHome({ authLoading, onSignIn, isAuthenticated, onStar
   };
 
   return (
-    <main className="marketing" dir="rtl">
+    <main className={`marketing ${wide ? "" : "has-dock"}`} dir="rtl">
       <section className="marketing-hero" aria-labelledby="marketing-title">
         <div className="marketing-aurora" aria-hidden="true"><i /><i /><i /></div>
         <div className="marketing-wrap">
@@ -88,7 +133,7 @@ export function PromotionalHome({ authLoading, onSignIn, isAuthenticated, onStar
             <span className="marketing-eyebrow"><AutoAwesomeRounded /> תמלול, עריכה ועיצוב, במקום אחד</span>
             <h1 id="marketing-title">כתוביות בעברית<br /><span>שעוצרות את הגלילה.</span></h1>
             <p className="marketing-intro">מעלים סרטון ומקבלים תמלול מדויק עם תזמון לכל מילה. מתקנים, מעצבים ומורידים סרטון מוכן לשיתוף, ישירות מהדפדפן.</p>
-            <div className="marketing-actions">
+            <div className="marketing-actions" ref={actionsRef}>
               <Button className="marketing-primary" variant="contained" onClick={start} disabled={authLoading} endIcon={<ArrowBackRounded />}>{authLoading ? "טוענים..." : "התחילו ליצור כתוביות"}</Button>
               <Button className="marketing-watch" onClick={showDemo} startIcon={<span className="marketing-watch-icon"><PlayArrowRounded /></span>}>צפו בדוגמה</Button>
             </div>
@@ -130,10 +175,11 @@ export function PromotionalHome({ authLoading, onSignIn, isAuthenticated, onStar
             <h2 id="marketing-studio-title">בוחרים לוק. רואים אותו חי.</h2>
             <p>כל סגנון כאן בנוי מההגדרות שבעורך: צבע, מסגרת, מיקום ומילה אקטיבית.<br className="marketing-desktop-break" /> בחרו אחד ונסו אותו על ההדגמה.</p>
           </div>
-          <div className="marketing-looks">
+          <div className="marketing-looks" ref={looksRef}>
             {LOOK_PRESETS.map(preset => <LookCard key={preset.id} name={preset.name} note={preset.note} look={preset.look} demo={gallery}
               selected={sameLook(demo.look, preset.look)} onApply={() => applyLook(preset.look)} />)}
           </div>
+          {!wide && <CarouselDots target={looksRef} count={LOOK_PRESETS.length} label="מעבר בין סגנונות" behavior={behavior} />}
         </div>
       </section>
 
@@ -185,7 +231,7 @@ export function PromotionalHome({ authLoading, onSignIn, isAuthenticated, onStar
             <h2 id="marketing-features-title">עורך שנבנה לעברית.</h2>
             <p>כלים מקצועיים שמרגישים פשוטים, במחשב ובטלפון.</p>
           </div>
-          <div className="marketing-bento">
+          <div className="marketing-bento" ref={bentoRef}>
             <article className="marketing-tile marketing-tile-timeline">
               <div className="marketing-tile-copy"><span className="marketing-tile-icon"><TimelineRounded /></span><h3>ציר זמן מקצועי, פריים אחרי פריים</h3><p>גוררים, מקצרים, מפצלים ומחברים כתוביות. ניווט פריים־פריים, זום עם הגלגלת וקיצורי מקלדת.</p></div>
               <div className="marketing-mini-timeline" aria-hidden="true">
@@ -208,10 +254,10 @@ export function PromotionalHome({ authLoading, onSignIn, isAuthenticated, onStar
                 <span className="marketing-ai-button">בצע עריכה</span>
               </div>
             </article>
-            <article className="marketing-tile marketing-tile-phone">
+            {wide && <article className="marketing-tile marketing-tile-phone">
               <div className="marketing-tile-copy"><span className="marketing-tile-icon"><PhoneIphoneRounded /></span><h3>עורכים גם מהטלפון</h3><p>עורך מלא שמותאם למגע: ניגון, תיקון, תזמון ועיצוב.</p></div>
-              {wide && <PhoneEditorDemo demo={gallery} onStart={start} decorative />}
-            </article>
+              <PhoneEditorDemo demo={gallery} onStart={start} decorative />
+            </article>}
             <article className="marketing-tile marketing-tile-rtl">
               <div className="marketing-tile-copy"><span className="marketing-tile-icon"><FormatTextdirectionRToLRounded /></span><h3>עברית, מימין לשמאל</h3><p>פיסוק במקום, מילים באנגלית נשארות שלמות, ואפשר לעבור ל־LTR בלחיצה.</p></div>
               <div className="marketing-rtl-demo" aria-hidden="true"><span>היי! זה עובד גם עם English.</span><em><b>RTL</b><i>LTR</i></em></div>
@@ -227,6 +273,7 @@ export function PromotionalHome({ authLoading, onSignIn, isAuthenticated, onStar
               </div>
             </article>
           </div>
+          {!wide && <CarouselDots target={bentoRef} count={6} label="מעבר בין יכולות" behavior={behavior} />}
         </div>
       </section>
 
@@ -237,7 +284,7 @@ export function PromotionalHome({ authLoading, onSignIn, isAuthenticated, onStar
         </div>
       </section>
 
-      <section className="marketing-final" aria-labelledby="marketing-final-title">
+      <section className="marketing-final" ref={finalRef} aria-labelledby="marketing-final-title">
         <div className="marketing-wrap">
           <div className="marketing-final-card">
             <div className="marketing-aurora is-dark" aria-hidden="true"><i /><i /><i /></div>
@@ -256,6 +303,13 @@ export function PromotionalHome({ authLoading, onSignIn, isAuthenticated, onStar
           <a href="#marketing-title" onClick={jump("marketing-title")}>בחזרה למעלה ↑</a>
         </div>
       </footer>
+
+      {!wide && <div className={`marketing-dock ${dockVisible ? "is-visible" : ""}`} role="region" aria-label="פעולות מהירות">
+        {isAuthenticated ? <>
+          <Button className="marketing-primary" variant="contained" onClick={onStart} startIcon={<UploadFileRounded />}>סרטון חדש</Button>
+          {onMyVideos && <Button className="marketing-dock-secondary" onClick={onMyVideos} startIcon={<VideoLibraryRounded />}>הסרטונים שלי</Button>}
+        </> : <Button className="marketing-primary" variant="contained" onClick={start} disabled={authLoading} endIcon={<ArrowBackRounded />}>{authLoading ? "טוענים..." : "התחילו עכשיו"}</Button>}
+      </div>}
     </main>
   );
 }

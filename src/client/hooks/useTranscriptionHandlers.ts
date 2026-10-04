@@ -8,6 +8,7 @@ import { serializeSubtitles } from "../utils/subtitleExport";
 import { useEditorPreferences } from "../contexts/EditorPreferences";
 import { retimeCaption, validateCaptionRange } from "../../timelineEditing.js";
 import { AUTO_CAPTION_FONT_SIZE, sanitizeCaptionFontSize, type CaptionFontSizeSetting } from "../../captionStyle.js";
+import { startFileDownload, type DownloadFile } from "../contexts/DownloadContext";
 
 type BurnResult = {
   blob: Blob;
@@ -54,6 +55,7 @@ type UseTranscriptionHandlersProps = {
   marginPercent: number;
   videoDimensions: { width: number; height: number } | null;
   onBurn: (options: BurnOptions) => Promise<BurnResult>;
+  onDownloadVideo?: (file: DownloadFile) => Promise<boolean>;
 };
 
 export function useTranscriptionHandlers({
@@ -90,6 +92,7 @@ export function useTranscriptionHandlers({
   marginPercent,
   videoDimensions,
   onBurn,
+  onDownloadVideo,
 }: UseTranscriptionHandlersProps) {
   const { preferences } = useEditorPreferences();
   const pendingSeek = useRef<number | null>(null);
@@ -262,10 +265,8 @@ export function useTranscriptionHandlers({
       setBurnedVideo(next);
 
       if (options?.download !== false) {
-        const link = document.createElement("a");
-        link.href = url;
-        link.download = filename;
-        link.click();
+        if (onDownloadVideo) await onDownloadVideo(next);
+        else startFileDownload(next);
       }
       return next;
     } catch (error) {
@@ -280,6 +281,7 @@ export function useTranscriptionHandlers({
     setBurnError,
     setIsBurning,
     onBurn,
+    onDownloadVideo,
     editableSegments,
     editableWords,
     activeWordEnabled,

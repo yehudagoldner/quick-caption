@@ -11,6 +11,7 @@ import { AdminPage } from "./components/AdminPage";
 import { adminRequest } from "./adminApi";
 import { useTranscriptionWorkflow } from "./hooks/useTranscriptionWorkflow";
 import { EditorNavigationContext, type EditorNavigationGuard } from "./contexts/EditorNavigationContext";
+import { EditorHeaderContext, type EditorHeaderActions } from "./contexts/EditorHeaderContext";
 import "./App.css";
 
 const theme = createTheme({
@@ -62,8 +63,10 @@ function updateUrl(screen: AppScreen, videoToken?: string) {
 function App() {
   const workflow = useTranscriptionWorkflow();
   const desktopHome = useMediaQuery(theme.breakpoints.up("md"));
-  const [currentScreen, setCurrentScreen] = useState<AppScreen>("home");
-  const [videoToken, setVideoToken] = useState<string | undefined>();
+  const [initialRoute] = useState(getScreenFromUrl);
+  const [currentScreen, setCurrentScreen] = useState<AppScreen>(initialRoute.screen);
+  const [videoToken, setVideoToken] = useState<string | undefined>(initialRoute.videoToken);
+  const [signingOut, setSigningOut] = useState(false);
   const [projectError, setProjectError] = useState<string | null>(null);
   const openingProject = useRef(false);
   const historyIndex = useRef(Number(window.history.state?.editorIndex ?? 0));
@@ -82,18 +85,16 @@ function App() {
   }, [workflow.user]);
   const editorNavigation = useRef<EditorNavigationGuard | null>(null);
   const [navigationBlocked, setNavigationBlocked] = useState(false);
+  const [editorHeaderActions, setEditorHeaderActions] = useState<EditorHeaderActions | null>(null);
   const registerEditorNavigation = useCallback((guard: EditorNavigationGuard | null, blocked = false) => {
     editorNavigation.current = guard;
     setNavigationBlocked(blocked);
   }, []);
   const editing = currentScreen === "edit" || (currentScreen === "transcription" && workflow.activePage === "preview");
-  const marketingHome = currentScreen === "home" && (desktopHome || !workflow.user);
+  const marketingHome = currentScreen === "home";
 
   useEffect(() => {
     window.history.replaceState({ ...window.history.state, editorIndex: historyIndex.current }, '', window.location.href);
-    const { screen, videoToken: token } = getScreenFromUrl();
-    setCurrentScreen(screen);
-    setVideoToken(token);
   }, []);
 
   // Fetch user credits when user is authenticated
@@ -220,8 +221,11 @@ function App() {
     <ThemeProvider theme={theme}>
       <CssBaseline />
       <EditorNavigationContext.Provider value={registerEditorNavigation}>
+      <EditorHeaderContext.Provider value={setEditorHeaderActions}>
       <Box sx={{ minHeight: "100vh", display: "flow-root", bgcolor: "background.default" }}>
         <AppHeader
+          editing={editing}
+          editorActions={editing ? editorHeaderActions : null}
           user={workflow.user}
           authLoading={workflow.authLoading}
           profileAnchorEl={workflow.profileAnchorEl}
@@ -237,9 +241,20 @@ function App() {
           onProfileClose={workflow.onProfileClose}
           onSignIn={workflow.onSignIn}
           onSignOut={async () => {
-            const destination = () => { void workflow.onSignOut(); };
+            const destination = async () => {
+              setSigningOut(true);
+              try {
+                if (await workflow.onSignOut()) {
+                  workflow.onBackToUpload();
+                  setProjectError(null);
+                  navigateToScreen("home");
+                }
+              } finally {
+                setSigningOut(false);
+              }
+            };
             if (editorNavigation.current) await editorNavigation.current(destination);
-            else destination();
+            else await destination();
           }}
           navigationBlocked={navigationBlocked}
           onNavigate={(page) => {
@@ -260,11 +275,16 @@ function App() {
         />
 
         <Container maxWidth={false} disableGutters={marketingHome} sx={{
-          pt: marketingHome ? 0 : { xs: currentScreen === "transcription" ? 7 : 2, md: editing ? 1 : 6 },
-          pb: marketingHome ? 0 : { xs: currentScreen === "transcription" ? 1 : 2, md: editing ? 1 : 6 },
+          pt: marketingHome ? 0 : { xs: currentScreen === "transcription" ? 7 : 2, md: editing ? 1 : currentScreen === "transcription" ? 1.5 : 6 },
+          pb: marketingHome ? 0 : { xs: currentScreen === "transcription" ? 1 : 2, md: editing ? 1 : currentScreen === "transcription" ? 1.5 : 6 },
           px: marketingHome ? 0 : { xs: 1.5, md: 3 },
-          mt: marketingHome ? { xs: 6, md: 8 } : { xs: currentScreen === "transcription" ? 0 : 10, md: editing ? 8 : 10 },
+          mt: marketingHome ? { xs: 6, md: 8 } : { xs: currentScreen === "transcription" ? 0 : 10, md: currentScreen === "transcription" ? 8 : editing ? 8 : 10 },
         }}>
+          {signingOut || (currentScreen !== "home" && workflow.authLoading) ? (
+            <Stack alignItems="center" py={8} role="status" aria-label="טוען את החשבון">
+              <CircularProgress />
+            </Stack>
+          ) : <>
           {projectError && <Alert severity="error" onClose={() => setProjectError(null)} sx={{ mb: 2 }}>{projectError}</Alert>}
           {currentScreen === "home" && workflow.error && (
             <Alert severity="error" sx={{ mb: 3 }}>
@@ -278,19 +298,13 @@ function App() {
             </Stack>
           )}
 
-          {currentScreen === "home" && (desktopHome || (!workflow.authLoading && !workflow.user)) && (
+          {currentScreen === "home" && (desktopHome || !workflow.authLoading) && (
             <PromotionalHome
               authLoading={workflow.authLoading}
               onSignIn={workflow.onSignIn}
               isAuthenticated={Boolean(workflow.user)}
               onStart={handleNewVideo}
-            />
-          )}
-
-          {currentScreen === "home" && !workflow.authLoading && workflow.user && !desktopHome && (
-            <VideosPage
-              onEditVideo={handleEditVideo}
-              onNewVideo={handleNewVideo}
+              onMyVideos={() => navigateToScreen("videos")}
             />
           )}
 
@@ -327,8 +341,10 @@ function App() {
               onMyVideos={() => navigateToScreen("videos")}
             />
           )}
+          </>}
         </Container>
       </Box>
+      </EditorHeaderContext.Provider>
       </EditorNavigationContext.Provider>
     </ThemeProvider>
   );

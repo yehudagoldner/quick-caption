@@ -1,0 +1,2 @@
+export const MOBILE_APP_HEADER_HEIGHT = 44;
+export const MOBILE_EDITOR_NAV_HEIGHT = 44;

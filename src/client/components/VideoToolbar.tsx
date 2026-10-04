@@ -1,4 +1,5 @@
-import { useId, useState, type ChangeEvent, type ReactNode } from "react";
+import { useContext, useId, useState, type ChangeEvent, type ReactNode } from "react";
+import { DownloadContext } from "../contexts/DownloadContext";
 import type { Segment, Word } from "../types";
 import { AUTO_CAPTION_FONT_SIZE, CAPTION_FONT_SIZES, type CaptionFontSizeSetting } from "../../captionStyle.js";
 import { CaptionFontPicker } from "./CaptionFontPicker";
@@ -127,6 +128,7 @@ export function VideoToolbar({
   onToggleActiveWord,
   onAIEdit,
 }: VideoToolbarProps) {
+  const downloads = useContext(DownloadContext);
   // Download menu state
   const [downloadAnchorEl, setDownloadAnchorEl] = useState<null | HTMLElement>(null);
   const downloadMenuOpen = Boolean(downloadAnchorEl);
@@ -370,7 +372,10 @@ export function VideoToolbar({
         anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
         transformOrigin={{ vertical: "top", horizontal: "right" }}
       >
-        <MenuItem component="a" href={downloadUrl ?? undefined} download={downloadName} onClick={handleDownloadClose} disabled={!downloadUrl}>
+        <MenuItem component="a" href={downloadUrl ?? undefined} download={downloadName} onClick={event => {
+          event.preventDefault(); handleDownloadClose();
+          if (downloadUrl) void downloads.downloadSubtitles({ url: downloadUrl, name: downloadName });
+        }} disabled={!downloadUrl}>
           <SubtitlesRounded sx={{ mr: 1 }} />
           הורד קובץ כתוביות
         </MenuItem>
@@ -383,7 +388,7 @@ export function VideoToolbar({
             component="a"
             href={burnedVideo.url}
             download={burnedVideo.name}
-            onClick={handleDownloadClose}
+            onClick={event => { event.preventDefault(); handleDownloadClose(); void downloads.downloadVideo(burnedVideo); }}
           >
             <DownloadRounded sx={{ mr: 1 }} />
             הורד סרטון צרוב מוכן

@@ -11,11 +11,15 @@ import { Server as SocketIOServer } from "socket.io";
 
 import "./src/loadAppEnv.js";
 import { transcribeMedia, normalizeSubtitleFormat, transcribeWithWordTimestamps, getMediaDuration, resegmentWithGPT, intelligentSplitSegment, aiEditSubtitles } from "./src/transcription.js";
+import { parseTranscriptionSettings } from "./src/transcriptionSettings.js";
 import { createBurnSubtitlesRouter } from "./routes/burnSubtitles.js";
 import paypalRouter from "./routes/paypal.js";
 import pool from "./db.js";
 import { createAdminStore } from "./src/adminStore.js";
 import { createAdminRouter } from "./routes/admin.js";
+import { createDownloadStore } from "./src/downloadStore.js";
+import { createDownloadsRouter } from "./routes/downloads.js";
+import { captureApiErrors, createClientErrorHandler, createErrorRecorder } from "./src/errorMonitoring.js";
 import { createFirebaseVerifier, createIdentityMiddleware } from "./src/firebaseIdentity.js";
 import { configureUsageRecorder, measureAICost, usageContext } from "./src/aiUsage.js";
 import { ensureSchema, upsertUser, saveVideo, updateVideoSubtitles, getUserVideos, getVideoById, getUserCredits, deductCredits, ensureDevDummyUser, createTranscriptionJob, getTranscriptionJob, finishTranscriptionJob, updateTranscriptionProgress, completeTranscriptionJob } from "./db.js";
@@ -30,6 +34,10 @@ const allowedOrigins = process.env.CORS_ORIGIN
   ? process.env.CORS_ORIGIN.split(",").map((origin) => origin.trim()).filter(Boolean)
   : undefined;
 
+const adminStore = createAdminStore(pool);
+const downloadStore = createDownloadStore(pool);
+const errorRecorder = createErrorRecorder(adminStore);
+app.use(captureApiErrors(errorRecorder));
 app.use(cors({ origin: allowedOrigins ?? true }));
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
@@ -39,12 +47,11 @@ const videosStorageDir = path.join(process.cwd(), "stored-videos");
 await fsp.mkdir(uploadDir, { recursive: true });
 await fsp.mkdir(videosStorageDir, { recursive: true });
 await ensureSchema();
-const adminStore = createAdminStore(pool);
 const verifyIdentity = createFirebaseVerifier({ projectId: process.env.FIREBASE_PROJECT_ID || process.env.VITE_FIREBASE_PROJECT_ID });
 const authenticate = createIdentityMiddleware(verifyIdentity);
 configureUsageRecorder(row => adminStore.recordUsage(row));
 app.use(usageContext);
-app.use('/api/admin', createAdminRouter({ authenticate, store: adminStore }));
+app.use('/api/admin', createAdminRouter({ authenticate, store: adminStore, downloadStore }));
 if (isDevAuthBypassEnabled()) {
   await ensureDevDummyUser({
     uid: getDevAuthUid(),
@@ -77,6 +84,8 @@ app.use('/api', (req, res, next) => {
   });
 });
 const upload = createMediaUpload(uploadDir);
+app.post('/api/client-errors', createClientErrorHandler(errorRecorder));
+app.use('/api/downloads', createDownloadsRouter({ store: downloadStore }));
 app.use("/api/burn-subtitles", createBurnSubtitlesRouter(upload));
 app.use("/api/payments", paypalRouter);
 
@@ -399,12 +408,11 @@ app.post("/api/transcribe", upload.single("media"), async (req, res) => {
   const socketId = req.body?.socketId;
   const userUid = req.identity.uid;
   const jobId = req.body?.jobId;
-  const maxWordsPerSubtitle = parseInt(req.body?.maxWordsPerSubtitle, 10) || 5;
-  const rawCharacters = req.body?.maxCharactersPerSubtitle;
-  const maxCharactersPerSubtitle = rawCharacters === undefined ? null : Number(rawCharacters);
-  if (maxCharactersPerSubtitle !== null && (!Number.isInteger(maxCharactersPerSubtitle) || maxCharactersPerSubtitle < 7 || maxCharactersPerSubtitle > 20)) {
+  let settings;
+  try { settings = parseTranscriptionSettings(req.body); }
+  catch (error) {
     if (req.file) await safeUnlink(req.file.path);
-    return res.status(400).json({ error: "מגבלת התווים חייבת להיות בין 7 ל־20" });
+    return res.status(400).json({ error: error.message });
   }
   let emitStage = createStageEmitter(socketId, jobId);
 
@@ -558,8 +566,7 @@ app.post("/api/transcribe", upload.single("media"), async (req, res) => {
     const { value: result, costUSD: measuredCostUSD, unpricedCalls } = await measureAICost(() => transcribeMedia({
       inputPath: req.file.path,
       format,
-      maxWordsPerSubtitle,
-      maxCharactersPerSubtitle,
+      ...settings,
       logger: createRequestLogger(req),
       onStage: emitStage,
     }));
@@ -790,8 +797,14 @@ app.use(express.static(path.join(process.cwd(), 'dist')));
 
 // Handle all unhandled routes by serving the React app
 app.use(mediaUploadError);
+app.use((error, req, res, next) => {
+  if (res.headersSent) return next(error);
+  const status = error.status >= 400 && error.status <= 599 ? error.status : 500;
+  res.status(status).json({ error: status === 500 ? 'אירעה שגיאה בשרת. אפשר לנסות שוב.' : 'הבקשה אינה תקינה.' });
+});
 
 // This must be after all API routes
+app.use('/api', (req, res) => res.status(404).json({ error: 'נתיב ה־API לא נמצא.' }));
 app.get(/.*/, (req, res) => {
   res.sendFile(path.join(process.cwd(), 'dist', 'index.html'));
 });

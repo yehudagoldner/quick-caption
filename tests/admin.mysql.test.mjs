@@ -8,7 +8,7 @@ test('MySQL admin reporting, idempotent credit grants, rollback and persistent m
   const db = await mysql.createConnection({ host: process.env.DB_HOST, user: process.env.DB_USER, password: process.env.DB_PASSWORD, database: process.env.DB_NAME, connectTimeout: 10000 });
   t.after(() => db.end());
   await db.execute(`CREATE TEMPORARY TABLE users (id INT PRIMARY KEY, uid VARCHAR(128) UNIQUE, email VARCHAR(255), display_name VARCHAR(255), credits INT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP) ENGINE=InnoDB CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`);
-  await db.execute(`CREATE TEMPORARY TABLE videos (id INT PRIMARY KEY, user_uid VARCHAR(128), media_type VARCHAR(16), duration_seconds INT, subtitle_json JSON, status VARCHAR(16), created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`);
+  await db.execute(`CREATE TEMPORARY TABLE videos (id INT PRIMARY KEY, user_uid VARCHAR(128), original_filename VARCHAR(255), media_type VARCHAR(16), duration_seconds INT, subtitle_json JSON, status VARCHAR(16), created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`);
   await db.execute(`CREATE TEMPORARY TABLE credit_payments (user_uid VARCHAR(128), amount_usd DECIMAL(10,2)) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`);
   for (const sql of ADMIN_TABLES) await db.execute(sql.replace('CREATE TABLE IF NOT EXISTS', 'CREATE TEMPORARY TABLE'));
   await db.execute("INSERT INTO users (id, uid, email, display_name, credits) VALUES (1, 'buyer', 'buyer@example.com', 'Buyer', 50), (2, 'free', 'free@example.com', 'Free', 50)");

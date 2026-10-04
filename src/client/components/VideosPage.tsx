@@ -34,9 +34,9 @@ import {
   VideoLibraryRounded,
 } from "@mui/icons-material";
 import { useAuth } from "../contexts/AuthContext";
+import { useDownloadExperience } from "../hooks/useDownloadExperience";
 import { formatDuration } from "../utils/formatTime";
 import {
-  downloadTextFile,
   parseSubtitleSegments,
   serializeSubtitles,
   subtitleDownloadName,
@@ -246,6 +246,8 @@ export function VideosPage({ onEditVideo, onNewVideo }: VideosPageProps) {
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const [exportMenu, setExportMenu] = useState<{ anchor: HTMLElement; video: Video } | null>(null);
+  const [exportVideoId, setExportVideoId] = useState<number | null>(null);
+  const downloads = useDownloadExperience(exportVideoId);
   const [exportingId, setExportingId] = useState<number | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [query, setQuery] = useState("");
@@ -317,7 +319,9 @@ export function VideosPage({ onEditVideo, onNewVideo }: VideosPageProps) {
       const data = await response.json();
       const segments = parseSubtitleSegments(data.video?.subtitle_json);
       const content = serializeSubtitles(segments, format);
-      downloadTextFile(content, subtitleDownloadName(video.original_filename, format));
+      const url = URL.createObjectURL(new Blob([content], { type: 'text/plain;charset=utf-8' }));
+      try { await downloads.actions.downloadSubtitles({ url, name: subtitleDownloadName(video.original_filename, format) }); }
+      finally { URL.revokeObjectURL(url); }
     } catch (err) {
       setActionMessage(err instanceof Error ? err.message : "הייצוא נכשל");
     } finally {
@@ -397,7 +401,7 @@ export function VideosPage({ onEditVideo, onNewVideo }: VideosPageProps) {
               variant="outlined"
               startIcon={exportingId === video.id ? <CircularProgress size={16} /> : <FileDownloadRounded />}
               disabled={exportingId === video.id}
-              onClick={(event) => setExportMenu({ anchor: event.currentTarget, video })}
+              onClick={(event) => { setExportVideoId(video.id); setExportMenu({ anchor: event.currentTarget, video }); }}
               sx={{ borderRadius: "10px", fontWeight: 600 }}
             >
               ייצוא
@@ -528,10 +532,10 @@ export function VideosPage({ onEditVideo, onNewVideo }: VideosPageProps) {
       </Menu>
 
       <Snackbar
-        open={Boolean(actionMessage)}
+        open={Boolean(actionMessage || downloads.error)}
         autoHideDuration={5000}
-        onClose={() => setActionMessage(null)}
-        message={actionMessage}
+        onClose={() => { setActionMessage(null); downloads.clearError(); }}
+        message={actionMessage || downloads.error}
         anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
       />
     </Box>

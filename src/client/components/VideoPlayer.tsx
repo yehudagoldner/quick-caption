@@ -126,7 +126,7 @@ export function VideoPlayer({ compact, size, fill, hideMeta, mediaUrl, activeSeg
       ...stageSize,
       aspectRatio: isAudio || fill ? undefined : `${dimensions.width} / ${dimensions.height}`, minHeight: isAudio && !fill ? 180 : undefined }}>
       {mediaUrl ? <>
-        <Box component="video" ref={videoRef} controls playsInline preload="metadata" src={mediaUrl}
+        <Box component="video" ref={videoRef} controls controlsList="nofullscreen" playsInline preload="metadata" src={mediaUrl}
           onSeeking={e => onTimeUpdate?.(e.currentTarget.currentTime)}
           onTimeUpdate={e => onTimeUpdate?.(e.currentTarget.currentTime)} onError={() => setError(true)}
           sx={{ width: "100%", height: isAudio ? 54 : "100%", display: "block", objectFit: "contain", ...(isAudio ? { position: "absolute", bottom: 0 } : {}) }} />

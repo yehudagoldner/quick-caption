@@ -7,6 +7,7 @@ import { SubtitleEditor } from "./SubtitleEditor";
 import { VideoToolbar } from "./VideoToolbar";
 import { MobileCaptionEditor } from "./MobileCaptionEditor";
 import { useNarrowViewport } from "../hooks/useNarrowViewport";
+import type { EditorNavigationGuard } from "../contexts/EditorNavigationContext";
 import type { CaptionFontSizeSetting } from "../../captionStyle.js";
 import type { CaptionBatchAction } from "../../captionBatchEditing.js";
 import type { CaptionMotion, PopIntensity } from "../../captionMotion.js";
@@ -19,6 +20,7 @@ type BurnedVideo = {
 };
 
 type TranscriptionMainContentProps = {
+  onNavigateAway: EditorNavigationGuard;
   fontReady?: boolean;
   timelineEditing: Pick<SubtitleTimelineProps, "onSaveSegment" | "onUndo" | "onRedo" | "canUndo" | "canRedo" | "onPlayFrom" | "loopEnabled" | "onLoopChange" | "onDraftStateChange">;
   hasTimelineDrafts: boolean;
@@ -89,6 +91,7 @@ type TranscriptionMainContentProps = {
 };
 
 export function TranscriptionMainContent({
+  onNavigateAway,
   fontReady = true,
   timelineEditing,
   hasTimelineDrafts,
@@ -165,6 +168,7 @@ export function TranscriptionMainContent({
   if (isNarrow) {
     return (
       <MobileCaptionEditor
+        onNavigateAway={onNavigateAway}
         captionStyles={captionStyles} fontId={fontId} onFontChange={onFontChange} activeWordColor={activeWordColor}
         onActiveWordColorChange={onActiveWordColorChange}
         captionMotion={captionMotion}

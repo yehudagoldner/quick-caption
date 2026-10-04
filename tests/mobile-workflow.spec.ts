@@ -35,13 +35,12 @@ for (const viewport of [{ width: 320, height: 568 }, { width: 390, height: 844 }
     await page.locator('input[type=file]').setInputFiles({ name: 'portrait.webm', mimeType: 'video/webm', buffer: portraitVideo });
     await expect(page.locator('video')).toBeVisible();
     await expect.poll(() => page.locator('video').evaluate((v: HTMLVideoElement) => v.readyState)).toBeGreaterThan(0);
-    const slider = page.getByRole('slider', { name: 'מספר תווים בכתובית לפני תמלול' });
-    const sliderTrack = slider.locator('..').locator('..');
-    await expect(sliderTrack).toBeInViewport();
+    const characterLimit = page.getByRole('spinbutton', { name: 'מספר תווים' });
+    await expect(characterLimit).toBeInViewport();
     const submit = page.getByRole('button', { name: 'שלחו לעיבוד' });
-    expect((await submit.boundingBox())!.y).toBeLessThan((await sliderTrack.boundingBox())!.y);
+    expect((await submit.boundingBox())!.y).toBeGreaterThan((await characterLimit.boundingBox())!.y);
     expect(await overflow()).toEqual({ x: 0, y: 0 });
-    await slider.fill('7');
+    await characterLimit.fill('7');
     let postedCharacters: string | undefined;
     await page.route('**/api/transcribe', async route => {
       postedCharacters = route.request().postData()?.match(/name="maxCharactersPerSubtitle"\r\n\r\n(\d+)/)?.[1];
@@ -57,7 +56,7 @@ for (const viewport of [{ width: 320, height: 568 }, { width: 390, height: 844 }
   });
 }
 
-test('mobile styles drawer keeps a large, interactive video and restores normal navigation', async ({ page, browserName }) => {
+test('mobile styles drawer opens at 80% of the viewport and restores normal navigation', async ({ page, browserName }) => {
   test.skip(browserName === 'webkit' && process.platform === 'win32', 'Windows WebKit cannot decode the media fixture; media layout is verified in Chromium.');
   await page.setViewportSize({ width: 390, height: 844 });
   await prepareApp(page);
@@ -69,6 +68,9 @@ test('mobile styles drawer keeps a large, interactive video and restores normal 
   const drawer = page.getByRole('region', { name: 'עיצוב כתוביות' });
   await expect(drawer).toBeVisible();
   await expect(drawer).toHaveCSS('transform', 'none');
+  const drawerRect = (await drawer.boundingBox())!;
+  expect(drawerRect.height).toBeCloseTo(844 * 0.8, 0);
+  expect(drawerRect.y + drawerRect.height).toBeCloseTo(844, 0);
   const fontSize = drawer.getByRole('combobox', { name: 'גודל פונט', exact: true });
   await expect(fontSize).toHaveText(/^אוטומטי \(\d+\)$/);
   const autoSize = Number((await fontSize.textContent())!.match(/\d+/)![0]);
@@ -85,11 +87,11 @@ test('mobile styles drawer keeps a large, interactive video and restores normal 
   await expect(fontSize).toHaveText(`אוטומטי (${autoSize})`);
   await expect(page.getByRole('listbox', { includeHidden: true })).toHaveCount(0);
   const rect = await page.getByTestId('media-stage').boundingBox();
-  expect(rect!.height).toBeGreaterThan(280);
+  expect(rect!.height).toBeGreaterThan(0);
   expect(rect!.y + rect!.height).toBeLessThanOrEqual((await drawer.boundingBox())!.y + 2);
   expect(await editor.locator('video').evaluate(video => {
     const rect = video.getBoundingClientRect();
-    return document.elementFromPoint(rect.x + rect.width / 2, rect.y + 20) === video;
+    return document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2) === video;
   })).toBe(true);
   await page.screenshot({ path: 'tmp/review/editor-style.png' });
   await page.getByRole('button', { name: 'סגירת עיצוב' }).click();
@@ -172,6 +174,14 @@ test('the arrow itself returns to videos after saving the draft', async ({ page 
 test('mobile timing trims speech and adjacent captions, saves words and undoes together', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await prepareApp(page);
+  await page.route('**/api/videos/42/media?**', route => {
+    const range = route.request().headers().range?.match(/bytes=(\d+)-(\d*)/);
+    const start = range ? Number(range[1]) : 0;
+    const end = range?.[2] ? Math.min(Number(range[2]), portraitVideo.length - 1) : portraitVideo.length - 1;
+    return route.fulfill({ status: range ? 206 : 200, contentType: 'video/webm',
+      headers: { 'Accept-Ranges': 'bytes', ...(range ? { 'Content-Range': `bytes ${start}-${end}/${portraitVideo.length}` } : {}) },
+      body: portraitVideo.subarray(start, end + 1) });
+  });
   const clips = [{ id: 1, start: 0, end: 2, text: 'שלום עולם' }, { id: 2, start: 2, end: 4, text: 'סרטון לבדיקה' }];
   const words = [{ word: 'שלום', start: 0, end: 1, segmentId: 1 }, { word: 'עולם', start: 1, end: 2, segmentId: 1 }, { word: 'סרטון', start: 2, end: 3, segmentId: 2 }, { word: 'לבדיקה', start: 3, end: 4, segmentId: 2 }];
   await page.route('**/api/videos/load?**', route => route.fulfill({ json: { video: { id: 42, subtitle_json: clips, words_json: words, format: '.srt', stored_path: 'portrait.mp4' } } }));
@@ -187,9 +197,11 @@ test('mobile timing trims speech and adjacent captions, saves words and undoes t
   const first = page.getByTestId('mobile-timing-clip').first();
   await first.click();
   // Seek near the edge so the handle stays inside the mobile viewport.
-  const overview = page.getByRole('slider', { name: 'מיקום בהקלטה' });
-  const overviewRect = (await overview.boundingBox())!;
-  await overview.click({ position: { x: overviewRect.width / 2, y: overviewRect.height / 2 } });
+  await expect.poll(() => page.locator('video').evaluate((video: HTMLVideoElement) => video.readyState)).toBe(4);
+  const timingTrack = page.getByTestId('mobile-timing-track');
+  const seconds = Number(await timeline.getAttribute('data-window-seconds'));
+  await timingTrack.evaluate((track, windowSeconds) => { track.scrollLeft = track.clientWidth * 2 / windowSeconds; }, seconds);
+  await expect(page.getByTestId('playhead-timecode')).toHaveText('00:00:02:00');
   const dragEnd = async (delta: number) => {
     const handle = first.getByRole('slider', { name: 'הזזת סיום', exact: true });
     const rect = (await handle.boundingBox())!;

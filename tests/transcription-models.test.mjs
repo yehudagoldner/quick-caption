@@ -89,6 +89,86 @@ test('legacy transcription configuration remains usable without a service tier o
   assert.equal(Object.hasOwn(context.textRequests[0], 'service_tier'), false);
 });
 
+test('multiple selected languages replace the environment hint throughout transcription', async t => {
+  const context = await setup(t);
+  await transcribeMedia({ ...context, languages: ['en', 'ar'] });
+  const [timed, accurate] = context.audioRequests;
+  assert.equal(timed.language, undefined);
+  assert.match(timed.prompt, /English, Arabic/);
+  assert.deepEqual(accurate.languages, ['en', 'ar']);
+  assert.equal(Object.hasOwn(accurate, 'language'), false);
+  assert.match(context.textRequests[0].input[0].content[0].text, /en, ar/);
+  assert.match(context.textRequests[0].input[0].content[0].text, /Output ALL subtitle text in English \(en\)/);
+});
+
+test('an empty language selection defaults to Hebrew output', async t => {
+  const context = await setup(t, { legacy: true });
+  const result = await transcribeMedia({ ...context, languages: [] });
+  assert.equal(context.audioRequests[0].language, 'he');
+  assert.equal(context.audioRequests[1].language, 'he');
+  assert.equal(context.audioRequests[1].prompt, undefined);
+  assert.deepEqual(result.segments, [segment]);
+});
+
+for (const target of ['he', 'en']) {
+  test(`mixed-language captions are rendered in ${target} with preserved cue times`, async t => {
+    const context = await setup(t);
+    const source = [{ id: 1, start: 0, end: 2, text: 'שלום עולם' }, { id: 2, start: 2, end: 4, text: 'Hello world' }, { id: 3, start: 4, end: 6, text: 'مرحبا بالعالم' }];
+    const translated = source.map(s => ({ ...s, start: 99, end: 100, text: target === 'he' ? 'שלום עולם' : 'Hello world' }));
+    t.mock.method(Transcriptions.prototype, 'create', async request => {
+      context.audioRequests.push(request);
+      request.file.destroy();
+      return request.model === 'whisper-1' ? { segments: source, text: source.map(s => s.text).join(' ') } : { text: source.map(s => s.text).join(' ') };
+    });
+    t.mock.method(Responses.prototype, 'create', async request => {
+      context.textRequests.push(request);
+      return { output_text: JSON.stringify({ segments: translated }) };
+    });
+    const selected = target === 'he' ? ['he', 'en', 'ar'] : ['en', 'he', 'ar'];
+    const result = await transcribeMedia({ ...context, languages: selected });
+    assert.deepEqual(context.audioRequests[1].languages, selected);
+    assert.equal(context.audioRequests[0].language, undefined);
+    assert.match(context.audioRequests[0].prompt, /Preserve each spoken language without translating/);
+    const systemPrompt = context.textRequests[0].input[0].content[0].text;
+    assert.match(systemPrompt, new RegExp(`Output ALL subtitle text in ${target === 'he' ? 'Hebrew' : 'English'}`));
+    assert.match(systemPrompt, /faithfully translate/);
+    assert.deepEqual(result.segments.map(s => [s.id, s.start, s.end]), source.map(s => [s.id, s.start, s.end]));
+    assert.deepEqual(result.segments.map(s => s.text), translated.map(s => s.text));
+    assert.ok(result.words.every(w => w.start >= 0 && w.end <= 6 && w.start < w.end));
+    assert.match(result.subtitle.content, target === 'he' ? /שלום עולם/ : /Hello world/);
+    const payload = JSON.parse(context.textRequests[0].input[2].content[0].text);
+    assert.equal(payload.target_language, target);
+    assert.deepEqual(payload.expected_spoken_languages, selected);
+  });
+}
+
+test('translation failure cannot silently return captions in the source languages', async t => {
+  const context = await setup(t, { failCorrection: true });
+  await assert.rejects(() => transcribeMedia({ ...context, languages: ['he', 'en'] }), /התמלול או התרגום/);
+});
+
+test('translation still runs when optional correction is disabled', async t => {
+  const context = await setup(t);
+  process.env.OPENAI_CORRECTION_MODEL = '';
+  const result = await transcribeMedia({ ...context, languages: ['he', 'en'] });
+  assert.equal(context.textRequests.length, 1);
+  assert.equal(result.models.correction, 'gpt-6-luna');
+});
+
+test('incomplete translation cannot mix translated captions with untranslated source cues', async t => {
+  const context = await setup(t);
+  t.mock.method(Responses.prototype, 'create', async () => ({ output_text: JSON.stringify({ segments: [] }) }));
+  await assert.rejects(() => transcribeMedia({ ...context, languages: ['he', 'en'] }), /התמלול או התרגום/);
+});
+
+test('word limits and unlimited captions produce distinct output', async t => {
+  const context = await setup(t);
+  const limited = await transcribeMedia({ ...context, maxWordsPerSubtitle: 1 });
+  const unlimited = await transcribeMedia({ ...context, maxWordsPerSubtitle: 0 });
+  assert.deepEqual(limited.segments.map(s => s.text), ['שלום', 'עולם']);
+  assert.deepEqual(unlimited.segments, [segment]);
+});
+
 test('failed new models preserve the timed transcript and report both stage failures', async t => {
   const context = await setup(t, { failAudio: true, failCorrection: true });
   const result = await transcribeMedia(context);

@@ -1,5 +1,5 @@
 import { useContext, useEffect, useMemo, useRef, useState } from "react";
-import { Alert, Button, Card, CardContent, Stack, Typography, useMediaQuery, useTheme } from "@mui/material";
+import { Alert, Button, Card, CardContent, Snackbar, Stack, Typography, useMediaQuery, useTheme } from "@mui/material";
 import type { ApiResponse, Segment } from "../types";
 import { useVideoPlayer } from "./VideoPlayer";
 import type { BurnOptions } from "./VideoToolbar";
@@ -22,6 +22,9 @@ import { useEditorPreferences } from "../contexts/EditorPreferences";
 import { cleanSegmentText, fixSegmentOverlaps, findSegment } from "../utils/transcriptionUtils";
 import { synchronizeWords } from "../../wordAlignment.js";
 import { EditorNavigationContext } from "../contexts/EditorNavigationContext";
+import { DownloadContext } from "../contexts/DownloadContext";
+import { useDownloadExperience } from "../hooks/useDownloadExperience";
+import { DownloadFeedbackDialog } from "./DownloadFeedbackDialog";
 
 export type { BurnOptions };
 type BurnResult = { blob: Blob; filename?: string; };
@@ -54,6 +57,7 @@ export function TranscriptionResult({
   isEditable,
 }: TranscriptionResultProps) {
   const { preferences } = useEditorPreferences();
+  const downloads = useDownloadExperience(videoId);
   const [hasTimelineDrafts, setHasTimelineDrafts] = useState(false);
   const [loopEnabled, setLoopEnabled] = useState(false);
   const loopEnabledRef = useRef(loopEnabled);
@@ -213,11 +217,12 @@ export function TranscriptionResult({
   navigationRef.current = leaveEditor;
   const navigationBlocked = isBurning || hasTimelineDrafts || saveState === "saving";
   useEffect(() => {
+    if (narrow) return;
     registerNavigation(async destination => {
       if (!navigationBlocked) await navigationRef.current(destination);
     }, navigationBlocked);
     return () => registerNavigation(null);
-  }, [registerNavigation, navigationBlocked]);
+  }, [registerNavigation, navigationBlocked, narrow]);
 
   const {
     handleVideoTimeUpdate,
@@ -232,6 +237,7 @@ export function TranscriptionResult({
     handleMarginChange,
     handleBurnVideo,
   } = useTranscriptionHandlers({
+    onDownloadVideo: downloads.actions.downloadVideo,
     fontId, activeWordColor,
     captionMotion,
     popIntensity,
@@ -268,6 +274,7 @@ export function TranscriptionResult({
   });
 
   return (
+    <DownloadContext.Provider value={downloads.actions}>
     <Card ref={playbackRoot} elevation={narrow ? 0 : 3} sx={{ overflow: "visible", ...(narrow ? { bgcolor: "transparent", boxShadow: "none" } : {}) }}>
       <CardContent sx={narrow ? { p: 0, "&:last-child": { pb: 0 } } : { p: { md: 1.5 }, "&:last-child": { pb: { md: 1.5 } } }}>
         <Stack spacing={narrow ? 0 : 1.5}>
@@ -287,6 +294,7 @@ export function TranscriptionResult({
           {!narrow && !desktop && activeWordEnabled && !hasEstimatedTimingWarning && editableWords.some(word => word.timingSource === "estimated") && <Alert severity="info">לחלק מהמילים הושלם תזמון משוער. אפשר לדייק אותן בציר המילים של המקטע; הטקסט המתוקן נשמר במלואו.</Alert>}
 
           <TranscriptionMainContent
+            onNavigateAway={destination => navigationRef.current(destination)}
             fontId={fontId} onFontChange={setFontId} activeWordColor={activeWordColor}
             onActiveWordColorChange={setActiveWordColor}
             captionStyles={<CaptionStylePicker appearance={{ fontId, fontSize, fontColor, outlineColor, activeWordColor, activeWordEnabled, offsetYPercent, marginPercent, captionMotion, popIntensity }} onApply={applyCaptionStyle} disabled={isBurning} />}
@@ -382,5 +390,10 @@ export function TranscriptionResult({
         </Stack>
       </CardContent>
     </Card>
+    <Snackbar open={Boolean(downloads.error)} onClose={downloads.clearError} anchorOrigin={{ vertical: 'top', horizontal: 'center' }}>
+      <Alert severity="error" onClose={downloads.clearError}>{downloads.error}</Alert>
+    </Snackbar>
+    {downloads.feedbackDownloadId && <DownloadFeedbackDialog key={downloads.feedbackDownloadId} open onClose={downloads.closeFeedback} onSubmit={downloads.saveFeedback} />}
+    </DownloadContext.Provider>
   );
 }

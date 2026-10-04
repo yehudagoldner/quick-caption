@@ -7,6 +7,9 @@ import type { ApiResponse, StageEvent, StageState, StageStatus, Segment, Word } 
 import { useAuth } from "../contexts/AuthContext";
 import { useUploadProtection } from "./useUploadProtection";
 import { subtitleDownloadName } from "../utils/subtitleExport";
+import { reportClientError } from "../errorReporting";
+import type { SubtitleLimitMode } from "../components/InitialTranscriptionSettings";
+import { normalizeTranscriptionLanguages } from "../../transcriptionSettings.js";
 
 export type AuthUser = ReturnType<typeof useAuth>["user"];
 
@@ -29,7 +32,7 @@ export const STAGE_DEFINITIONS: StageState[] = [
   { id: "upload", label: "העלאה", status: "idle", message: null },
   { id: "timed-transcription", label: "תמלול מתוזמן", status: "idle", message: null },
   { id: "high-accuracy", label: "שיפור דיוק", status: "idle", message: null },
-  { id: "correction", label: "תיקון שפה", status: "idle", message: null },
+  { id: "correction", label: "תיקון ותרגום", status: "idle", message: null },
   { id: "complete", label: "הושלם", status: "idle", message: null },
 ];
 
@@ -40,6 +43,7 @@ const API_BASE_URL = RAW_API_BASE.replace(/\/?$/, "");
 const TRANSCRIBE_ENDPOINT = `${API_BASE_URL || ""}/api/transcribe`;
 const BURN_ENDPOINT = `${API_BASE_URL || ""}/api/burn-subtitles`;
 const INITIAL_CHARACTER_LIMIT_KEY = "quickcaption:initial-character-limit";
+const INITIAL_SETTINGS_KEY = "quickcaption:initial-transcription-settings";
 const jobStorageKey = (uid: string) => `quickcaption:transcription-job:${uid}`;
 
 function readInitialCharacterLimit() {
@@ -48,6 +52,17 @@ function readInitialCharacterLimit() {
     if (Number.isInteger(saved) && saved >= 7 && saved <= 20) return saved;
   } catch { /* Storage may be disabled. */ }
   return 20;
+}
+
+function readInitialSettings() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(INITIAL_SETTINGS_KEY) || "{}");
+    return {
+      mode: (["characters", "words", "none"].includes(saved.mode) ? saved.mode : "characters") as SubtitleLimitMode,
+      words: Number.isInteger(saved.words) && saved.words >= 1 && saved.words <= 30 ? saved.words as number : 5,
+      languages: normalizeTranscriptionLanguages(saved.languages || []),
+    };
+  } catch { return { mode: "characters" as SubtitleLimitMode, words: 5, languages: ["he"] }; }
 }
 
 function savePendingJob(uid: string, jobId: string) {
@@ -74,6 +89,9 @@ export type TranscriptionWorkflow = {
   file: File | null;
   format: string;
   maxCharactersPerSubtitle: number;
+  subtitleLimitMode: SubtitleLimitMode;
+  maxWordsPerSubtitle: number;
+  languages: string[];
   isSubmitting: boolean;
   uploadProgress: number | null;
   stages: StageState[];
@@ -88,6 +106,9 @@ export type TranscriptionWorkflow = {
   steps: string[];
   onFileChange: (file: File | null) => void;
   onMaxCharactersChange: (value: number) => void;
+  onSubtitleLimitModeChange: (mode: SubtitleLimitMode) => void;
+  onMaxWordsChange: (value: number) => void;
+  onLanguagesChange: (languages: string[]) => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
   onBackToUpload: () => void;
   onBurnVideoRequest: (options: BurnOptions) => Promise<{ blob: Blob; filename?: string | undefined }>;
@@ -95,7 +116,7 @@ export type TranscriptionWorkflow = {
   onProfileClick: (event: MouseEvent<HTMLElement>) => void;
   onProfileClose: () => void;
   onSignIn: () => Promise<void>;
-  onSignOut: () => Promise<void>;
+  onSignOut: () => Promise<boolean>;
   onLoadVideo: (data: { videoId: number; segments: Segment[]; words?: Word[]; format: string; filename: string; mediaUrl?: string | null }) => void;
 };
 
@@ -105,6 +126,13 @@ export function useTranscriptionWorkflow(): TranscriptionWorkflow {
   const [file, setFile] = useState<File | null>(null);
   const [format, setFormat] = useState<string>(DEFAULT_FORMAT);
   const [maxCharactersPerSubtitle, setMaxCharactersPerSubtitle] = useState(readInitialCharacterLimit);
+  const [initialSettings] = useState(readInitialSettings);
+  const [subtitleLimitMode, setSubtitleLimitMode] = useState(initialSettings.mode);
+  const [maxWordsPerSubtitle, setMaxWordsPerSubtitle] = useState(initialSettings.words);
+  const [languages, setLanguages] = useState(initialSettings.languages);
+  useEffect(() => {
+    try { localStorage.setItem(INITIAL_SETTINGS_KEY, JSON.stringify({ mode: subtitleLimitMode, words: maxWordsPerSubtitle, languages })); } catch { /* Storage may be disabled. */ }
+  }, [subtitleLimitMode, maxWordsPerSubtitle, languages]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [response, setResponse] = useState<ApiResponse | null>(null);
@@ -142,6 +170,10 @@ export function useTranscriptionWorkflow(): TranscriptionWorkflow {
     if (!Number.isInteger(value) || value < 7 || value > 20) return;
     setMaxCharactersPerSubtitle(value);
     try { localStorage.setItem(INITIAL_CHARACTER_LIMIT_KEY, String(value)); } catch { /* Storage may be disabled. */ }
+  }, []);
+
+  const handleMaxWordsChange = useCallback((value: number) => {
+    if (Number.isInteger(value) && value >= 1 && value <= 30) setMaxWordsPerSubtitle(value);
   }, []);
 
   useEffect(() => {
@@ -248,6 +280,10 @@ export function useTranscriptionWorkflow(): TranscriptionWorkflow {
     };
     const poll = async () => {
       if (!isCurrentJob() || inFlight || document.hidden) return;
+      if (Date.now() - startedChecking >= 20 * 60 * 1000) {
+        stopWatching("לא ניתן לאמת את מצב העיבוד כרגע. בדקו את הווידאו שלי לפני העלאה נוספת.");
+        return;
+      }
       if (!navigator.onLine) {
         setError("אין חיבור לאינטרנט. נבדוק את העיבוד שוב כשהחיבור יחזור.");
         return;
@@ -262,7 +298,8 @@ export function useTranscriptionWorkflow(): TranscriptionWorkflow {
         if (!isCurrentJob()) return;
         if (res.status === 404 && Date.now() - startedChecking < 120_000) return;
         if (!res.ok) {
-          if (res.status === 404) stopWatching("העלאת הקובץ לא הושלמה. יש לבחור אותו מחדש.");
+          if (res.status === 401 || res.status === 403) stopWatching("נדרשת התחברות מחדש כדי לבדוק את העיבוד.");
+          else if (res.status === 404) stopWatching("העלאת הקובץ לא הושלמה. יש לבחור אותו מחדש.");
           else setError("לא ניתן לבדוק כרגע את העיבוד בשרת. מנסים להתחבר שוב; אפשר גם לחזור לבחירת קובץ.");
           return;
         }
@@ -347,10 +384,10 @@ export function useTranscriptionWorkflow(): TranscriptionWorkflow {
 
       const formData = new FormData();
       formData.append("media", file);
-      // Use the pre-transcription character limit chosen on mobile; other options keep their defaults.
       formData.append("format", DEFAULT_FORMAT);
-      formData.append("maxWordsPerSubtitle", "5");
-      formData.append("maxCharactersPerSubtitle", String(maxCharactersPerSubtitle));
+      formData.append("maxWordsPerSubtitle", subtitleLimitMode === "words" ? String(maxWordsPerSubtitle) : "0");
+      if (subtitleLimitMode === "characters") formData.append("maxCharactersPerSubtitle", String(maxCharactersPerSubtitle));
+      formData.append("languages", JSON.stringify(languages));
       formData.append("jobId", jobId);
 
       if (socketId) {
@@ -376,6 +413,7 @@ export function useTranscriptionWorkflow(): TranscriptionWorkflow {
 
       xhr.open("POST", TRANSCRIBE_ENDPOINT);
       xhr.responseType = "json";
+      xhr.timeout = 20 * 60 * 1000;
       xhr.setRequestHeader("Accept", "application/json");
 
       xhr.upload.onprogress = (ev) => {
@@ -393,12 +431,19 @@ export function useTranscriptionWorkflow(): TranscriptionWorkflow {
 
       xhr.onerror = () => {
         if (!isCurrentRequest()) return;
+        reportClientError('upload-connection-lost');
         setError("החיבור נותק. בודקים אם העיבוד ממשיך בשרת...");
         setActiveJobId(jobId);
       };
 
       xhr.onabort = () => {
         if (!isCurrentRequest()) return;
+        setActiveJobId(jobId);
+      };
+      xhr.ontimeout = () => {
+        if (!isCurrentRequest()) return;
+        reportClientError('upload-timeout');
+        setError("זמן ההמתנה הסתיים. בודקים אם העיבוד ממשיך בשרת...");
         setActiveJobId(jobId);
       };
 
@@ -408,40 +453,55 @@ export function useTranscriptionWorkflow(): TranscriptionWorkflow {
           setActiveJobId(jobId);
           return;
         }
-        const payload: ApiResponse = xhr.response && typeof xhr.response === "object" ? xhr.response : {} as ApiResponse;
-
-        if (xhr.status >= 200 && xhr.status < 300) {
-          setResponse(payload);
-          setVideoId(payload?.videoId ?? null);
-          setError(null);
-          setActivePage("preview");
-        } else {
-          // Handle insufficient credits error (402 Payment Required)
-          let errorMessage = payload?.error ?? `אירעה שגיאה (${xhr.status})`;
-          if (/incorrect api key|invalid_api_key|authentication.*401/i.test(errorMessage)) {
-            errorMessage = "שירות התמלול אינו זמין: מפתח הגישה של השרת נדחה. יש לעדכן את הגדרת השירות ולנסות שוב.";
+        let recoverThroughJob = false;
+        try {
+          const payload: ApiResponse = xhr.response && typeof xhr.response === "object" ? xhr.response : {} as ApiResponse;
+          if (!xhr.response || (xhr.status >= 200 && xhr.status < 300 &&
+              (!Array.isArray(payload.segments) || typeof payload.subtitle?.content !== 'string'))) {
+            recoverThroughJob = true;
+            reportClientError('upload-invalid-response', xhr.status);
+            setError("התקבלה תשובה לא תקינה. בודקים אם העיבוד ממשיך בשרת; אפשר לחזור לבחירת קובץ.");
+            setActiveJobId(jobId);
+            return;
           }
-          if (xhr.status === 402) {
-            const { required, available, shortfall, cost } = payload as any;
-            if (required && available !== undefined) {
-              errorMessage = `אין מספיק קרדיטים! נדרשים ${required} קרדיטים (${cost || ''}), יש לך רק ${available}. חסרים ${shortfall} קרדיטים.`;
-            } else {
-              errorMessage = `אין מספיק קרדיטים לביצוע הפעולה. ${payload?.error || ''}`;
+
+          if (xhr.status >= 200 && xhr.status < 300) {
+            setResponse(payload);
+            setVideoId(payload?.videoId ?? null);
+            setError(null);
+            setActivePage("preview");
+          } else {
+            // Handle insufficient credits error (402 Payment Required)
+            let errorMessage = payload?.error ?? `אירעה שגיאה (${xhr.status})`;
+            if (/incorrect api key|invalid_api_key|authentication.*401/i.test(errorMessage)) {
+              errorMessage = "שירות התמלול אינו זמין: מפתח הגישה של השרת נדחה. יש לעדכן את הגדרת השירות ולנסות שוב.";
             }
+            if (xhr.status === 402) {
+              const { required, available, shortfall, cost } = payload as any;
+              if (required && available !== undefined) {
+                errorMessage = `אין מספיק קרדיטים! נדרשים ${required} קרדיטים (${cost || ''}), יש לך רק ${available}. חסרים ${shortfall} קרדיטים.`;
+              } else {
+                errorMessage = `אין מספיק קרדיטים לביצוע הפעולה. ${payload?.error || ''}`;
+              }
+            }
+
+            setError(errorMessage);
+            setVideoId(null);
+            setStages((prev) =>
+              prev.map((stage) =>
+                stage.id === "complete"
+                  ? { ...stage, status: "error", message: errorMessage }
+                  : stage,
+              ),
+            );
           }
 
-          setError(errorMessage);
-          setVideoId(null);
-          setStages((prev) =>
-            prev.map((stage) =>
-              stage.id === "complete"
-                ? { ...stage, status: "error", message: errorMessage }
-                : stage,
-            ),
-          );
+        } catch {
+          reportClientError('upload-invalid-response', xhr.status);
+          setError("לא ניתן לקרוא את תשובת השרת. הקובץ נשאר זמין לניסיון נוסף.");
+        } finally {
+          if (!recoverThroughJob) releaseCurrentJob();
         }
-
-        releaseCurrentJob();
       };
 
       try {
@@ -455,7 +515,7 @@ export function useTranscriptionWorkflow(): TranscriptionWorkflow {
         setError("לא ניתן לאמת את החשבון. התחברו מחדש ונסו שוב.");
       }
     },
-    [file, maxCharactersPerSubtitle, socketId, user?.uid, releaseCurrentJob],
+    [file, maxCharactersPerSubtitle, maxWordsPerSubtitle, subtitleLimitMode, languages, socketId, user?.uid, releaseCurrentJob],
   );
 
   const handleSegmentsUpdate = useCallback(
@@ -586,9 +646,12 @@ export function useTranscriptionWorkflow(): TranscriptionWorkflow {
   const handleSignOut = useCallback(async () => {
     try {
       await signOut();
+      setError(null);
+      return true;
     } catch (err) {
       console.error("Sign-out failed", err);
       setError("התנתקות נכשלה. נסו שוב.");
+      return false;
     } finally {
       handleProfileClose();
     }
@@ -629,6 +692,9 @@ export function useTranscriptionWorkflow(): TranscriptionWorkflow {
     file,
     format,
     maxCharactersPerSubtitle,
+    subtitleLimitMode,
+    maxWordsPerSubtitle,
+    languages,
     isSubmitting,
     uploadProgress,
     stages,
@@ -643,6 +709,9 @@ export function useTranscriptionWorkflow(): TranscriptionWorkflow {
     steps: STEPS,
     onFileChange: handleFileChange,
     onMaxCharactersChange: handleMaxCharactersChange,
+    onSubtitleLimitModeChange: setSubtitleLimitMode,
+    onMaxWordsChange: handleMaxWordsChange,
+    onLanguagesChange: setLanguages,
     onSubmit: handleSubmit,
     onBackToUpload: handleBackToUpload,
     onBurnVideoRequest: handleBurnVideoRequest,

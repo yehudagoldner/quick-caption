@@ -182,6 +182,8 @@ export async function saveVideo({
       ],
     );
 
+    await connection.execute(`INSERT INTO media_upload_activity (video_id, user_uid, media_type, original_filename) VALUES (?, ?, ?, ?)`,
+      [result.insertId, userUid, mediaType, originalFilename]);
     if (status === 'completed') {
       await connection.execute('INSERT INTO video_activity (video_id, user_uid, media_type, duration_seconds) VALUES (?, ?, ?, ?)',
         [result.insertId, userUid, mediaType, durationSeconds ?? 0]);

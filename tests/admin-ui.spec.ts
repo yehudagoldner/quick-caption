@@ -58,7 +58,7 @@ test('mobile admin dashboard contains horizontal tables without page overflow', 
   await page.setViewportSize({ width: 390, height: 844 });
   await setup(page);
   await page.goto('/admin');
-  await expect(page.getByText('משתמשים וקרדיטים', { exact: true })).toBeVisible();
+  await expect(page.getByText('משתמשים, פעילות וקרדיטים', { exact: true })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await page.screenshot({ path: 'tmp/review/admin-mobile.png', fullPage: true });
 });

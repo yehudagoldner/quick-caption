@@ -300,3 +300,7 @@ body {
   direction: ltr !important;
   transform: scaleX(1) !important;
 }
+/* Keep native controls from opening the video without its caption overlay. */
+video::-webkit-media-controls-fullscreen-button {
+  display: none !important;
+}
