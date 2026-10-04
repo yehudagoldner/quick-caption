@@ -292,6 +292,8 @@ for (const width of [320, 390]) test(`pinch zoom keeps video size and playback p
     await client.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: contacts(start).slice(0, 1) });
     await client.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: contacts(start) });
     await client.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: contacts(end) });
+    // Let zoom and its automatic scroll settle while both fingers are still down.
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
     await client.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
   };
   await pinch(20, 200);
@@ -301,6 +303,12 @@ for (const width of [320, 390]) test(`pinch zoom keeps video size and playback p
   await expect(editor).toHaveAttribute('data-window-seconds', '4.00');
   await client.detach();
   await expect.poll(() => video.evaluate((v: HTMLVideoElement) => v.currentTime)).toBeCloseTo(1.25, 2);
+  // The first pan after a pinch must still seek rather than being mistaken for auto-scroll.
+  await editor.getByTestId('mobile-timing-track').evaluate(track => { track.scrollLeft += track.clientWidth / 16; });
+  // Scroll positions round to whole pixels, so allow less than one frame of error.
+  await expect.poll(async () => Math.abs(await video.evaluate((v: HTMLVideoElement) => v.currentTime) - 1.5)).toBeLessThan(1 / 25);
+  await video.evaluate((v: HTMLVideoElement) => { v.currentTime = 1.25; });
+  await expect(page.getByTestId('playhead-timecode')).toHaveText('00:00:01:06');
   const after = (await video.boundingBox())!;
   expect(after.height).toBeCloseTo(bounds.height, 1);
   expect(after.width).toBeCloseTo(bounds.width, 1);

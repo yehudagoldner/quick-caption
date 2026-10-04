@@ -131,8 +131,9 @@ export function MobileTimingTimeline({
 
   const onScroll = () => {
     const el = scrollerRef.current;
-    if (!el || latest.current.pps <= 0 || pinchingRef.current) return;
+    if (!el || latest.current.pps <= 0) return;
     if (programmatic.current) { programmatic.current = false; return; }
+    if (pinchingRef.current) return;
     const next = Math.max(0, Math.min(latest.current.total, el.scrollLeft / latest.current.pps));
     fromScroll.current = { time: next, at: performance.now() };
     latest.current.onRequestTimeChange(next);
