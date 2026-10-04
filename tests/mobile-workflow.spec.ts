@@ -172,6 +172,14 @@ test('the arrow itself returns to videos after saving the draft', async ({ page 
 test('mobile timing trims speech and adjacent captions, saves words and undoes together', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await prepareApp(page);
+  await page.route('**/api/videos/42/media?**', route => {
+    const range = route.request().headers().range?.match(/bytes=(\d+)-(\d*)/);
+    const start = range ? Number(range[1]) : 0;
+    const end = range?.[2] ? Math.min(Number(range[2]), portraitVideo.length - 1) : portraitVideo.length - 1;
+    return route.fulfill({ status: range ? 206 : 200, contentType: 'video/webm',
+      headers: { 'Accept-Ranges': 'bytes', ...(range ? { 'Content-Range': `bytes ${start}-${end}/${portraitVideo.length}` } : {}) },
+      body: portraitVideo.subarray(start, end + 1) });
+  });
   const clips = [{ id: 1, start: 0, end: 2, text: 'שלום עולם' }, { id: 2, start: 2, end: 4, text: 'סרטון לבדיקה' }];
   const words = [{ word: 'שלום', start: 0, end: 1, segmentId: 1 }, { word: 'עולם', start: 1, end: 2, segmentId: 1 }, { word: 'סרטון', start: 2, end: 3, segmentId: 2 }, { word: 'לבדיקה', start: 3, end: 4, segmentId: 2 }];
   await page.route('**/api/videos/load?**', route => route.fulfill({ json: { video: { id: 42, subtitle_json: clips, words_json: words, format: '.srt', stored_path: 'portrait.mp4' } } }));
@@ -187,9 +195,11 @@ test('mobile timing trims speech and adjacent captions, saves words and undoes t
   const first = page.getByTestId('mobile-timing-clip').first();
   await first.click();
   // Seek near the edge so the handle stays inside the mobile viewport.
-  const overview = page.getByRole('slider', { name: 'מיקום בהקלטה' });
-  const overviewRect = (await overview.boundingBox())!;
-  await overview.click({ position: { x: overviewRect.width / 2, y: overviewRect.height / 2 } });
+  await expect.poll(() => page.locator('video').evaluate((video: HTMLVideoElement) => video.readyState)).toBe(4);
+  const timingTrack = page.getByTestId('mobile-timing-track');
+  const seconds = Number(await timeline.getAttribute('data-window-seconds'));
+  await timingTrack.evaluate((track, windowSeconds) => { track.scrollLeft = track.clientWidth * 2 / windowSeconds; }, seconds);
+  await expect(page.getByTestId('playhead-timecode')).toHaveText('00:00:02:00');
   const dragEnd = async (delta: number) => {
     const handle = first.getByRole('slider', { name: 'הזזת סיום', exact: true });
     const rect = (await handle.boundingBox())!;

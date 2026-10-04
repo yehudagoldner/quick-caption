@@ -162,12 +162,6 @@ export function MobileTimingTimeline({
     onSegmentSelect(segment.id);
     if (time < segment.start || time >= segment.end) onRequestTimeChange(segment.start);
   };
-  const jump = (clientX: number, element: HTMLDivElement) => {
-    const rect = element.getBoundingClientRect();
-    const ratio = rect.width > 0 ? Math.min(1, Math.max(0, (clientX - rect.left) / rect.width)) : 0;
-    fromScroll.current = null;
-    onRequestTimeChange(ratio * total);
-  };
 
   return <Stack spacing={0.5} data-testid="mobile-timing-editor" data-window-seconds={windowSeconds.toFixed(2)} sx={{ flex: "1 1 auto", minWidth: 0, minHeight: 0, width: "100%", maxWidth: "100%", height: "100%", overflow: "hidden", userSelect: "none" }}>
     <Stack direction="row" alignItems="center" dir="ltr" sx={{ flexShrink: 0, minHeight: 40 }}>
@@ -181,21 +175,11 @@ export function MobileTimingTimeline({
         {manualWindow == null ? "אוטומטי" : "התאם"}
       </Button>
     </Stack>
-    <Stack gap={0.5} sx={{ flexShrink: 0, minWidth: 0 }}>
-    <Box dir="ltr" role="slider" aria-label="מיקום בהקלטה" aria-valuemin={0} aria-valuemax={Math.round(total * 1000)} aria-valuenow={Math.round(time * 1000)}
-      sx={{ flexShrink: 0, width: "100%", minWidth: 0, position: "relative", height: 16, borderRadius: 99, bgcolor: "#e6ebf1", touchAction: "none", overflow: "hidden" }}
-      onPointerDown={event => { event.currentTarget.setPointerCapture(event.pointerId); jump(event.clientX, event.currentTarget); }}
-      onPointerMove={event => { if (event.currentTarget.hasPointerCapture(event.pointerId)) jump(event.clientX, event.currentTarget); }}>
-      <Box sx={{ position: "absolute", top: 4, bottom: 4, borderRadius: 99, bgcolor: "primary.main", opacity: 0.35,
-        left: `${Math.max(0, (time - windowSeconds / 2) / total) * 100}%`, right: `${Math.max(0, 1 - (time + windowSeconds / 2) / total) * 100}%` }} />
-      <Box sx={{ position: "absolute", top: 1, bottom: 1, width: 3, borderRadius: 99, bgcolor: "primary.main", left: `calc(${time / total * 100}% - ${time / total * 3}px)` }} />
-    </Box>
     <Box sx={{ width: "100%", px: 0.5, boxSizing: "border-box", flexShrink: 0 }}>
       <CompactTimelineZoom label="זום ציר התזמון" value={zoomValue} min={0} max={100} step={0.1}
         valueText={`${Number(windowSeconds.toFixed(2))} שניות בתצוגה`} disabled={zoomRange === 0}
         onChange={value => { fromScroll.current = null; setManualWindow(total / Math.exp(value / 100 * zoomRange)); }} />
     </Box>
-    </Stack>
     <Box sx={{ flex: 1, minHeight: 0, position: "relative" }}>
       {error && <Alert severity="warning" onClose={() => setError(null)} sx={{ position: "absolute", top: 26, left: 8, right: 8, zIndex: 5, py: 0 }}>{error}</Alert>}
       <Box ref={scrollerRef} data-testid="mobile-timing-track" dir="ltr" onScroll={onScroll} sx={{

@@ -4,6 +4,7 @@ import { VideoLibraryRounded, HomeRounded, AccountBalanceWalletRounded, UploadFi
 import type { AuthUser } from "../hooks/useTranscriptionWorkflow";
 import type { EditorHeaderActions } from "../contexts/EditorHeaderContext";
 import { useAuth } from "../contexts/AuthContext";
+import { useNarrowViewport } from "../hooks/useNarrowViewport";
 
 type HeaderPage = "home" | "videos" | "transcription";
 
@@ -30,6 +31,7 @@ export function AppHeader({ user, authLoading, profileAnchorEl, currentPage, cre
   onSignIn, onSignOut, onNavigate, onBuyCredits, navigationBlocked = false, isAdmin = false, onAdmin, onReportIssue, editorActions,
 }: AppHeaderProps) {
   const { isDevBypass } = useAuth();
+  const narrow = useNarrowViewport();
   const creditsColor = credits === null ? "default" : credits < 20 ? "error" : credits < 50 ? "warning" : "success";
   const menuOpen = Boolean(profileAnchorEl);
 
@@ -37,7 +39,7 @@ export function AppHeader({ user, authLoading, profileAnchorEl, currentPage, cre
     <AppBar position="fixed" color="default" elevation={0} data-testid="app-header" sx={{ height: 56, borderBottom: 1, borderColor: "divider", bgcolor: "background.paper" }}>
       <Toolbar variant="dense" sx={{ minHeight: "55px !important", px: { xs: 1, sm: 1.5 }, direction: "rtl", gap: 1, justifyContent: "space-between" }}>
         <Box sx={{ display: "flex", alignItems: "center", gap: 0.5, flexShrink: 0 }}>
-          <Box component="img" src={`${import.meta.env.BASE_URL}quickcaption-favicon.svg`} alt="QuickCaption" sx={{ width: 32, height: 32, mr: 0.5 }} />
+          {!narrow && <Box component="img" src={`${import.meta.env.BASE_URL}quickcaption-favicon.svg`} alt="QuickCaption" sx={{ width: 32, height: 32, mr: 0.5 }} />}
           {user && <>
             <IconButton aria-label="תפריט" aria-haspopup="menu" aria-controls={menuOpen ? "app-navigation-menu" : undefined} aria-expanded={menuOpen}
               onClick={onProfileClick} sx={{ width: 44, height: 44, borderRadius: 2, ...(menuOpen ? { bgcolor: "action.selected" } : {}) }}><MenuRounded /></IconButton>

@@ -611,9 +611,9 @@ export function MobileCaptionEditor({
                       sx={{
                         scrollSnapAlign: "center",
                         flex: "0 0 78%",
-                        minHeight: 72,
+                        minHeight: 62,
                         px: 1.5,
-                        py: 1,
+                        py: "3px",
                         borderRadius: 2,
                         border: 1,
                         borderColor: active ? "primary.main" : "#e0e4ea",
@@ -696,11 +696,12 @@ export function MobileCaptionEditor({
 
         {mode === "timing" && (
           <Stack spacing={0.5} sx={{ flex: 1, minHeight: 0, height: "100%" }}>
-            <Box sx={{ flex: "7 1 0", minWidth: 0, minHeight: 0, width: "100%", display: "flex", overflow: "hidden" }}>
+            <Box sx={{ flex: 1, minWidth: 0, minHeight: 0, width: "100%", display: "flex", overflow: "hidden" }}>
               {player}
             </Box>
-            {/* Keep room for four caption lines, timestamps, and touch handles. */}
-            <Box sx={{ flex: "3 1 0", minWidth: 0, minHeight: 248, width: "100%", display: "flex", overflow: "hidden" }}>
+            {/* Return the removed 20px overview and 10px of caption height to the video.
+                The percentage basis excludes 30% of the Stack's 4px gap. */}
+            <Box sx={{ flex: "0 0 calc(30% - 31.2px)", minWidth: 0, minHeight: 218, width: "100%", display: "flex", overflow: "hidden" }}>
             <MobileTimingTimeline
               mediaUrl={mediaUrl}
               segments={editableSegments}
