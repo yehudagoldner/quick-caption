@@ -28,7 +28,8 @@ test('MySQL download records, per-user statistics and feedback survive media ret
   await downloads.recordDownload({ ...event, id: randomUUID(), kind: 'subtitles', format: 'vtt' });
   const audioId = randomUUID();
   await downloads.recordDownload({ ...event, id: audioId, videoId: 44, kind: 'subtitles', format: 'txt' });
-  await assert.rejects(downloads.saveFeedback({ downloadId: audioId, userUid: 'owner', rating: 5, feedback: '' }), { status: 404 });
+  await downloads.saveFeedback({ downloadId: audioId, userUid: 'owner', rating: 4, feedback: '' });
+  await assert.rejects(downloads.saveFeedback({ downloadId: audioId, userUid: 'other', rating: 5, feedback: '' }), { status: 404 });
   const feedback = { downloadId: event.id, userUid: 'owner', rating: 4, feedback: 'חוויה טובה\nתודה!' };
   await downloads.saveFeedback(feedback); await downloads.saveFeedback(feedback);
   await assert.rejects(downloads.saveFeedback({ ...feedback, userUid: 'other' }), { status: 404 });
@@ -36,7 +37,7 @@ test('MySQL download records, per-user statistics and feedback survive media ret
   const stats = await admin.overview();
   assert.equal(Number(stats.uploads.videos), 2); assert.equal(Number(stats.uploads.audio), 1);
   assert.equal(Number(stats.downloads.videos), 2); assert.equal(Number(stats.downloads.subtitles), 2); assert.equal(Number(stats.downloads.uniqueVideos), 1);
-  assert.equal(Number(stats.feedback.count), 1); assert.equal(Number(stats.feedback.averageRating), 4);
+  assert.equal(Number(stats.feedback.count), 2); assert.equal(Number(stats.feedback.averageRating), 4);
   const owner = (await admin.users('owner', 0)).users[0];
   assert.equal(Number(owner.uploadedVideos), 2); assert.equal(Number(owner.videoDownloads), 2); assert.equal(Number(owner.subtitleDownloads), 2); assert.equal(Number(owner.averageRating), 4);
   assert.equal(Number(owner.downloadedVideos), 1);
@@ -44,6 +45,8 @@ test('MySQL download records, per-user statistics and feedback survive media ret
   assert.equal(Number(other.uploadedVideos), 0); assert.equal(Number(other.videoDownloads), 0); assert.equal(other.averageRating, null);
   assert.equal(Number(other.downloadedVideos), 0);
   const page = await downloads.feedback(0);
-  assert.equal(page.total, 1); assert.equal(page.feedback[0].filename, 'סרטון.mp4'); assert.equal(page.feedback[0].feedback, feedback.feedback);
+  assert.equal(page.total, 2);
+  const videoFeedback = page.feedback.find(entry => entry.id === event.id);
+  assert.equal(videoFeedback.filename, 'סרטון.mp4'); assert.equal(videoFeedback.feedback, feedback.feedback);
   await downloads.recordDownload({ ...event, id: randomUUID() }); // A cached export still belongs to its original owner.
 });

@@ -53,7 +53,7 @@ export function useDownloadExperience(videoId: number | null) {
       if (generation.current !== version) return false;
       startFileDownload(file);
       pending.current.delete(key);
-      if (kind === 'video') setFeedbackDownloadId(id);
+      setFeedbackDownloadId(id);
       return true;
     } catch (cause) {
       if (generation.current === version) setError(cause instanceof Error ? cause.message : 'ההורדה נכשלה. נסו שוב.');

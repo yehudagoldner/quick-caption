@@ -39,7 +39,7 @@ export function createDownloadStore(pool) {
     },
     async saveFeedback({ downloadId, userUid, rating, feedback }) {
       const [[download]] = await pool.execute('SELECT kind, user_uid FROM media_downloads WHERE id = ? AND user_uid = ?', [downloadId, userUid]);
-      if (!download || download.user_uid !== userUid || download.kind !== 'video') throw failure(404, 'לא נמצאה הורדת סרטון לדירוג.');
+      if (!download || download.user_uid !== userUid) throw failure(404, 'לא נמצאה הורדה לדירוג.');
       await pool.execute(`INSERT INTO download_feedback (download_id, rating, feedback) VALUES (?, ?, ?)
         ON DUPLICATE KEY UPDATE rating = VALUES(rating), feedback = VALUES(feedback)`, [downloadId, rating, feedback]);
       return { success: true };

@@ -56,14 +56,16 @@ test('download and rating APIs authenticate ownership, validate inputs and dedup
   assert.equal((await request('', { ...body, videoId: 43 })).status, 409);
   const subtitlesId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
   assert.equal((await request('', { ...body, id: subtitlesId, kind: 'subtitles', format: 'srt' })).status, 200);
-  assert.equal((await request(`/${subtitlesId}/feedback`, { rating: 5 })).status, 404);
+  assert.equal((await request(`/${subtitlesId}/feedback`, { rating: 5 }, 'stranger')).status, 404);
+  assert.equal((await request(`/${subtitlesId}/feedback`, { rating: 5, feedback: 'קובץ כתוביות מצוין' })).status, 200);
+  assert.deepEqual(pool.feedback.get(subtitlesId), { rating: 5, feedback: 'קובץ כתוביות מצוין' });
   assert.equal((await request(`/${id}/feedback`, { rating: 5 }, 'stranger')).status, 404);
   for (const rating of [0, 6, 3.5, '5', null]) assert.equal((await request(`/${id}/feedback`, { rating })).status, 400);
   assert.equal((await request(`/${id}/feedback`, { rating: 4, feedback: 'x'.repeat(2001) })).status, 400);
   assert.equal((await request(`/${id}/feedback`, { rating: 4, feedback: {} })).status, 400);
   for (let i = 0; i < 2; i++) assert.equal((await request(`/${id}/feedback`, { rating: 4, feedback: '  חוויה טובה\nתודה  ' })).status, 200);
   assert.deepEqual(pool.feedback.get(id), { rating: 4, feedback: 'חוויה טובה\nתודה' });
-  assert.equal(pool.feedback.size, 1);
+  assert.equal(pool.feedback.size, 2);
   pool.setUnavailable(true);
   assert.equal((await request('', { ...body, id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc' })).status, 503);
   assert.equal(pool.downloads.size, 2);

@@ -1,4 +1,5 @@
 import { test, expect, type Page, type Locator } from '@playwright/test';
+import { readFileSync } from 'node:fs';
 import { prepareApp, portraitVideo } from './app-fixtures';
 
 async function setup(page: Page) {
@@ -30,6 +31,61 @@ async function rate(dialog: Locator, value: number) {
   const id = await dialog.getByRole('radio', { name: `${value} כוכבים`, exact: true }).getAttribute('id');
   await dialog.locator(`label[for="${id}"]`).click();
 }
+
+test('mobile bottom save button offers SRT and video and exports SRT regardless of the editor format', async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 720 });
+  const state = await setup(page);
+  await page.goto('/?screen=edit&video=review-token');
+  await page.getByRole('button', { name: 'עוד', exact: true }).click();
+  await page.getByRole('button', { name: 'הגדרות כתוביות', exact: true }).click();
+  const settings = page.getByRole('dialog', { name: 'הגדרות כתוביות', exact: true });
+  await settings.getByRole('combobox', { name: 'פורמט ההורדה' }).click();
+  await page.getByRole('option', { name: 'VTT', exact: true }).click();
+  await settings.getByRole('button', { name: 'סגור', exact: true }).click();
+  const save = page.getByRole('navigation', { name: 'מצבי עריכה' }).getByRole('button', { name: 'שמירה', exact: true });
+  await expect(save).toBeInViewport();
+  await save.click();
+  const dialog = page.getByRole('dialog', { name: 'שמירה והורדה' });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByRole('button', { name: 'וידאו מלא עם כתוביות', exact: true })).toBeEnabled();
+  await expect(page.locator('.MuiDialog-container')).toHaveCSS('opacity', '1');
+  await page.screenshot({ path: 'tmp/review/mobile-save-dialog.png' });
+  const file = page.waitForEvent('download');
+  await dialog.getByRole('button', { name: 'קובץ כתוביות SRT', exact: true }).click();
+  const downloaded = await file;
+  expect(downloaded.suggestedFilename()).toMatch(/\.srt$/);
+  const content = readFileSync((await downloaded.path())!, 'utf8');
+  expect(content).toContain('00:00:00,000 --> 00:00:02,000');
+  expect(content).not.toContain('WEBVTT');
+  await expect(dialog).toHaveCount(0);
+  await expect(page.getByRole('dialog', { name: 'איך הייתה החוויה?' })).toBeVisible();
+  expect(state.downloads[0]).toMatchObject({ kind: 'subtitles', format: 'srt' });
+  expect(state.burns()).toBe(0);
+});
+
+test('mobile bottom save button downloads full video and reuses the prepared export', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const state = await setup(page);
+  await page.goto('/?screen=edit&video=review-token');
+  const save = page.getByRole('navigation', { name: 'מצבי עריכה' }).getByRole('button', { name: 'שמירה', exact: true });
+  for (let attempt = 0; attempt < 2; attempt++) {
+    await save.click();
+    const dialog = page.getByRole('dialog', { name: 'שמירה והורדה' });
+    const video = dialog.getByRole('button', { name: 'וידאו מלא עם כתוביות', exact: true });
+    await expect(video).toBeEnabled();
+    const file = page.waitForEvent('download');
+    await video.click();
+    expect((await file).suggestedFilename()).toBe('captions.mp4');
+    await expect(dialog).toHaveCount(0);
+    const feedback = page.getByRole('dialog', { name: 'איך הייתה החוויה?' });
+    await expect(feedback).toBeVisible();
+    await feedback.getByRole('button', { name: 'אולי אחר כך' }).click();
+  }
+  expect(state.downloads).toHaveLength(2);
+  expect(state.downloads[0].id).not.toBe(state.downloads[1].id);
+  expect(state.downloads[0]).toMatchObject({ kind: 'video', format: 'mp4' });
+  expect(state.burns()).toBe(1);
+});
 
 test('rating hover and clicks agree with every visible star', async ({ page }) => {
   const state = await setup(page);
@@ -87,7 +143,7 @@ test.describe('touch rating', () => {
 });
 
 for (const mobile of [false, true]) {
-  test(`${mobile ? 'mobile' : 'desktop'} subtitle download is recorded without requesting a rating`, async ({ page }) => {
+  test(`${mobile ? 'mobile' : 'desktop'} subtitle download is recorded and requests feedback`, async ({ page }) => {
     await page.setViewportSize(mobile ? { width: 390, height: 844 } : { width: 1366, height: 768 });
     const state = await setup(page);
     await page.goto('/?screen=edit&video=review-token');
@@ -97,7 +153,13 @@ for (const mobile of [false, true]) {
     expect(state.downloads).toHaveLength(1);
     expect(state.downloads[0]).toMatchObject({ videoId: 42, kind: 'subtitles', format: 'srt' });
     expect(state.downloads[0]).not.toHaveProperty('userUid');
-    await expect(page.getByRole('dialog', { name: 'איך הייתה החוויה?' })).toHaveCount(0);
+    const dialog = page.getByRole('dialog', { name: 'איך הייתה החוויה?' });
+    await expect(dialog).toBeVisible();
+    await rate(dialog, 5);
+    await dialog.getByRole('textbox', { name: 'פידבק על החוויה (לא חובה)' }).fill('הורדת הכתוביות עבדה');
+    await dialog.getByRole('button', { name: 'שליחת דירוג' }).click();
+    await expect(dialog).toHaveCount(0);
+    expect(state.feedback).toEqual([{ id: state.downloads[0].id, rating: 5, feedback: 'הורדת הכתוביות עבדה' }]);
   });
 
   test(`${mobile ? 'mobile' : 'desktop'} video download asks for stars and feedback, and cached downloads count separately`, async ({ page }) => {

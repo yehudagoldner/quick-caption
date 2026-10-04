@@ -43,6 +43,7 @@ import {
   EditOutlined,
   MovieFilterRounded,
   RepeatRounded,
+  SaveRounded,
   SettingsRounded,
   ShareRounded,
   UndoRounded,
@@ -68,6 +69,7 @@ import { useVideoSharing } from "../hooks/useVideoSharing";
 import { VideoShareDialog } from "./VideoShareDialog";
 import { EditorNavigationContext, type EditorNavigationGuard } from "../contexts/EditorNavigationContext";
 import { MOBILE_APP_HEADER_HEIGHT, MOBILE_EDITOR_NAV_HEIGHT } from "../utils/appLayout";
+import { serializeSubtitles } from "../utils/subtitleExport";
 
 type SaveState = "idle" | "saving" | "success" | "error";
 type MobileMode = "watch" | "edit" | "timing";
@@ -206,6 +208,7 @@ export function MobileCaptionEditor({
   const [mode, setMode] = useState<MobileMode>("watch");
   const [styleOpen, setStyleOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
+  const [downloadOpen, setDownloadOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
   const [aiOpen, setAiOpen] = useState(false);
@@ -418,6 +421,18 @@ export function MobileCaptionEditor({
   };
   const openMore = async () => {
     if (await flushDraft()) { loopChangeRef.current(false); setMoreOpen(true); }
+  };
+  const openDownload = async () => {
+    if (await flushDraft()) { loopChangeRef.current(false); setDownloadOpen(true); }
+  };
+  const downloadSrt = async () => {
+    setDownloadOpen(false);
+    const url = URL.createObjectURL(new Blob([serializeSubtitles(editableSegments, ".srt", preferences.direction)], { type: "text/plain;charset=utf-8" }));
+    try {
+      await downloads.downloadSubtitles({ url, name: downloadName.replace(/\.[^.]+$/, "") + ".srt" });
+    } finally {
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
   };
 
   useEffect(() => {
@@ -769,6 +784,12 @@ export function MobileCaptionEditor({
             {item.label}
           </Button>
         ))}
+        <Button onClick={() => void openDownload()} disabled={hasTimelineDrafts || savingDraft || saveState === "saving"}
+          aria-haspopup="dialog" aria-expanded={downloadOpen} aria-controls={downloadOpen ? "mobile-download-dialog" : undefined}
+          sx={{ flex: 1, minWidth: 0, flexDirection: "column", color: "primary.main", height: MOBILE_EDITOR_NAV_HEIGHT, minHeight: MOBILE_EDITOR_NAV_HEIGHT, py: 0, fontSize: 11, lineHeight: 1.2 }}>
+          <SaveRounded />
+          שמירה
+        </Button>
         <Button onClick={() => void openMore()} sx={{ flex: 1, flexDirection: "column", color: "text.secondary", height: MOBILE_EDITOR_NAV_HEIGHT, minHeight: MOBILE_EDITOR_NAV_HEIGHT, py: 0, fontSize: 11, lineHeight: 1.2 }}>
           <AddRounded />
           עוד
@@ -894,6 +915,28 @@ export function MobileCaptionEditor({
           )}
         </List>
       </Drawer>
+
+      <Dialog open={downloadOpen} onClose={() => setDownloadOpen(false)} fullWidth maxWidth="xs" dir="rtl" aria-labelledby="mobile-download-title"
+        slotProps={{ paper: { id: "mobile-download-dialog" } }}>
+        <DialogTitle id="mobile-download-title">שמירה והורדה</DialogTitle>
+        <DialogContent>
+          <Typography color="text.secondary" sx={{ mb: 2 }}>מה תרצו להוריד?</Typography>
+          <Stack spacing={1.5}>
+            <Button variant="outlined" startIcon={<SubtitlesRounded />} disabled={!downloadUrl || hasTimelineDrafts || saveState === "saving"}
+              onClick={() => void downloadSrt()} sx={{ minHeight: 48, gap: 1, "& .MuiButton-startIcon": { m: 0 } }}>קובץ כתוביות SRT</Button>
+            <Button variant="contained" startIcon={isBurning ? <CircularProgress size={20} color="inherit" /> : <MovieFilterRounded />}
+              disabled={isBurning || !mediaUrl || !canBurn || !fontReady || hasTimelineDrafts || saveState === "saving"}
+              onClick={() => {
+                setDownloadOpen(false);
+                if (burnedVideo) void downloads.downloadVideo(burnedVideo);
+                else void onBurnVideo();
+              }} sx={{ minHeight: 48, gap: 1, "& .MuiButton-startIcon": { m: 0 } }}>וידאו מלא עם כתוביות</Button>
+          </Stack>
+          {!canBurn && <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>הורדת וידאו זמינה לקובץ וידאו בלבד.</Typography>}
+          {canBurn && !fontReady && <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>ממתינים לטעינת הפונט לפני יצירת הווידאו.</Typography>}
+        </DialogContent>
+        <DialogActions><Button onClick={() => setDownloadOpen(false)}>סגור</Button></DialogActions>
+      </Dialog>
 
       <VideoShareDialog open={Boolean(videoSharing.readyToShare)} onClose={videoSharing.closeShare} onShare={videoSharing.shareReadyVideo} />
 
