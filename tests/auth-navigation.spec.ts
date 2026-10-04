@@ -4,6 +4,9 @@ import { prepareApp, mockPayPal } from './app-fixtures';
 async function prepareSession(page: Page, loading = false, failSignOut = false) {
   await prepareApp(page);
   await mockPayPal(page);
+  await page.route('**/api/payments/config', route => route.fulfill({ json: {
+    available: true, clientId: 'test-client', packages: [{ credits: 100, priceUSD: '5.00' }],
+  } }));
   await page.route('**/api/admin/session', route => route.fulfill({ json: { isAdmin: true } }));
   await page.route('**/api/admin/overview', route => route.fulfill({ json: {
     revenue: { revenueUSD: 0, payments: 0 }, users: { total: 0, paying: 0, free: 0 },
