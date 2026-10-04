@@ -41,7 +41,7 @@ test('profile report preserves failed drafts, retries and appears in existing ad
     return route.fulfill({ json: { reports, total: reports.length, page: 1, pageSize: 50 } });
   });
   await page.goto('/');
-  await page.getByRole('button', { name: 'Report review' }).click();
+  await page.getByRole('button', { name: 'תפריט', exact: true }).click();
   await page.getByRole('menuitem', { name: 'דיווח על תקלה' }).click();
   const dialog = page.getByRole('dialog', { name: 'דיווח על תקלה' });
   await expect(dialog.getByRole('button', { name: 'שליחת דיווח' })).toBeDisabled();
@@ -76,7 +76,7 @@ test('mobile member can report without seeing admin entry, and malformed success
   await setup(page, false);
   await page.route('**/api/issue-reports', route => route.fulfill({ json: { unexpected: true } }));
   await page.goto('/');
-  await page.getByRole('button', { name: 'Report review' }).click();
+  await page.getByRole('button', { name: 'תפריט', exact: true }).click();
   await expect(page.getByRole('menuitem', { name: 'ניהול', exact: true })).toHaveCount(0);
   await page.getByRole('menuitem', { name: 'דיווח על תקלה' }).click();
   const dialog = page.getByRole('dialog', { name: 'דיווח על תקלה' });
@@ -112,7 +112,7 @@ test('screenshots upload, paste with Ctrl+V, retain drafts and open in the admin
     ctx.fillStyle = '#1976d2'; ctx.font = '24px sans-serif'; ctx.fillText('Screenshot example', 30, 95);
     return canvas.toDataURL('image/png').split(',')[1];
   });
-  await page.getByRole('button', { name: 'Report review' }).click();
+  await page.getByRole('button', { name: 'תפריט', exact: true }).click();
   await page.getByRole('menuitem', { name: 'דיווח על תקלה' }).click();
   const dialog = page.getByRole('dialog', { name: 'דיווח על תקלה' });
   await dialog.getByRole('textbox', { name: 'נושא התקלה' }).fill(report.title);
@@ -148,7 +148,7 @@ test('screenshots upload, paste with Ctrl+V, retain drafts and open in the admin
 test('oversized uploads are rejected without replacing an attached screenshot', async ({ page }) => {
   await setup(page, false);
   await page.goto('/');
-  await page.getByRole('button', { name: 'Report review' }).click();
+  await page.getByRole('button', { name: 'תפריט', exact: true }).click();
   await page.getByRole('menuitem', { name: 'דיווח על תקלה' }).click();
   const dialog = page.getByRole('dialog', { name: 'דיווח על תקלה' });
   await expect(dialog.getByRole('button', { name: 'צילום מסך', exact: true })).toHaveCount(0);

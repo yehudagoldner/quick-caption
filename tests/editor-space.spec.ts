@@ -87,7 +87,7 @@ test('Space works with page focus, but never activates the editor from header na
   await paused(page, false);
   await page.keyboard.press('Space');
   await paused(page, true);
-  await page.getByRole('button', { name: 'היסטוריית סרטונים', exact: true }).focus();
+  await page.getByRole('button', { name: 'לסרטונים שלי', exact: true }).focus();
   await page.keyboard.press('Space');
   await expect(page).toHaveURL(/screen=videos/);
   await expect.poll(() => page.evaluate(() => (window as any).__playbackEvents.play)).toBe(1);

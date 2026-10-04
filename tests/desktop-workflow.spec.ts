@@ -5,7 +5,8 @@ test('desktop home opens marketing for signed-in users and starts a new video', 
   await page.setViewportSize({ width: 1366, height: 768 });
   await prepareApp(page);
   await page.goto('/?screen=videos');
-  await page.getByRole('button', { name: 'דף הבית', exact: true }).click();
+  await page.getByRole('button', { name: 'תפריט', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'דף הבית', exact: true }).click();
   await expect(page).toHaveURL(/\/$/);
   await expect(page.getByRole('heading', { level: 1, name: /שעוצרות את הגלילה/ })).toBeVisible();
   await expect(page.getByText('התחברו כדי להמשיך', { exact: true })).toHaveCount(0);
@@ -70,7 +71,8 @@ test('new video in the header clears a completed transcription and opens file se
   await expect(page.getByTestId('caption-track')).toBeVisible();
   await expect(page.getByRole('heading', { name: 'QuickCaption' })).toBeHidden();
   await expect(page.getByText('תזמון משוער', { exact: true })).toHaveCount(0);
-  await page.getByRole('button', { name: 'סרטון חדש', exact: true }).click();
+  await page.getByRole('button', { name: 'תפריט', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'סרטון חדש', exact: true }).click();
   await expect(page.getByTestId('media-dropzone')).toBeVisible();
   await expect(page.getByTestId('caption-track')).toHaveCount(0);
 });
@@ -89,11 +91,11 @@ test('header navigation waits for a subtitle draft to be saved', async ({ page }
   await page.goto('/?screen=edit&video=review-token');
   await page.getByTestId('subtitle-clip').first().click();
   await page.getByRole('textbox', { name: 'טקסט המקטע' }).fill('טיוטה לפני סרטון חדש');
-  await expect(page.getByRole('button', { name: 'סרטון חדש', exact: true })).toBeDisabled();
-  await page.getByRole('textbox', { name: 'טקסט המקטע' }).blur();
+  await page.getByRole('button', { name: 'תפריט', exact: true }).click();
+  await expect(page.getByRole('menuitem', { name: 'סרטון חדש', exact: true })).toBeDisabled();
   await expect.poll(() => savedText).toBe('טיוטה לפני סרטון חדש');
   await expect(page).toHaveURL(/screen=edit/);
   release();
-  await page.getByRole('button', { name: 'סרטון חדש', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'סרטון חדש', exact: true }).click();
   await expect(page.getByTestId('media-dropzone')).toBeVisible();
 });

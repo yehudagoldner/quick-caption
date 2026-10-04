@@ -12,6 +12,7 @@ import { IssueReportDialog } from "./components/IssueReportDialog";
 import { adminRequest } from "./adminApi";
 import { useTranscriptionWorkflow } from "./hooks/useTranscriptionWorkflow";
 import { EditorNavigationContext, type EditorNavigationGuard } from "./contexts/EditorNavigationContext";
+import { EditorHeaderContext, type EditorHeaderActions } from "./contexts/EditorHeaderContext";
 import "./App.css";
 
 const theme = createTheme({
@@ -86,6 +87,7 @@ function App() {
   }, [workflow.user]);
   const editorNavigation = useRef<EditorNavigationGuard | null>(null);
   const [navigationBlocked, setNavigationBlocked] = useState(false);
+  const [editorHeaderActions, setEditorHeaderActions] = useState<EditorHeaderActions | null>(null);
   const registerEditorNavigation = useCallback((guard: EditorNavigationGuard | null, blocked = false) => {
     editorNavigation.current = guard;
     setNavigationBlocked(blocked);
@@ -224,8 +226,10 @@ function App() {
     <ThemeProvider theme={theme}>
       <CssBaseline />
       <EditorNavigationContext.Provider value={registerEditorNavigation}>
+      <EditorHeaderContext.Provider value={setEditorHeaderActions}>
       <Box sx={{ minHeight: "100vh", display: "flow-root", bgcolor: "background.default" }}>
         <AppHeader
+          editorActions={editing ? editorHeaderActions : null}
           user={workflow.user}
           authLoading={workflow.authLoading}
           profileAnchorEl={workflow.profileAnchorEl}
@@ -270,7 +274,7 @@ function App() {
           pt: marketingHome ? 0 : { xs: currentScreen === "transcription" ? 7 : 2, md: editing ? 1 : 6 },
           pb: marketingHome ? 0 : { xs: currentScreen === "transcription" ? 1 : 2, md: editing ? 1 : 6 },
           px: marketingHome ? 0 : { xs: 1.5, md: 3 },
-          mt: marketingHome ? { xs: 6, md: 8 } : { xs: currentScreen === "transcription" ? 0 : 10, md: editing ? 8 : 10 },
+          mt: marketingHome ? 7 : { xs: currentScreen === "transcription" ? 0 : 10, md: editing ? 7 : 10 },
         }}>
           {projectError && <Alert severity="error" onClose={() => setProjectError(null)} sx={{ mb: 2 }}>{projectError}</Alert>}
           {currentScreen === "home" && workflow.error && (
@@ -330,6 +334,7 @@ function App() {
           )}
         </Container>
       </Box>
+      </EditorHeaderContext.Provider>
       </EditorNavigationContext.Provider>
     </ThemeProvider>
   );
