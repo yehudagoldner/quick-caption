@@ -274,6 +274,10 @@
   .marketing-faq .marketing-wrap { grid-template-columns: 1fr; gap: 20px; }
 }
 @media (max-width: 759px) {
+  /* Static gradients preserve the mobile look without repeatedly rasterizing large blurs. */
+  .marketing-aurora { background: radial-gradient(ellipse at 80% 0%, #a78bfa55, transparent 60%), radial-gradient(ellipse at 0% 20%, #60a5fa40, transparent 65%), radial-gradient(ellipse at 65% 65%, #f0abfc30, transparent 60%); }
+  .marketing-aurora i { display: none; }
+  .marketing-demo-glow { filter: none; opacity: .3; }
   .marketing-wrap { padding: 0 20px; }
   .marketing-hero { padding-bottom: 52px; }
   .marketing-nav { display: none; }
@@ -340,6 +344,9 @@
 .marketing .marketing-dock-secondary { flex: 0 0 auto; color: var(--ink); background: #f3f1fb; font: 600 15px/1.2 var(--display); padding: 12px 14px; border-radius: 15px; gap: 8px; text-transform: none; }
 .marketing-dock .MuiButton-startIcon, .marketing-dock .MuiButton-endIcon { margin: 0; }
 .marketing .marketing-dock-secondary:hover { background: #ebe7f8; }
+@media (max-width: 759px) {
+  .marketing-dock { backdrop-filter: none; background-color: #fff; }
+}
 @media (prefers-reduced-motion: reduce) {
   .marketing *, .marketing *::before, .marketing *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 }

@@ -195,7 +195,7 @@ function DemoTimeline({ demo, fps, selectedId, onSelect }: { demo: CaptionDemo; 
       <Box dir="ltr" sx={{ flex: 1, px: 2 }}
         onPointerDownCapture={() => { resume.current = playing; setPlaying(false); }}
         onPointerUpCapture={() => { if (resume.current) setPlaying(true); resume.current = false; }}>
-        <VideoSeekBar currentTime={time} duration={duration} fps={fps} mediaUrl={null} onSeek={seek} />
+        <VideoSeekBar allowPageScroll currentTime={time} duration={duration} fps={fps} mediaUrl={null} onSeek={seek} />
       </Box>
     </Stack>
     {waveform ? <Box>
@@ -371,7 +371,7 @@ export function PhoneEditorDemo({ demo, onStart, decorative = false }: { demo: C
             <Box sx={{ flex: 1, minHeight: 0, width: "100%" }}><DemoStage demo={demo} compactControls captionTestId={decorative ? undefined : "demo-caption"} /></Box>
             <Typography variant="caption" color="text.secondary" sx={{ flexShrink: 0 }}>{formatTimecode(time, preferences.fps)}</Typography>
             <Box sx={{ width: "100%" }} {...(decorative ? { "aria-hidden": true } : {})}>
-              <VideoSeekBar compact currentTime={time} duration={demo.duration} fps={preferences.fps} mediaUrl={null} onSeek={demo.seek} />
+              <VideoSeekBar compact allowPageScroll currentTime={time} duration={demo.duration} fps={preferences.fps} mediaUrl={null} onSeek={demo.seek} />
             </Box>
             <Box dir={preferences.direction} aria-label="מקטעי כתוביות" sx={{ flexShrink: 0, width: "100%", overflow: "hidden", px: 3, py: 0.5 }}>
               <Box sx={{ display: "flex", gap: 1, transition: "transform .35s ease", transform: `translateX(calc(${focused} * (78% + 8px) - ${focused > 0 ? "11%" : "0px"}))` }}>
