@@ -9,7 +9,7 @@ import { useUploadProtection } from "./useUploadProtection";
 import { subtitleDownloadName } from "../utils/subtitleExport";
 import { reportClientError } from "../errorReporting";
 import type { SubtitleLimitMode } from "../components/InitialTranscriptionSettings";
-import { validateTranscriptionLanguages } from "../../transcriptionSettings.js";
+import { normalizeTranscriptionLanguages } from "../../transcriptionSettings.js";
 
 export type AuthUser = ReturnType<typeof useAuth>["user"];
 
@@ -32,7 +32,7 @@ export const STAGE_DEFINITIONS: StageState[] = [
   { id: "upload", label: "העלאה", status: "idle", message: null },
   { id: "timed-transcription", label: "תמלול מתוזמן", status: "idle", message: null },
   { id: "high-accuracy", label: "שיפור דיוק", status: "idle", message: null },
-  { id: "correction", label: "תיקון שפה", status: "idle", message: null },
+  { id: "correction", label: "תיקון ותרגום", status: "idle", message: null },
   { id: "complete", label: "הושלם", status: "idle", message: null },
 ];
 
@@ -60,9 +60,9 @@ function readInitialSettings() {
     return {
       mode: (["characters", "words", "none"].includes(saved.mode) ? saved.mode : "characters") as SubtitleLimitMode,
       words: Number.isInteger(saved.words) && saved.words >= 1 && saved.words <= 30 ? saved.words as number : 5,
-      languages: validateTranscriptionLanguages(saved.languages || []),
+      languages: normalizeTranscriptionLanguages(saved.languages || []),
     };
-  } catch { return { mode: "characters" as SubtitleLimitMode, words: 5, languages: [] as string[] }; }
+  } catch { return { mode: "characters" as SubtitleLimitMode, words: 5, languages: ["he"] }; }
 }
 
 function savePendingJob(uid: string, jobId: string) {

@@ -16,7 +16,8 @@ for (const viewport of [{ width: 320, height: 568 }, { width: 390, height: 844 }
       await page.getByRole('button', { name: mode, exact: true }).click();
       await fits();
       await expect(page.getByRole('button', { name: 'שלחו לעיבוד' })).toBeInViewport({ ratio: 1 });
-      await expect(page.getByRole('combobox', { name: 'שפות הדיבור' })).toBeInViewport({ ratio: 1 });
+      await expect(page.getByRole('combobox', { name: 'שפת הכתוביות', exact: true })).toBeInViewport({ ratio: 1 });
+      await expect(page.getByRole('combobox', { name: 'שפות נוספות בסרטון' })).toBeInViewport({ ratio: 1 });
     }
     await page.getByRole('button', { name: 'לפי תווים', exact: true }).click();
     await page.screenshot({ path: `tmp/review/upload-settings-${viewport.width}x${viewport.height}.png` });
@@ -39,16 +40,16 @@ for (const mode of ['characters', 'words', 'none']) {
       await expect(limit).toHaveValue('12');
     }
     if (mode === 'words') await page.getByRole('spinbutton', { name: 'מספר מילים' }).fill('3');
-    const languages = page.getByRole('combobox', { name: 'שפות הדיבור' });
+    await expect(page.getByRole('combobox', { name: 'שפת הכתוביות', exact: true })).toHaveValue('עברית · Hebrew');
+    const languages = page.getByRole('combobox', { name: 'שפות נוספות בסרטון' });
     await languages.click();
-    await page.getByRole('option', { name: /עברית/ }).click();
     await languages.fill('English');
     await page.getByRole('option', { name: /English/ }).click();
     await languages.press('Escape');
     await page.reload();
     await selectFile();
     await expect(page.getByRole('button', { name: labels[mode as keyof typeof labels], exact: true })).toHaveAttribute('aria-pressed', 'true');
-    await expect(page.getByText('2 שפות נבחרו', { exact: true })).toBeVisible();
+    await expect(page.getByText('אנגלית', { exact: true })).toBeVisible();
     let posted: string | null = null;
     await page.route('**/api/transcribe', async route => { posted = route.request().postData(); await route.fulfill({ json: { text: 'שלום', segments: [], subtitle: { content: '', format: '.srt' } } }); });
     await page.getByRole('button', { name: 'שלחו לעיבוד' }).click();
@@ -66,11 +67,43 @@ test('many selected languages remain compact and can be searched and deselected'
   await page.addInitScript(() => localStorage.setItem('quickcaption:initial-transcription-settings', JSON.stringify({ mode: 'characters', words: 5, languages: ['he', 'en', 'ar', 'ru', 'zh', 'de', 'es', 'ko', 'fr', 'ja', 'pt', 'tr', 'pl', 'ca', 'nl', 'sv', 'it', 'id', 'hi', 'fi'] })));
   await page.goto('/?screen=transcription');
   await page.locator('input[type=file]').setInputFiles({ name: 'portrait.webm', mimeType: 'video/webm', buffer: portraitVideo });
-  await expect(page.getByText('20 שפות נבחרו', { exact: true })).toBeVisible();
+  await expect(page.getByText('19 שפות נוספות', { exact: true })).toBeVisible();
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollHeight - innerHeight)).toBe(0);
-  const languages = page.getByRole('combobox', { name: 'שפות הדיבור' });
+  const languages = page.getByRole('combobox', { name: 'שפות נוספות בסרטון' });
   await languages.fill('English');
   await page.getByRole('option', { name: /English/ }).click();
   await languages.press('Escape');
-  await expect(page.getByText('19 שפות נבחרו', { exact: true })).toBeVisible();
+  await expect(page.getByText('18 שפות נוספות', { exact: true })).toBeVisible();
+});
+
+test('changing the output language places it first and clearing source hints keeps that target', async ({ page }) => {
+  await prepareApp(page);
+  await page.goto('/?screen=transcription');
+  await page.locator('input[type=file]').setInputFiles({ name: 'portrait.webm', mimeType: 'video/webm', buffer: portraitVideo });
+  const target = page.getByRole('combobox', { name: 'שפת הכתוביות', exact: true });
+  const sources = page.getByRole('combobox', { name: 'שפות נוספות בסרטון' });
+  await sources.fill('English');
+  await page.getByRole('option', { name: /English/ }).click();
+  await sources.press('Escape');
+  await target.fill('English');
+  await page.getByRole('option', { name: /English/ }).click();
+  await expect(target).toHaveValue('אנגלית · English');
+  await sources.fill('Arabic');
+  await page.getByRole('option', { name: /Arabic/ }).click();
+  await sources.press('Escape');
+  await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('quickcaption:initial-transcription-settings')!).languages)).toEqual(['en', 'ar']);
+  await page.getByRole('button', { name: 'ניקוי השפות הנוספות', exact: true }).click();
+  await expect(target).toHaveValue('אנגלית · English');
+  await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('quickcaption:initial-transcription-settings')!).languages)).toEqual(['en']);
+  await page.reload();
+  await page.locator('input[type=file]').setInputFiles({ name: 'portrait.webm', mimeType: 'video/webm', buffer: portraitVideo });
+  await expect(target).toHaveValue('אנגלית · English');
+});
+
+test('empty saved selections migrate to the required Hebrew output language', async ({ page }) => {
+  await prepareApp(page);
+  await page.addInitScript(() => localStorage.setItem('quickcaption:initial-transcription-settings', JSON.stringify({ languages: [] })));
+  await page.goto('/?screen=transcription');
+  await page.locator('input[type=file]').setInputFiles({ name: 'portrait.webm', mimeType: 'video/webm', buffer: portraitVideo });
+  await expect(page.getByRole('combobox', { name: 'שפת הכתוביות', exact: true })).toHaveValue('עברית · Hebrew');
 });

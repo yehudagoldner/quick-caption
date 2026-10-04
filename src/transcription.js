@@ -448,6 +448,11 @@ export async function transcribeMedia({
   const client = createOpenAIClient();
   const options = getTranscriptionOptions();
   if (languages !== undefined) Object.assign(options, transcriptionLanguageOptions(validateTranscriptionLanguages(languages)));
+  // A requested output language must be applied even when optional correction
+  // was disabled in the server configuration.
+  if (options.targetLanguage && !shouldRunHighAccuracy(options.correctionModel)) {
+    options.correctionModel = process.env.OPENAI_TRANSLATION_MODEL || process.env.OPENAI_EDIT_MODEL || "gpt-5";
+  }
   const warnings = [];
   const usage = {}; // Track API usage for billing
 
@@ -517,6 +522,7 @@ export async function transcribeMedia({
         warnings.push(`Correction model failed: ${error.message ?? error}`);
         logger.warn?.("Correction model failed", error);
         notify("correction", "error", error.message ?? String(error));
+        if (options.targetLanguage) throw new Error("התמלול או התרגום לשפת הכתוביות שנבחרה נכשל. נסו שוב.", { cause: error });
         refinedResult = timedResult;
       }
     } else {
@@ -782,6 +788,7 @@ async function refineTranscriptWithGPT(client, baseResult, highAccuracyResult, o
   }
 
   const payload = {
+    ...(options.targetLanguage ? { target_language: options.targetLanguage, expected_spoken_languages: options.languages } : {}),
     base_segments: baseResult.segments.map((segment) => ({
       id: segment.id,
       start: segment.start,
@@ -814,7 +821,9 @@ async function refineTranscriptWithGPT(client, baseResult, highAccuracyResult, o
         content: [
           {
             type: "input_text",
-            text: `You are an expert multilingual transcription editor. Improve accuracy and grammar while preserving meaning, speaker intent, timestamps, and every original spoken language. Never translate the transcript.${options.languages?.length ? ` Expected language codes: ${options.languages.join(", ")}.` : ""}`,
+            text: options.targetLanguage
+              ? `You are an expert multilingual transcription editor and translator. Output ALL subtitle text in ${new Intl.DisplayNames(["en"], { type: "language" }).of(options.targetLanguage)} (${options.targetLanguage}). Transcribe speech already in this target language and faithfully translate speech in any other language into this target language. The expected spoken languages are ${options.languages.join(", ")}; use this context and both transcripts to resolve ambiguous words, accents, and code-switching. Preserve meaning, speaker intent, names, numbers, and the original caption timestamps. Return every base segment with its original id, start, and end, and non-empty text. Do not omit speech, invent content, transliterate foreign sentences, merge segments, or split segments.`
+              : "You are an expert multilingual transcription editor. Improve accuracy and grammar while preserving meaning, speaker intent, timestamps, and every original spoken language. Never translate the transcript.",
           },
         ],
       },
@@ -852,6 +861,10 @@ async function refineTranscriptWithGPT(client, baseResult, highAccuracyResult, o
 
   if (!parsed?.segments || !Array.isArray(parsed.segments)) {
     throw new Error('Correction model response missing "segments" array.');
+  }
+
+  if (options.targetLanguage && (parsed.segments.length !== baseResult.segments.length || parsed.segments.some(segment => typeof segment.text !== "string" || !segment.text.trim()))) {
+    throw new Error("Translation output must include non-empty text for every source segment");
   }
 
   const refinedSegments = mergeCorrectedSegments(baseResult.segments, parsed.segments);

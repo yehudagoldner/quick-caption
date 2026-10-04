@@ -1,12 +1,20 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseTranscriptionSettings, TRANSCRIPTION_LANGUAGE_CODES } from '../src/transcriptionSettings.js';
+import { parseTranscriptionSettings, TRANSCRIPTION_LANGUAGE_CODES, transcriptionLanguageOptions } from '../src/transcriptionSettings.js';
 
 test('explicit unlimited mode keeps zero rather than restoring the five-word default', () => {
-  assert.deepEqual(parseTranscriptionSettings({ maxWordsPerSubtitle: '0', languages: '[]' }), { maxWordsPerSubtitle: 0, maxCharactersPerSubtitle: null, languages: [] });
+  assert.deepEqual(parseTranscriptionSettings({ maxWordsPerSubtitle: '0', languages: '[]' }), { maxWordsPerSubtitle: 0, maxCharactersPerSubtitle: null, languages: ['he'] });
   assert.equal(parseTranscriptionSettings().maxWordsPerSubtitle, 5);
   assert.equal(parseTranscriptionSettings({ maxWordsPerSubtitle: '3' }).maxWordsPerSubtitle, 3);
   assert.equal(parseTranscriptionSettings({ maxCharactersPerSubtitle: '12' }).maxCharactersPerSubtitle, 12);
+});
+
+test('Hebrew is the default output language and the first selected language controls translation', () => {
+  assert.deepEqual(parseTranscriptionSettings().languages, ['he']);
+  assert.equal(transcriptionLanguageOptions([]).targetLanguage, 'he');
+  assert.equal(transcriptionLanguageOptions(['ar', 'en', 'he']).targetLanguage, 'ar');
+  assert.deepEqual(transcriptionLanguageOptions(['ar', 'en', 'he']).languages, ['ar', 'en', 'he']);
+  assert.equal(transcriptionLanguageOptions(['ar', 'en']).language, undefined);
 });
 
 test('language selection accepts the entire catalog and rejects malformed settings', () => {

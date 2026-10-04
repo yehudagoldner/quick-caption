@@ -19,19 +19,28 @@ export function parseTranscriptionSettings(body = {}) {
   if (!Number.isInteger(maxWordsPerSubtitle) || maxWordsPerSubtitle < 0 || maxWordsPerSubtitle > 30) {
     throw new RangeError("מגבלת המילים חייבת להיות בין 1 ל־30, או 0 ללא הגבלה");
   }
-  let languages;
+  let languages = ["he"];
   if (body.languages !== undefined) {
-    try { languages = validateTranscriptionLanguages(JSON.parse(body.languages)); }
+    try { languages = normalizeTranscriptionLanguages(JSON.parse(body.languages)); }
     catch { throw new RangeError("בחרו שפות מתוך רשימת שפות התמלול"); }
   }
   return { maxCharactersPerSubtitle, maxWordsPerSubtitle, languages };
 }
 
 export function transcriptionLanguageOptions(languages) {
+  languages = normalizeTranscriptionLanguages(languages);
   const names = new Intl.DisplayNames(["en"], { type: "language" });
   return {
     languages,
+    targetLanguage: languages[0],
     language: languages.length === 1 ? (languages[0] === "jv" ? "jw" : languages[0]) : undefined,
     ...(languages.length > 1 ? { prompt: `The recording contains speech in ${languages.map(code => names.of(code)).join(", ")}. Preserve each spoken language without translating.` } : {}),
   };
+}
+
+// The first selection is the required output language; later selections are
+// additional languages expected in the recording. Preserve the user's order.
+export function normalizeTranscriptionLanguages(languages) {
+  const selected = validateTranscriptionLanguages(languages);
+  return selected.length ? selected : ["he"];
 }

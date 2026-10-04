@@ -16,7 +16,9 @@ export type InitialTranscriptionSettingsProps = {
 
 const hebrewNames = new Intl.DisplayNames(["he"], { type: "language" });
 const englishNames = new Intl.DisplayNames(["en"], { type: "language" });
-const languageLabel = (code: string) => `${hebrewNames.of(code)} · ${englishNames.of(code)}`;
+const fallbackNames: Record<string, [string, string]> = { ba: ["בשקירית", "Bashkir"], bo: ["טיבטית", "Tibetan"] };
+const hebrewName = (code: string) => fallbackNames[code]?.[0] || hebrewNames.of(code) || code;
+const languageLabel = (code: string) => `${hebrewName(code)} · ${fallbackNames[code]?.[1] || englishNames.of(code) || code}`;
 const languageOptions = [...TRANSCRIPTION_LANGUAGE_CODES.slice(0, 4), ...TRANSCRIPTION_LANGUAGE_CODES.slice(4).sort((a, b) => languageLabel(a).localeCompare(languageLabel(b), "he"))];
 
 function SubtitleLimitInput({ mode, value, onChange }: { mode: "characters" | "words"; value: number; onChange: (value: number) => void }) {
@@ -49,10 +51,11 @@ export function InitialTranscriptionSettings({ subtitleLimitMode, maxCharactersP
         <Typography variant="caption" color="text.secondary">{subtitleLimitMode === "characters" ? "כולל רווחים, בלי לחתוך מילים" : "מילים לכל כתובית"}</Typography>
       </>}
     </Box>
-    <Autocomplete multiple disableCloseOnSelect size="small" options={languageOptions} value={languages} onChange={(_, value) => onLanguagesChange(value)} getOptionLabel={languageLabel} noOptionsText="לא נמצאה שפה" clearText="ניקוי השפות" openText="בחירת שפות" closeText="סגירה" renderValue={(value) => <Typography variant="body2" noWrap sx={{ maxWidth: "calc(100% - 66px)", flexShrink: 0 }}>{value.length === 1 ? hebrewNames.of(value[0]) : `${value.length} שפות נבחרו`}</Typography>} renderOption={(props, code, { selected }) => {
+    <Autocomplete disableClearable size="small" options={languageOptions} value={languages[0] || "he"} onChange={(_, value) => onLanguagesChange([value, ...languages.slice(1).filter(code => code !== value)])} getOptionLabel={languageLabel} noOptionsText="לא נמצאה שפה" openText="בחירת שפת כתוביות" closeText="סגירה" renderInput={params => <TextField {...params} label="שפת הכתוביות" />} slotProps={{ listbox: { sx: { maxHeight: "min(240px, 35dvh)", direction: "rtl" } } }} />
+    <Autocomplete multiple disableCloseOnSelect size="small" options={languageOptions.filter(code => code !== languages[0])} value={languages.slice(1)} onChange={(_, value) => onLanguagesChange([languages[0] || "he", ...value])} getOptionLabel={languageLabel} noOptionsText="לא נמצאה שפה" clearText="ניקוי השפות הנוספות" openText="בחירת שפות נוספות" closeText="סגירה" renderValue={(value) => <Typography variant="body2" noWrap sx={{ maxWidth: "calc(100% - 66px)", flexShrink: 0 }}>{value.length === 1 ? hebrewName(value[0]) : `${value.length} שפות נוספות`}</Typography>} renderOption={(props, code, { selected }) => {
       const { key, ...optionProps } = props;
       return <li key={key} {...optionProps}><Checkbox checked={selected} size="small" sx={{ p: 0.5, mr: 0.5 }} />{languageLabel(code)}</li>;
-    }} renderInput={params => <TextField {...params} label="שפות הדיבור" placeholder={languages.length ? "חיפוש" : "זיהוי אוטומטי / בחירת שפות"} />} slotProps={{ listbox: { sx: { maxHeight: "min(240px, 35dvh)", direction: "rtl" } } }} sx={{ "& .MuiAutocomplete-inputRoot": { flexWrap: "nowrap" }, "& .MuiAutocomplete-input": { minWidth: "20px !important" } }} />
-    <Typography variant="caption" color="text.secondary" sx={{ fontSize: "0.6875rem", lineHeight: 1.3 }}>אפשר לבחור כמה שפות. ללא בחירה — זיהוי אוטומטי.</Typography>
+    }} renderInput={params => <TextField {...params} label="שפות נוספות בסרטון" placeholder={languages.length > 1 ? "חיפוש" : "בחירה מרובה"} />} slotProps={{ listbox: { sx: { maxHeight: "min(240px, 35dvh)", direction: "rtl" } } }} sx={{ "& .MuiAutocomplete-inputRoot": { flexWrap: "nowrap" }, "& .MuiAutocomplete-input": { minWidth: "20px !important" } }} />
+    <Typography variant="caption" color="text.secondary" sx={{ fontSize: "0.6875rem", lineHeight: 1.3 }}>השפות הנוספות משפרות את הזיהוי ומתורגמות לשפת הכתוביות.</Typography>
   </Stack>;
 }
