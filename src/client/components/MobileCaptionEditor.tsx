@@ -66,6 +66,7 @@ import { useEditorHeaderActions } from "../contexts/EditorHeaderContext";
 import { useVideoSharing } from "../hooks/useVideoSharing";
 import { VideoShareDialog } from "./VideoShareDialog";
 import { EditorNavigationContext, type EditorNavigationGuard } from "../contexts/EditorNavigationContext";
+import { MOBILE_APP_HEADER_HEIGHT, MOBILE_EDITOR_NAV_HEIGHT } from "../utils/appLayout";
 
 type SaveState = "idle" | "saving" | "success" | "error";
 type MobileMode = "watch" | "edit" | "timing";
@@ -274,7 +275,7 @@ export function MobileCaptionEditor({
   const wordDraftRef = useRef<Word[] | null>(null);
   const [savingDraft, setSavingDraft] = useState(false);
   const [leaving, setLeaving] = useState(false);
-  const [chromeTop, setChromeTop] = useState(56);
+  const [chromeTop, setChromeTop] = useState(MOBILE_APP_HEADER_HEIGHT);
   const captionStripRef = useRef<HTMLDivElement | null>(null);
   const captionCardRefs = useRef(new Map<string, HTMLButtonElement>());
   const captionScrollTimer = useRef(0);
@@ -342,7 +343,7 @@ export function MobileCaptionEditor({
     const bar = document.querySelector<HTMLElement>(".MuiAppBar-root");
     const update = () => {
       const bottom = bar?.getBoundingClientRect().bottom;
-      setChromeTop(bottom && bottom > 0 ? Math.round(bottom) : 56);
+      setChromeTop(bottom && bottom > 0 ? Math.round(bottom) : MOBILE_APP_HEADER_HEIGHT);
     };
     update();
     window.addEventListener("resize", update);
@@ -552,7 +553,7 @@ export function MobileCaptionEditor({
         boxSizing: "border-box",
         px: 1.5,
         pt: 1,
-        pb: styleOpen ? `calc(${STYLE_DRAWER_HEIGHT} - 60px)` : 0.5,
+        pb: styleOpen ? `calc(${STYLE_DRAWER_HEIGHT} - ${MOBILE_EDITOR_NAV_HEIGHT + 1}px)` : 0.5,
         display: "flex",
         flexDirection: "column",
         overflow: "hidden",
@@ -699,9 +700,9 @@ export function MobileCaptionEditor({
             <Box sx={{ flex: 1, minWidth: 0, minHeight: 0, width: "100%", display: "flex", overflow: "hidden" }}>
               {player}
             </Box>
-            {/* Return the removed 20px overview and 10px of caption height to the video.
-                The percentage basis excludes 30% of the Stack's 4px gap. */}
-            <Box sx={{ flex: "0 0 calc(30% - 31.2px)", minWidth: 0, minHeight: 218, width: "100%", display: "flex", overflow: "hidden" }}>
+            {/* The hidden zoom frees 28px; captions shrink another 10px.
+                Use viewport height so smaller menus give their space to the video. */}
+            <Box sx={{ flex: "0 0 calc(30dvh - 110px)", minWidth: 0, minHeight: 180, width: "100%", display: "flex", overflow: "hidden" }}>
             <MobileTimingTimeline
               mediaUrl={mediaUrl}
               segments={editableSegments}
@@ -739,7 +740,7 @@ export function MobileCaptionEditor({
 
       <Box sx={{ position: "relative", flexShrink: 0 }}>
       {selectionMode && <Paper role="toolbar" aria-label="פעולות על כתוביות נבחרות" elevation={8} dir="rtl"
-        sx={{ position: "absolute", inset: "4px 8px 6px", zIndex: 9, borderRadius: 3, bgcolor: "background.paper", display: "flex", alignItems: "center", px: 0.5, gap: 0.25 }}>
+        sx={{ position: "absolute", inset: "0px 8px 1px", zIndex: 9, borderRadius: 3, bgcolor: "background.paper", display: "flex", alignItems: "center", px: 0.5, gap: 0.25 }}>
         <IconButton aria-label="ביטול בחירת כתוביות" disabled={batchBusy} onClick={() => { setCheckedIds([]); setBatchError(null); }} sx={{ width: 44, height: 44 }}><CloseRounded /></IconButton>
         <Typography role="status" variant="body2" sx={{ flex: 1, whiteSpace: "nowrap", fontSize: 12 }}>{batchBusy ? "שומר..." : `${checkedIds.length} נבחרו`}</Typography>
         {checkedIds.length === 1
@@ -755,25 +756,25 @@ export function MobileCaptionEditor({
           {batchError ?? splitHint ?? "לחיבור בחרו כתוביות רצופות. אפשר למחוק כל בחירה."}
         </Alert>}
       <Stack direction="row" component="nav" aria-label="מצבי עריכה" aria-hidden={selectionMode || undefined}
-        sx={{ visibility: selectionMode ? "hidden" : "visible", flexShrink: 0, borderTop: 1, borderColor: "#e8edf3", bgcolor: "#ffffff", pb: 0.75, pt: 0.5, zIndex: 8, position: "relative" }}>
+        sx={{ visibility: selectionMode ? "hidden" : "visible", flexShrink: 0, borderTop: 1, borderColor: "#e8edf3", bgcolor: "#ffffff", p: 0, zIndex: 8, position: "relative", "& .MuiSvgIcon-root": { fontSize: 20 } }}>
         {[
           { id: "timing" as const, label: "תזמון", icon: <AccessTimeRounded /> },
           { id: "style" as const, label: "עיצוב", icon: <SettingsRounded /> },
           { id: "edit" as const, label: "עריכה", icon: <EditOutlined /> },
         ].map(item => (
-          <Button key={item.id} onClick={() => goMode(item.id)} sx={{ flex: 1, flexDirection: "column", color: (item.id === "style" ? styleOpen : mode === item.id) ? "primary.main" : "text.secondary", minHeight: 48, fontSize: 12 }}>
+          <Button key={item.id} onClick={() => goMode(item.id)} sx={{ flex: 1, flexDirection: "column", color: (item.id === "style" ? styleOpen : mode === item.id) ? "primary.main" : "text.secondary", height: MOBILE_EDITOR_NAV_HEIGHT, minHeight: MOBILE_EDITOR_NAV_HEIGHT, py: 0, fontSize: 11, lineHeight: 1.2 }}>
             {item.icon}
             {item.label}
           </Button>
         ))}
-        <Button onClick={() => void openMore()} sx={{ flex: 1, flexDirection: "column", color: "text.secondary", minHeight: 48, fontSize: 12 }}>
+        <Button onClick={() => void openMore()} sx={{ flex: 1, flexDirection: "column", color: "text.secondary", height: MOBILE_EDITOR_NAV_HEIGHT, minHeight: MOBILE_EDITOR_NAV_HEIGHT, py: 0, fontSize: 11, lineHeight: 1.2 }}>
           <AddRounded />
           עוד
         </Button>
       </Stack>
       </Box>
       <Snackbar open={batchNotice !== null} autoHideDuration={6000} onClose={(_, reason) => { if (reason !== "clickaway") setBatchNotice(null); }}
-        sx={{ bottom: "calc(72px + env(safe-area-inset-bottom, 0px)) !important" }} message={batchNotice}
+        sx={{ bottom: `calc(${MOBILE_EDITOR_NAV_HEIGHT + 8}px + env(safe-area-inset-bottom, 0px)) !important` }} message={batchNotice}
         action={<Button color="inherit" disabled={saveState === "saving" || !timelineEditing.canUndo} onClick={() => { setBatchNotice(null); timelineEditing.onUndo(); }}>ביטול</Button>} />
 
       {mode === "timing" && timingWordsSegment && <MobileWordTimelineDialog key={timingWordsSegment.id}

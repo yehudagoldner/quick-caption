@@ -9,7 +9,7 @@ for (const width of [320, 390, 768, 1280]) {
     const header = page.getByTestId('app-header');
     const share = header.getByRole('button', { name: 'שיתוף סרטון עם כתוביות' });
     await expect(share).toBeEnabled();
-    expect((await header.boundingBox())!.height).toBe(56);
+    expect((await header.boundingBox())!.height).toBe(width < 500 ? 44 : 56);
     if (width < 500) await expect(header.locator('img')).toHaveCount(0);
     else await expect(header.locator('img')).toHaveAttribute('src', /quickcaption-favicon\.svg$/);
     await expect(header.locator('.MuiAvatar-root')).toHaveCount(0);
@@ -18,13 +18,14 @@ for (const width of [320, 390, 768, 1280]) {
     const menu = header.getByRole('button', { name: 'תפריט', exact: true });
     const menuBox = (await menu.boundingBox())!;
     const shareBox = (await share.boundingBox())!;
+    if (width < 500) expect(shareBox.height).toBe(menuBox.height);
     const backBox = (await header.getByRole('button', { name: 'לסרטונים שלי', exact: true }).boundingBox())!;
     if (width >= 500) expect((await header.locator('img').boundingBox())!.x).toBeGreaterThan(menuBox.x);
     expect(menuBox.x).toBeGreaterThan(shareBox.x);
     expect(shareBox.x).toBeGreaterThan(backBox.x + backBox.width);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     if (width < 500) {
-      expect((await page.getByTestId('mobile-caption-editor').boundingBox())!.y).toBe(56);
+      expect((await page.getByTestId('mobile-caption-editor').boundingBox())!.y).toBe(44);
       // The player starts below the header; portrait media may center within its taller slot.
       expect((await page.getByTestId('media-stage').locator('..').boundingBox())!.y).toBeLessThan(80);
     }

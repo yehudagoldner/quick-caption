@@ -3,6 +3,8 @@ import { WorkflowIntro } from "./WorkflowIntro";
 import { UploadStepSection } from "./UploadStepSection";
 import { PreviewStepSection } from "./PreviewStepSection";
 import type { TranscriptionWorkflow } from "../hooks/useTranscriptionWorkflow";
+import { useNarrowViewport } from "../hooks/useNarrowViewport";
+import { DESKTOP_APP_HEADER_HEIGHT, MOBILE_APP_HEADER_HEIGHT } from "../utils/appLayout";
 
 interface TranscriptionPageProps {
   workflow: TranscriptionWorkflow;
@@ -12,11 +14,12 @@ interface TranscriptionPageProps {
 export function TranscriptionPage({ workflow, onMyVideos }: TranscriptionPageProps) {
   const previewError = workflow.activePage === "preview" ? workflow.error : null;
   const uploading = workflow.activePage === "upload";
+  const headerHeight = useNarrowViewport() ? MOBILE_APP_HEADER_HEIGHT : DESKTOP_APP_HEADER_HEIGHT;
 
   return (
     <Stack useFlexGap spacing={{ xs: 1, sm: 4, md: workflow.activePage === "preview" ? 0 : 4 }} sx={{
       // A minimum (rather than fixed) height centers short forms and lets longer ones scroll.
-      minHeight: { xs: uploading ? "calc(100dvh - 64px)" : undefined, sm: "auto" },
+      minHeight: { xs: uploading ? `calc(100dvh - ${headerHeight + 8}px)` : undefined, sm: "auto" },
       justifyContent: { xs: uploading ? "center" : "flex-start", sm: "flex-start" },
     }}>
       <WorkflowIntro editing={workflow.activePage === "preview"} />

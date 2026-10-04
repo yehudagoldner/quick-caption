@@ -11,6 +11,8 @@ import { AdminPage } from "./components/AdminPage";
 import { IssueReportDialog } from "./components/IssueReportDialog";
 import { adminRequest } from "./adminApi";
 import { useTranscriptionWorkflow } from "./hooks/useTranscriptionWorkflow";
+import { useNarrowViewport } from "./hooks/useNarrowViewport";
+import { DESKTOP_APP_HEADER_HEIGHT, MOBILE_APP_HEADER_HEIGHT } from "./utils/appLayout";
 import { EditorNavigationContext, type EditorNavigationGuard } from "./contexts/EditorNavigationContext";
 import { EditorHeaderContext, type EditorHeaderActions } from "./contexts/EditorHeaderContext";
 import "./App.css";
@@ -64,6 +66,8 @@ function updateUrl(screen: AppScreen, videoToken?: string) {
 
 function App() {
   const workflow = useTranscriptionWorkflow();
+  const narrow = useNarrowViewport();
+  const headerHeight = narrow ? MOBILE_APP_HEADER_HEIGHT : DESKTOP_APP_HEADER_HEIGHT;
   const desktopHome = useMediaQuery(theme.breakpoints.up("md"));
   const [currentScreen, setCurrentScreen] = useState<AppScreen>("home");
   const [videoToken, setVideoToken] = useState<string | undefined>();
@@ -271,10 +275,10 @@ function App() {
         {reportOpen && workflow.user && <IssueReportDialog user={workflow.user} screen={currentScreen} onClose={() => setReportOpen(false)} />}
 
         <Container maxWidth={false} disableGutters={marketingHome} sx={{
-          pt: marketingHome ? 0 : { xs: currentScreen === "transcription" ? 7 : 2, md: editing ? 1 : 6 },
+          pt: marketingHome ? 0 : narrow && currentScreen === "transcription" ? `${headerHeight}px` : { xs: currentScreen === "transcription" ? 7 : 2, md: editing ? 1 : 6 },
           pb: marketingHome ? 0 : { xs: currentScreen === "transcription" ? 1 : 2, md: editing ? 1 : 6 },
           px: marketingHome ? 0 : { xs: 1.5, md: 3 },
-          mt: marketingHome ? 7 : { xs: currentScreen === "transcription" ? 0 : 10, md: editing ? 7 : 10 },
+          mt: marketingHome ? `${headerHeight}px` : { xs: currentScreen === "transcription" ? 0 : 10, md: editing ? 7 : 10 },
         }}>
           {projectError && <Alert severity="error" onClose={() => setProjectError(null)} sx={{ mb: 2 }}>{projectError}</Alert>}
           {currentScreen === "home" && workflow.error && (

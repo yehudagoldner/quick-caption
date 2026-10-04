@@ -5,6 +5,7 @@ import type { AuthUser } from "../hooks/useTranscriptionWorkflow";
 import type { EditorHeaderActions } from "../contexts/EditorHeaderContext";
 import { useAuth } from "../contexts/AuthContext";
 import { useNarrowViewport } from "../hooks/useNarrowViewport";
+import { DESKTOP_APP_HEADER_HEIGHT, MOBILE_APP_HEADER_HEIGHT } from "../utils/appLayout";
 
 type HeaderPage = "home" | "videos" | "transcription";
 
@@ -32,28 +33,30 @@ export function AppHeader({ user, authLoading, profileAnchorEl, currentPage, cre
 }: AppHeaderProps) {
   const { isDevBypass } = useAuth();
   const narrow = useNarrowViewport();
+  const headerHeight = narrow ? MOBILE_APP_HEADER_HEIGHT : DESKTOP_APP_HEADER_HEIGHT;
+  const actionSize = narrow ? 36 : 44;
   const creditsColor = credits === null ? "default" : credits < 20 ? "error" : credits < 50 ? "warning" : "success";
   const menuOpen = Boolean(profileAnchorEl);
 
   return (
-    <AppBar position="fixed" color="default" elevation={0} data-testid="app-header" sx={{ height: 56, borderBottom: 1, borderColor: "divider", bgcolor: "background.paper" }}>
-      <Toolbar variant="dense" sx={{ minHeight: "55px !important", px: { xs: 1, sm: 1.5 }, direction: "rtl", gap: 1, justifyContent: "space-between" }}>
+    <AppBar position="fixed" color="default" elevation={0} data-testid="app-header" sx={{ height: headerHeight, borderBottom: 1, borderColor: "divider", bgcolor: "background.paper" }}>
+      <Toolbar variant="dense" sx={{ minHeight: `${headerHeight - 1}px !important`, px: { xs: 1, sm: 1.5 }, direction: "rtl", gap: 1, justifyContent: "space-between" }}>
         <Box sx={{ display: "flex", alignItems: "center", gap: 0.5, flexShrink: 0 }}>
           {!narrow && <Box component="img" src={`${import.meta.env.BASE_URL}quickcaption-favicon.svg`} alt="QuickCaption" sx={{ width: 32, height: 32, mr: 0.5 }} />}
           {user && <>
             <IconButton aria-label="תפריט" aria-haspopup="menu" aria-controls={menuOpen ? "app-navigation-menu" : undefined} aria-expanded={menuOpen}
-              onClick={onProfileClick} sx={{ width: 44, height: 44, borderRadius: 2, ...(menuOpen ? { bgcolor: "action.selected" } : {}) }}><MenuRounded /></IconButton>
+              onClick={onProfileClick} sx={{ width: actionSize, height: actionSize, borderRadius: 2, ...(menuOpen ? { bgcolor: "action.selected" } : {}) }}><MenuRounded sx={{ fontSize: narrow ? 20 : 24 }} /></IconButton>
             {editorActions?.showShare && <Tooltip title="שיתוף סרטון עם כתוביות">
               <span><IconButton aria-label="שיתוף סרטון עם כתוביות" disabled={!editorActions.canShare} onClick={editorActions.onShare}
-                sx={{ width: 40, height: 40, ml: 0.5, bgcolor: "primary.main", color: "#fff", "&:hover": { bgcolor: "primary.dark" }, "&.Mui-disabled": { bgcolor: "action.disabledBackground", color: "action.disabled" } }}>
-                {editorActions.sharing ? <CircularProgress size={20} color="inherit" /> : <ShareRounded />}
+                sx={{ width: narrow ? actionSize : 40, height: narrow ? actionSize : 40, ml: 0.5, bgcolor: "primary.main", color: "#fff", "&:hover": { bgcolor: "primary.dark" }, "&.Mui-disabled": { bgcolor: "action.disabledBackground", color: "action.disabled" } }}>
+                {editorActions.sharing ? <CircularProgress size={20} color="inherit" /> : <ShareRounded sx={{ fontSize: narrow ? 20 : 24 }} />}
               </IconButton></span>
             </Tooltip>}
           </>}
         </Box>
         {user ? <>
           <ButtonBase onClick={editorActions?.onMyVideos ?? (() => onNavigate("videos"))} disabled={navigationBlocked || editorActions?.backDisabled}
-            sx={{ display: "flex", direction: "ltr", minHeight: 44, minWidth: 0, gap: 0.25, fontSize: 14, fontWeight: 500, borderRadius: 1, px: 0.5 }}>
+            sx={{ display: "flex", direction: "ltr", minHeight: actionSize, minWidth: 0, gap: 0.25, fontSize: 14, fontWeight: 500, borderRadius: 1, px: 0.5 }}>
             <ChevronLeftRounded data-testid="my-videos-back-arrow" sx={{ width: 24, height: 24, flexShrink: 0 }} />
             <Box component="span" dir="rtl" sx={{ whiteSpace: "nowrap" }}>לסרטונים שלי</Box>
           </ButtonBase>
