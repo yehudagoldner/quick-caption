@@ -8,6 +8,8 @@ import { useAuth } from "../contexts/AuthContext";
 import { useUploadProtection } from "./useUploadProtection";
 import { subtitleDownloadName } from "../utils/subtitleExport";
 import { reportClientError } from "../errorReporting";
+import type { SubtitleLimitMode } from "../components/InitialTranscriptionSettings";
+import { normalizeTranscriptionLanguages } from "../../transcriptionSettings.js";
 
 export type AuthUser = ReturnType<typeof useAuth>["user"];
 
@@ -30,7 +32,7 @@ export const STAGE_DEFINITIONS: StageState[] = [
   { id: "upload", label: "העלאה", status: "idle", message: null },
   { id: "timed-transcription", label: "תמלול מתוזמן", status: "idle", message: null },
   { id: "high-accuracy", label: "שיפור דיוק", status: "idle", message: null },
-  { id: "correction", label: "תיקון שפה", status: "idle", message: null },
+  { id: "correction", label: "תיקון ותרגום", status: "idle", message: null },
   { id: "complete", label: "הושלם", status: "idle", message: null },
 ];
 
@@ -41,6 +43,7 @@ const API_BASE_URL = RAW_API_BASE.replace(/\/?$/, "");
 const TRANSCRIBE_ENDPOINT = `${API_BASE_URL || ""}/api/transcribe`;
 const BURN_ENDPOINT = `${API_BASE_URL || ""}/api/burn-subtitles`;
 const INITIAL_CHARACTER_LIMIT_KEY = "quickcaption:initial-character-limit";
+const INITIAL_SETTINGS_KEY = "quickcaption:initial-transcription-settings";
 const jobStorageKey = (uid: string) => `${import.meta.env.BASE_URL === "/" ? "" : import.meta.env.BASE_URL}quickcaption:transcription-job:${uid}`;
 
 function readInitialCharacterLimit() {
@@ -49,6 +52,17 @@ function readInitialCharacterLimit() {
     if (Number.isInteger(saved) && saved >= 7 && saved <= 20) return saved;
   } catch { /* Storage may be disabled. */ }
   return 20;
+}
+
+function readInitialSettings() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(INITIAL_SETTINGS_KEY) || "{}");
+    return {
+      mode: (["characters", "words", "none"].includes(saved.mode) ? saved.mode : "characters") as SubtitleLimitMode,
+      words: Number.isInteger(saved.words) && saved.words >= 1 && saved.words <= 30 ? saved.words as number : 5,
+      languages: normalizeTranscriptionLanguages(saved.languages || []),
+    };
+  } catch { return { mode: "characters" as SubtitleLimitMode, words: 5, languages: ["he"] }; }
 }
 
 function savePendingJob(uid: string, jobId: string) {
@@ -76,6 +90,9 @@ export type TranscriptionWorkflow = {
   file: File | null;
   format: string;
   maxCharactersPerSubtitle: number;
+  subtitleLimitMode: SubtitleLimitMode;
+  maxWordsPerSubtitle: number;
+  languages: string[];
   isSubmitting: boolean;
   uploadProgress: number | null;
   stages: StageState[];
@@ -90,6 +107,9 @@ export type TranscriptionWorkflow = {
   steps: string[];
   onFileChange: (file: File | null) => void;
   onMaxCharactersChange: (value: number) => void;
+  onSubtitleLimitModeChange: (mode: SubtitleLimitMode) => void;
+  onMaxWordsChange: (value: number) => void;
+  onLanguagesChange: (languages: string[]) => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
   onBackToUpload: () => void;
   onBurnVideoRequest: (options: BurnOptions) => Promise<{ blob: Blob; filename?: string | undefined }>;
@@ -107,6 +127,13 @@ export function useTranscriptionWorkflow(): TranscriptionWorkflow {
   const [file, setFile] = useState<File | null>(null);
   const [format, setFormat] = useState<string>(DEFAULT_FORMAT);
   const [maxCharactersPerSubtitle, setMaxCharactersPerSubtitle] = useState(readInitialCharacterLimit);
+  const [initialSettings] = useState(readInitialSettings);
+  const [subtitleLimitMode, setSubtitleLimitMode] = useState(initialSettings.mode);
+  const [maxWordsPerSubtitle, setMaxWordsPerSubtitle] = useState(initialSettings.words);
+  const [languages, setLanguages] = useState(initialSettings.languages);
+  useEffect(() => {
+    try { localStorage.setItem(INITIAL_SETTINGS_KEY, JSON.stringify({ mode: subtitleLimitMode, words: maxWordsPerSubtitle, languages })); } catch { /* Storage may be disabled. */ }
+  }, [subtitleLimitMode, maxWordsPerSubtitle, languages]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [response, setResponse] = useState<ApiResponse | null>(null);
@@ -144,6 +171,10 @@ export function useTranscriptionWorkflow(): TranscriptionWorkflow {
     if (!Number.isInteger(value) || value < 7 || value > 20) return;
     setMaxCharactersPerSubtitle(value);
     try { localStorage.setItem(INITIAL_CHARACTER_LIMIT_KEY, String(value)); } catch { /* Storage may be disabled. */ }
+  }, []);
+
+  const handleMaxWordsChange = useCallback((value: number) => {
+    if (Number.isInteger(value) && value >= 1 && value <= 30) setMaxWordsPerSubtitle(value);
   }, []);
 
   useEffect(() => {
@@ -355,10 +386,10 @@ export function useTranscriptionWorkflow(): TranscriptionWorkflow {
 
       const formData = new FormData();
       formData.append("media", file);
-      // Use the pre-transcription character limit chosen on mobile; other options keep their defaults.
       formData.append("format", DEFAULT_FORMAT);
-      formData.append("maxWordsPerSubtitle", "5");
-      formData.append("maxCharactersPerSubtitle", String(maxCharactersPerSubtitle));
+      formData.append("maxWordsPerSubtitle", subtitleLimitMode === "words" ? String(maxWordsPerSubtitle) : "0");
+      if (subtitleLimitMode === "characters") formData.append("maxCharactersPerSubtitle", String(maxCharactersPerSubtitle));
+      formData.append("languages", JSON.stringify(languages));
       formData.append("jobId", jobId);
 
       if (socketId) {
@@ -486,7 +517,7 @@ export function useTranscriptionWorkflow(): TranscriptionWorkflow {
         setError("לא ניתן לאמת את החשבון. התחברו מחדש ונסו שוב.");
       }
     },
-    [file, maxCharactersPerSubtitle, socketId, user?.uid, releaseCurrentJob],
+    [file, maxCharactersPerSubtitle, maxWordsPerSubtitle, subtitleLimitMode, languages, socketId, user?.uid, releaseCurrentJob],
   );
 
   const handleSegmentsUpdate = useCallback(
@@ -660,6 +691,9 @@ export function useTranscriptionWorkflow(): TranscriptionWorkflow {
     file,
     format,
     maxCharactersPerSubtitle,
+    subtitleLimitMode,
+    maxWordsPerSubtitle,
+    languages,
     isSubmitting,
     uploadProgress,
     stages,
@@ -674,6 +708,9 @@ export function useTranscriptionWorkflow(): TranscriptionWorkflow {
     steps: STEPS,
     onFileChange: handleFileChange,
     onMaxCharactersChange: handleMaxCharactersChange,
+    onSubtitleLimitModeChange: setSubtitleLimitMode,
+    onMaxWordsChange: handleMaxWordsChange,
+    onLanguagesChange: setLanguages,
     onSubmit: handleSubmit,
     onBackToUpload: handleBackToUpload,
     onBurnVideoRequest: handleBurnVideoRequest,

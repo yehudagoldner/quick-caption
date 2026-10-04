@@ -11,6 +11,7 @@ import { Server as SocketIOServer } from "socket.io";
 
 import "./src/loadAppEnv.js";
 import { transcribeMedia, normalizeSubtitleFormat, transcribeWithWordTimestamps, getMediaDuration, resegmentWithGPT, intelligentSplitSegment, aiEditSubtitles } from "./src/transcription.js";
+import { parseTranscriptionSettings } from "./src/transcriptionSettings.js";
 import { createBurnSubtitlesRouter } from "./routes/burnSubtitles.js";
 import paypalRouter from "./routes/paypal.js";
 import pool from "./db.js";
@@ -405,12 +406,11 @@ app.post("/api/transcribe", upload.single("media"), async (req, res) => {
   const socketId = req.body?.socketId;
   const userUid = req.identity.uid;
   const jobId = req.body?.jobId;
-  const maxWordsPerSubtitle = parseInt(req.body?.maxWordsPerSubtitle, 10) || 5;
-  const rawCharacters = req.body?.maxCharactersPerSubtitle;
-  const maxCharactersPerSubtitle = rawCharacters === undefined ? null : Number(rawCharacters);
-  if (maxCharactersPerSubtitle !== null && (!Number.isInteger(maxCharactersPerSubtitle) || maxCharactersPerSubtitle < 7 || maxCharactersPerSubtitle > 20)) {
+  let settings;
+  try { settings = parseTranscriptionSettings(req.body); }
+  catch (error) {
     if (req.file) await safeUnlink(req.file.path);
-    return res.status(400).json({ error: "מגבלת התווים חייבת להיות בין 7 ל־20" });
+    return res.status(400).json({ error: error.message });
   }
   let emitStage = createStageEmitter(socketId, jobId);
 
@@ -564,8 +564,7 @@ app.post("/api/transcribe", upload.single("media"), async (req, res) => {
     const { value: result, costUSD: measuredCostUSD, unpricedCalls } = await measureAICost(() => transcribeMedia({
       inputPath: req.file.path,
       format,
-      maxWordsPerSubtitle,
-      maxCharactersPerSubtitle,
+      ...settings,
       logger: createRequestLogger(req),
       onStage: emitStage,
     }));

@@ -73,7 +73,7 @@ type MobileMode = "watch" | "edit" | "timing";
 
 type BurnedVideo = { url: string; name: string };
 
-const STYLE_DRAWER_HEIGHT = "min(36dvh, 306px)";
+const STYLE_DRAWER_HEIGHT = "80dvh";
 
 export type MobileCaptionEditorProps = {
   onNavigateAway: EditorNavigationGuard;

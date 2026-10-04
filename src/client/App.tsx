@@ -1,6 +1,6 @@
 import { apiFetch } from "./api";
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Alert, Box, CircularProgress, Container, CssBaseline, Stack, ThemeProvider, createTheme, useMediaQuery } from "@mui/material";
+import { Alert, Box, Container, CssBaseline, ThemeProvider, createTheme } from "@mui/material";
 import { AppHeader } from "./components/AppHeader";
 import { PromotionalHome } from "./components/PromotionalHome";
 import { TranscriptionPage } from "./components/TranscriptionPage";
@@ -64,7 +64,6 @@ function updateUrl(screen: AppScreen, videoToken?: string) {
 
 function App() {
   const workflow = useTranscriptionWorkflow();
-  const desktopHome = useMediaQuery(theme.breakpoints.up("md"));
   const [currentScreen, setCurrentScreen] = useState<AppScreen>("home");
   const [videoToken, setVideoToken] = useState<string | undefined>();
   const [projectError, setProjectError] = useState<string | null>(null);
@@ -272,10 +271,10 @@ function App() {
         {reportOpen && workflow.user && <IssueReportDialog user={workflow.user} screen={currentScreen} onClose={() => setReportOpen(false)} />}
 
         <Container maxWidth={false} disableGutters={marketingHome} sx={{
-          pt: marketingHome ? 0 : { xs: currentScreen === "transcription" ? 7 : 2, md: editing ? 1 : 6 },
-          pb: marketingHome ? 0 : { xs: currentScreen === "transcription" ? 1 : 2, md: editing ? 1 : 6 },
+          pt: marketingHome ? 0 : { xs: currentScreen === "transcription" ? 7 : 2, md: editing ? 1 : currentScreen === "transcription" ? 1.5 : 6 },
+          pb: marketingHome ? 0 : { xs: currentScreen === "transcription" ? 1 : 2, md: editing ? 1 : currentScreen === "transcription" ? 1.5 : 6 },
           px: marketingHome ? 0 : { xs: 1.5, md: 3 },
-          mt: marketingHome ? { xs: 6, md: 8 } : { xs: currentScreen === "transcription" ? 0 : 10, md: editing ? 8 : 10 },
+          mt: marketingHome ? { xs: 6, md: 8 } : { xs: currentScreen === "transcription" ? 0 : 10, md: currentScreen === "transcription" ? 8 : editing ? 8 : 10 },
         }}>
           {projectError && <Alert severity="error" onClose={() => setProjectError(null)} sx={{ mb: 2 }}>{projectError}</Alert>}
           {currentScreen === "home" && workflow.error && (
@@ -284,13 +283,7 @@ function App() {
             </Alert>
           )}
 
-          {currentScreen === "home" && workflow.authLoading && !desktopHome && (
-            <Stack alignItems="center" py={8}>
-              <CircularProgress />
-            </Stack>
-          )}
-
-          {currentScreen === "home" && (desktopHome || !workflow.authLoading) && (
+          {currentScreen === "home" && (
             <PromotionalHome
               authLoading={workflow.authLoading}
               onSignIn={workflow.onSignIn}
