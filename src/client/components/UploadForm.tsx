@@ -155,7 +155,7 @@ export function UploadForm({
         type="submit"
         variant="contained"
         size="large"
-        endIcon={<SendRounded />}
+        endIcon={<SendRounded sx={{ transform: "scaleX(-1)" }} />}
         disabled={isSubmitting || !file}
       >
         {isSubmitting ? "מעבד..." : "שלחו לעיבוד"}
