@@ -266,9 +266,10 @@ for (const destination of ['היסטוריית סרטונים', 'דף הבית']
     await chooseFile(page, 'first.wav');
     await page.getByRole('button', { name: 'שלחו לעיבוד' }).click();
     await expect(page.getByTestId('caption-track')).toBeVisible();
-    await page.getByRole('button', { name: destination, exact: true }).click();
-    // The last button is the list's call to action; the header has a separate button.
-    await page.getByRole('button', { name: 'סרטון חדש', exact: true }).last().click();
+    await page.getByRole('button', { name: 'תפריט', exact: true }).click();
+    await page.getByRole('menuitem', { name: destination, exact: true }).click();
+    await page.getByRole('button', { name: 'תפריט', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'סרטון חדש', exact: true }).click();
     await expect(page).toHaveURL(/screen=transcription/);
     await expect(page.getByTestId('media-dropzone')).toBeVisible();
     await expect(page.getByTestId('caption-track')).toHaveCount(0);

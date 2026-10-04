@@ -1,11 +1,10 @@
-import { useEffect, useMemo, useRef, useState, type ChangeEvent, type ReactNode } from "react";
+import { useContext, useEffect, useMemo, useRef, useState, type ChangeEvent, type ReactNode } from "react";
 import { VideoSeekBar } from "./VideoSeekBar";
 import { CaptionFontPicker } from "./CaptionFontPicker";
 import {
   Alert,
   Box,
   Button,
-  ButtonBase,
   CircularProgress,
   Dialog,
   DialogActions,
@@ -41,7 +40,6 @@ import {
   ContentCutRounded,
   DownloadRounded,
   EditOutlined,
-  MenuRounded,
   MovieFilterRounded,
   RepeatRounded,
   SettingsRounded,
@@ -64,15 +62,21 @@ import { type CaptionDraft, type SubtitleTimelineProps } from "./SubtitleTimelin
 import { MobileTimingTimeline } from "./MobileTimingTimeline";
 import { MobileWordTimeline } from "./MobileWordTimeline";
 import { MobileWordTimelineDialog } from "./MobileWordTimelineDialog";
+import { useEditorHeaderActions } from "../contexts/EditorHeaderContext";
+import { useVideoSharing } from "../hooks/useVideoSharing";
+import { VideoShareDialog } from "./VideoShareDialog";
+import { EditorNavigationContext, type EditorNavigationGuard } from "../contexts/EditorNavigationContext";
+import { MOBILE_APP_HEADER_HEIGHT, MOBILE_EDITOR_NAV_HEIGHT } from "../utils/appLayout";
 
 type SaveState = "idle" | "saving" | "success" | "error";
 type MobileMode = "watch" | "edit" | "timing";
 
 type BurnedVideo = { url: string; name: string };
 
-const STYLE_DRAWER_HEIGHT = "min(36dvh, 306px)";
+const STYLE_DRAWER_HEIGHT = "80dvh";
 
 export type MobileCaptionEditorProps = {
+  onNavigateAway: EditorNavigationGuard;
   timelineEditing: Pick<SubtitleTimelineProps, "onSaveSegment" | "onUndo" | "onRedo" | "canUndo" | "canRedo" | "onPlayFrom" | "loopEnabled" | "onLoopChange" | "onDraftStateChange">;
   editorSettings: ReactNode;
   captionStyles?: ReactNode;
@@ -137,6 +141,7 @@ export type MobileCaptionEditorProps = {
 };
 
 export function MobileCaptionEditor({
+  onNavigateAway,
   timelineEditing,
   editorSettings,
   captionStyles, fontId, onFontChange, activeWordColor, onActiveWordColorChange,
@@ -199,8 +204,6 @@ export function MobileCaptionEditor({
   const [mode, setMode] = useState<MobileMode>("watch");
   const [styleOpen, setStyleOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
-  const [sharing, setSharing] = useState(false);
-  const [readyToShare, setReadyToShare] = useState<{ url: string; name: string } | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
   const [aiOpen, setAiOpen] = useState(false);
@@ -272,7 +275,7 @@ export function MobileCaptionEditor({
   const wordDraftRef = useRef<Word[] | null>(null);
   const [savingDraft, setSavingDraft] = useState(false);
   const [leaving, setLeaving] = useState(false);
-  const [chromeTop, setChromeTop] = useState(56);
+  const [chromeTop, setChromeTop] = useState(MOBILE_APP_HEADER_HEIGHT);
   const captionStripRef = useRef<HTMLDivElement | null>(null);
   const captionCardRefs = useRef(new Map<string, HTMLButtonElement>());
   const captionScrollTimer = useRef(0);
@@ -340,7 +343,7 @@ export function MobileCaptionEditor({
     const bar = document.querySelector<HTMLElement>(".MuiAppBar-root");
     const update = () => {
       const bottom = bar?.getBoundingClientRect().bottom;
-      setChromeTop(bottom && bottom > 0 ? Math.round(bottom) : 56);
+      setChromeTop(bottom && bottom > 0 ? Math.round(bottom) : MOBILE_APP_HEADER_HEIGHT);
     };
     update();
     window.addEventListener("resize", update);
@@ -496,53 +499,32 @@ export function MobileCaptionEditor({
   );
 
   const hasCaptionDraft = mode === "edit" && selected !== null && (draftText.trim() !== selected.text.trim() || wordDraft !== null);
-  const canShareVideo = canBurn && fontReady && Boolean(mediaUrl) && !hasTimelineDrafts && !hasCaptionDraft && !savingDraft && !isBurning && !sharing;
-
-  const shareBurnedFile = async (file: { url: string; name: string }) => {
-    const blob = await fetch(file.url).then(result => result.blob());
-    const name = file.name || "video-with-captions.mp4";
-    const video = new File([blob], name, { type: name.endsWith(".mp4") ? "video/mp4" : blob.type || "video/mp4" });
-    if (navigator.share && navigator.canShare?.({ files: [video] })) {
-      await navigator.share({ files: [video], title: "סרטון עם כתוביות" });
-      return true;
-    }
-    return false;
-  };
-
-  const shareVideo = async () => {
-    if (!canBurn || !fontReady || !mediaUrl || hasTimelineDrafts || isBurning || sharing) return;
-    setSharing(true);
-    try {
-      const burned = await onBurnVideo({ download: false, reuse: true });
-      if (!burned) return;
-      try {
-        const shared = await shareBurnedFile(burned);
-        if (!shared) setReadyToShare(burned);
-      } catch (error) {
-        if (error instanceof DOMException && error.name === "AbortError") return;
-        setReadyToShare(burned);
-      }
-    } finally {
-      setSharing(false);
+  const shareAllowed = canBurn && fontReady && Boolean(mediaUrl) && !hasTimelineDrafts && !hasCaptionDraft && !savingDraft && saveState !== "saving" && !isBurning;
+  const videoSharing = useVideoSharing(shareAllowed, onBurnVideo);
+  const { sharing, shareVideo } = videoSharing;
+  const canShareVideo = shareAllowed && !sharing;
+  const registerNavigation = useContext(EditorNavigationContext);
+  const navigationBlocked = Boolean(backDisabled || leaving || sharing || savingDraft);
+  const navigationRef = useRef<EditorNavigationGuard>(async () => {});
+  navigationRef.current = async destination => {
+    if (navigationBlocked) return;
+    if (await flushDraft()) {
+      loopChangeRef.current(false);
+      await onNavigateAway(destination);
     }
   };
-
-  const shareReadyVideo = async () => {
-    if (!readyToShare) return;
-    try {
-      const shared = await shareBurnedFile(readyToShare);
-      if (shared) {
-        setReadyToShare(null);
-        return;
-      }
-      const link = document.createElement("a");
-      link.href = readyToShare.url;
-      link.download = readyToShare.name;
-      link.click();
-    } catch (error) {
-      if (error instanceof DOMException && error.name === "AbortError") return;
-    }
-  };
+  useEffect(() => {
+    registerNavigation(destination => navigationRef.current(destination), navigationBlocked);
+    return () => registerNavigation(null);
+  }, [registerNavigation, navigationBlocked]);
+  useEditorHeaderActions(true, {
+    showShare: canBurn && Boolean(mediaUrl),
+    canShare: canShareVideo,
+    sharing: isBurning || sharing,
+    backDisabled: Boolean(backDisabled || leaving || sharing),
+    onShare: () => { void shareVideo(); },
+    onMyVideos: () => { void leave("onMyVideos"); },
+  });
 
   return (
     <Box data-testid="mobile-caption-editor" sx={{
@@ -560,17 +542,6 @@ export function MobileCaptionEditor({
       zIndex: 2,
       pb: "env(safe-area-inset-bottom, 0px)",
     }}>
-      <Stack direction="row" alignItems="center" sx={{ flexShrink: 0, px: 0.5, py: 0.25, minHeight: 56, borderBottom: 1, borderColor: "#e8edf3", bgcolor: "#ffffff" }}>
-        <ButtonBase onClick={() => void leave("onMyVideos")} disabled={backDisabled || leaving} sx={{ flex: 1, minHeight: 44, justifyContent: "flex-start", fontWeight: 500, fontSize: 15, color: "text.primary", minWidth: 0 }}>
-          <ChevronLeftRounded data-testid="my-videos-back-arrow" sx={{ width: 44, height: 44, p: 1.25, flexShrink: 0 }} />
-          לסרטונים שלי
-        </ButtonBase>
-        <IconButton size="small" aria-label="שיתוף סרטון עם כתוביות" disabled={!canShareVideo} onClick={() => { void shareVideo(); }} sx={{ width: 44, height: 44, bgcolor: "primary.main", color: "#fff", "&:hover": { bgcolor: "primary.dark" }, "&.Mui-disabled": { bgcolor: "action.disabledBackground", color: "action.disabled" } }}>
-          {isBurning || sharing ? <CircularProgress size={20} sx={{ color: "inherit" }} /> : <ShareRounded />}
-        </IconButton>
-        <IconButton size="small" aria-label="תפריט" onClick={() => void openMore()} sx={{ width: 44, height: 44 }}><MenuRounded /></IconButton>
-      </Stack>
-
       {burnError && <Alert severity="error" sx={{ flexShrink: 0, mx: 1.5, mt: 1 }}>{burnError}</Alert>}
       {isBurning && <Stack direction="row" spacing={1} alignItems="center" sx={{ flexShrink: 0, px: 2, py: 1 }}><CircularProgress size={18} /><Typography variant="caption">יוצר וידאו...</Typography></Stack>}
 
@@ -582,7 +553,7 @@ export function MobileCaptionEditor({
         boxSizing: "border-box",
         px: 1.5,
         pt: 1,
-        pb: styleOpen ? `calc(${STYLE_DRAWER_HEIGHT} - 60px)` : 0.5,
+        pb: styleOpen ? `calc(${STYLE_DRAWER_HEIGHT} - ${MOBILE_EDITOR_NAV_HEIGHT + 1}px)` : 0.5,
         display: "flex",
         flexDirection: "column",
         overflow: "hidden",
@@ -641,9 +612,9 @@ export function MobileCaptionEditor({
                       sx={{
                         scrollSnapAlign: "center",
                         flex: "0 0 78%",
-                        minHeight: 72,
+                        minHeight: 62,
                         px: 1.5,
-                        py: 1,
+                        py: "3px",
                         borderRadius: 2,
                         border: 1,
                         borderColor: active ? "primary.main" : "#e0e4ea",
@@ -726,11 +697,12 @@ export function MobileCaptionEditor({
 
         {mode === "timing" && (
           <Stack spacing={0.5} sx={{ flex: 1, minHeight: 0, height: "100%" }}>
-            <Box sx={{ flex: "7 1 0", minWidth: 0, minHeight: 0, width: "100%", display: "flex", overflow: "hidden" }}>
+            <Box sx={{ flex: 1, minWidth: 0, minHeight: 0, width: "100%", display: "flex", overflow: "hidden" }}>
               {player}
             </Box>
-            {/* Keep room for four caption lines, timestamps, and touch handles. */}
-            <Box sx={{ flex: "3 1 0", minWidth: 0, minHeight: 248, width: "100%", display: "flex", overflow: "hidden" }}>
+            {/* The hidden zoom frees 28px; captions shrink another 10px.
+                Use viewport height so smaller menus give their space to the video. */}
+            <Box sx={{ flex: "0 0 calc(30dvh - 110px)", minWidth: 0, minHeight: 180, width: "100%", display: "flex", overflow: "hidden" }}>
             <MobileTimingTimeline
               mediaUrl={mediaUrl}
               segments={editableSegments}
@@ -768,7 +740,7 @@ export function MobileCaptionEditor({
 
       <Box sx={{ position: "relative", flexShrink: 0 }}>
       {selectionMode && <Paper role="toolbar" aria-label="פעולות על כתוביות נבחרות" elevation={8} dir="rtl"
-        sx={{ position: "absolute", inset: "4px 8px 6px", zIndex: 9, borderRadius: 3, bgcolor: "background.paper", display: "flex", alignItems: "center", px: 0.5, gap: 0.25 }}>
+        sx={{ position: "absolute", inset: "0px 8px 1px", zIndex: 9, borderRadius: 3, bgcolor: "background.paper", display: "flex", alignItems: "center", px: 0.5, gap: 0.25 }}>
         <IconButton aria-label="ביטול בחירת כתוביות" disabled={batchBusy} onClick={() => { setCheckedIds([]); setBatchError(null); }} sx={{ width: 44, height: 44 }}><CloseRounded /></IconButton>
         <Typography role="status" variant="body2" sx={{ flex: 1, whiteSpace: "nowrap", fontSize: 12 }}>{batchBusy ? "שומר..." : `${checkedIds.length} נבחרו`}</Typography>
         {checkedIds.length === 1
@@ -784,25 +756,25 @@ export function MobileCaptionEditor({
           {batchError ?? splitHint ?? "לחיבור בחרו כתוביות רצופות. אפשר למחוק כל בחירה."}
         </Alert>}
       <Stack direction="row" component="nav" aria-label="מצבי עריכה" aria-hidden={selectionMode || undefined}
-        sx={{ visibility: selectionMode ? "hidden" : "visible", flexShrink: 0, borderTop: 1, borderColor: "#e8edf3", bgcolor: "#ffffff", pb: 0.75, pt: 0.5, zIndex: 8, position: "relative" }}>
+        sx={{ visibility: selectionMode ? "hidden" : "visible", flexShrink: 0, borderTop: 1, borderColor: "#e8edf3", bgcolor: "#ffffff", p: 0, zIndex: 8, position: "relative", "& .MuiSvgIcon-root": { fontSize: 20 } }}>
         {[
           { id: "timing" as const, label: "תזמון", icon: <AccessTimeRounded /> },
           { id: "style" as const, label: "עיצוב", icon: <SettingsRounded /> },
           { id: "edit" as const, label: "עריכה", icon: <EditOutlined /> },
         ].map(item => (
-          <Button key={item.id} onClick={() => goMode(item.id)} sx={{ flex: 1, flexDirection: "column", color: (item.id === "style" ? styleOpen : mode === item.id) ? "primary.main" : "text.secondary", minHeight: 48, fontSize: 12 }}>
+          <Button key={item.id} onClick={() => goMode(item.id)} sx={{ flex: 1, flexDirection: "column", color: (item.id === "style" ? styleOpen : mode === item.id) ? "primary.main" : "text.secondary", height: MOBILE_EDITOR_NAV_HEIGHT, minHeight: MOBILE_EDITOR_NAV_HEIGHT, py: 0, fontSize: 11, lineHeight: 1.2 }}>
             {item.icon}
             {item.label}
           </Button>
         ))}
-        <Button onClick={() => void openMore()} sx={{ flex: 1, flexDirection: "column", color: "text.secondary", minHeight: 48, fontSize: 12 }}>
+        <Button onClick={() => void openMore()} sx={{ flex: 1, flexDirection: "column", color: "text.secondary", height: MOBILE_EDITOR_NAV_HEIGHT, minHeight: MOBILE_EDITOR_NAV_HEIGHT, py: 0, fontSize: 11, lineHeight: 1.2 }}>
           <AddRounded />
           עוד
         </Button>
       </Stack>
       </Box>
       <Snackbar open={batchNotice !== null} autoHideDuration={6000} onClose={(_, reason) => { if (reason !== "clickaway") setBatchNotice(null); }}
-        sx={{ bottom: "calc(72px + env(safe-area-inset-bottom, 0px)) !important" }} message={batchNotice}
+        sx={{ bottom: `calc(${MOBILE_EDITOR_NAV_HEIGHT + 8}px + env(safe-area-inset-bottom, 0px)) !important` }} message={batchNotice}
         action={<Button color="inherit" disabled={saveState === "saving" || !timelineEditing.canUndo} onClick={() => { setBatchNotice(null); timelineEditing.onUndo(); }}>ביטול</Button>} />
 
       {mode === "timing" && timingWordsSegment && <MobileWordTimelineDialog key={timingWordsSegment.id}
@@ -916,16 +888,7 @@ export function MobileCaptionEditor({
         </List>
       </Drawer>
 
-      <Dialog open={Boolean(readyToShare)} onClose={() => setReadyToShare(null)} fullWidth>
-        <DialogTitle>הסרטון מוכן לשיתוף</DialogTitle>
-        <DialogContent>
-          <Typography>אפשר לשלוח אותו לוואטסאפ, למסנג'ר, להודעות ולשאר האפליקציות בטלפון.</Typography>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setReadyToShare(null)}>סגור</Button>
-          <Button variant="contained" size="large" startIcon={<ShareRounded />} onClick={() => void shareReadyVideo()}>שתף</Button>
-        </DialogActions>
-      </Dialog>
+      <VideoShareDialog open={Boolean(videoSharing.readyToShare)} onClose={videoSharing.closeShare} onShare={videoSharing.shareReadyVideo} />
 
       <Dialog open={settingsOpen} onClose={() => setSettingsOpen(false)} fullWidth>
         <DialogTitle>הגדרות כתוביות</DialogTitle>

@@ -92,8 +92,8 @@ export function useElementSize(ref: RefObject<HTMLElement | null>) {
   return size;
 }
 
-export function useInView(ref: RefObject<Element | null>, threshold = 0.05) {
-  const [inView, setInView] = useState(false);
+export function useInView(ref: RefObject<Element | null>, threshold = 0.05, initial = false) {
+  const [inView, setInView] = useState(initial);
   useEffect(() => {
     const element = ref.current;
     if (!element) return;

@@ -266,7 +266,7 @@ test('caption audio preview reports playback failure and can retry', async ({ pa
   await expect(dialog.getByRole('button', { name: 'השהיה', exact: true })).toBeVisible();
 });
 
-for (const width of [320, 390]) test(`compact timeline zoom keeps video size and playback position at ${width}px`, async ({ page, context }) => {
+for (const width of [320, 390]) test(`pinch zoom keeps video size and playback position with the zoom bar hidden at ${width}px`, async ({ page, context }) => {
   await openEditor(page);
   await page.setViewportSize({ width, height: width === 320 ? 568 : 844 });
   let saves = 0;
@@ -278,47 +278,42 @@ for (const width of [320, 390]) test(`compact timeline zoom keeps video size and
   await expect(page.getByTestId('playhead-timecode')).toHaveText('00:00:01:06');
   const bounds = (await video.boundingBox())!;
   const editor = page.getByTestId('mobile-timing-editor');
-  const zoom = editor.getByRole('slider', { name: 'זום ציר התזמון', exact: true });
-  expect((await zoom.boundingBox())!.height).toBeLessThanOrEqual(24);
-  const overview = editor.getByRole('slider', { name: 'מיקום בהקלטה', exact: true });
-  const overviewBounds = (await overview.boundingBox())!;
-  expect((await zoom.boundingBox())!.y).toBeGreaterThanOrEqual(overviewBounds.y + overviewBounds.height + 3);
-  // Both controls must use the existing timeline allocation, not take height from the video.
-  await overview.evaluate(el => { el.parentElement!.style.display = 'none'; });
-  const withoutControls = (await video.boundingBox())!;
-  await editor.getByRole('slider', { name: 'מיקום בהקלטה', exact: true, includeHidden: true }).evaluate(el => { el.parentElement!.style.removeProperty('display'); });
-  expect(withoutControls.height).toBeCloseTo(bounds.height, 1);
-  for (const fraction of [0, .5, 1]) {
-    await overview.click({ position: { x: Math.max(1, fraction * (overviewBounds.width - 1)), y: 8 } });
-    await expect.poll(() => video.evaluate((v: HTMLVideoElement) => v.currentTime)).toBeCloseTo(fraction * 4, 1);
-    for (const indicator of await overview.locator(':scope > div').all()) {
-      const box = (await indicator.boundingBox())!;
-      expect(box.x).toBeGreaterThanOrEqual(overviewBounds.x - 1);
-      expect(box.x + box.width).toBeLessThanOrEqual(overviewBounds.x + overviewBounds.width + 1);
-    }
-  }
-  await video.evaluate((v: HTMLVideoElement) => { v.currentTime = 1.25; });
-  await expect(page.getByTestId('playhead-timecode')).toHaveText('00:00:01:06');
-  await zoom.focus();
-  await page.keyboard.press('End');
+  const zoom = editor.getByRole('slider', { name: 'זום ציר התזמון', exact: true, includeHidden: true });
+  await expect(zoom).toBeHidden();
+  await expect(editor.getByRole('slider', { name: 'מיקום בהקלטה', exact: true })).toHaveCount(0);
+  // Dispatch two actual touch contacts, including adding the second finger after the first.
+  const client = await context.newCDPSession(page);
+  const rect = (await editor.getByTestId('mobile-timing-track').boundingBox())!;
+  const contacts = (distance: number) => [
+    { id: 1, x: rect.x + rect.width / 2 - distance / 2, y: rect.y + rect.height / 2 },
+    { id: 2, x: rect.x + rect.width / 2 + distance / 2, y: rect.y + rect.height / 2 },
+  ];
+  const pinch = async (start: number, end: number) => {
+    await client.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: contacts(start).slice(0, 1) });
+    await client.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: contacts(start) });
+    await client.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: contacts(end) });
+    // Let zoom and its automatic scroll settle while both fingers are still down.
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    await client.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  };
+  await pinch(20, 200);
   await expect(editor).toHaveAttribute('data-window-seconds', '0.50');
   await expect.poll(() => video.evaluate((v: HTMLVideoElement) => v.currentTime)).toBeCloseTo(1.25, 2);
-  await page.keyboard.press('Home');
+  await pinch(200, 20);
   await expect(editor).toHaveAttribute('data-window-seconds', '4.00');
-  // A real touch gesture on the thin rail should change zoom without seeking or editing captions.
-  const client = await context.newCDPSession(page);
-  const rect = (await zoom.boundingBox())!;
-  await client.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: rect.x + 6, y: rect.y + rect.height / 2 }] });
-  await client.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: rect.x + rect.width * .6, y: rect.y + rect.height / 2 }] });
-  await client.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
   await client.detach();
-  await expect.poll(async () => Number(await editor.getAttribute('data-window-seconds'))).toBeLessThan(3);
   await expect.poll(() => video.evaluate((v: HTMLVideoElement) => v.currentTime)).toBeCloseTo(1.25, 2);
+  // The first pan after a pinch must still seek rather than being mistaken for auto-scroll.
+  await editor.getByTestId('mobile-timing-track').evaluate(track => { track.scrollLeft += track.clientWidth / 16; });
+  // Scroll positions round to whole pixels, so allow less than one frame of error.
+  await expect.poll(async () => Math.abs(await video.evaluate((v: HTMLVideoElement) => v.currentTime) - 1.5)).toBeLessThan(1 / 25);
+  await video.evaluate((v: HTMLVideoElement) => { v.currentTime = 1.25; });
+  await expect(page.getByTestId('playhead-timecode')).toHaveText('00:00:01:06');
   const after = (await video.boundingBox())!;
   expect(after.height).toBeCloseTo(bounds.height, 1);
   expect(after.width).toBeCloseTo(bounds.width, 1);
   expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBe(0);
-  await page.screenshot({ path: `tmp/review/timing-zoom-${width}.png` });
+  await page.screenshot({ path: `tmp/review/timing-pinch-${width}.png` });
   await editor.getByRole('button', { name: 'התאמת זום לעריכה' }).click();
   await expect(editor.getByRole('button', { name: 'התאמת זום לעריכה' })).toHaveAttribute('aria-pressed', 'true');
   await page.getByRole('button', { name: 'תזמון מילים: שלום עולם', exact: true }).click();

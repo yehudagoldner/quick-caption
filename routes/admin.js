@@ -22,6 +22,15 @@ export function createAdminRouter({ authenticate, store }) {
   };
   const uuid = value => typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
   router.get('/overview', handle(() => store.overview()));
+  router.get('/errors', handle(req => {
+    const page = Number(req.query.page ?? 0);
+    const snapshot = req.query.snapshot == null ? undefined : Number(req.query.snapshot);
+    if (!Number.isSafeInteger(page) || page < 0 || page > 100000 ||
+        (snapshot != null && (!Number.isSafeInteger(snapshot) || snapshot < 0))) {
+      const error = new Error('מספר עמוד לא תקין.'); error.status = 400; throw error;
+    }
+    return store.errors(page, snapshot);
+  }));
   router.get('/users', handle(req => {
     const page = Number(req.query.page ?? 0), search = req.query.search ?? '';
     if (!Number.isSafeInteger(page) || page < 0 || page > 100000 || typeof search !== 'string' || search.length > 255) {

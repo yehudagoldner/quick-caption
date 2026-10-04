@@ -2,8 +2,8 @@
 
 export function WorkflowIntro({ editing = false }: { editing?: boolean }) {
   return (
-    <Stack spacing={1} textAlign="center" sx={{ display: { xs: "none", sm: "flex", md: editing ? "none" : "flex" } }}>
-      <Typography variant="h4" component="h1">
+    <Stack spacing={0.25} textAlign="center" sx={{ display: { xs: "none", sm: "flex", md: editing ? "none" : "flex" }, "@media (max-height: 650px)": { display: "none" } }}>
+      <Typography variant="h5" component="h1">
         QuickCaption
       </Typography>
       <Typography variant="subtitle1" color="text.secondary">

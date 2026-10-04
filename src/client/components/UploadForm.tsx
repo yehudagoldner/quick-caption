@@ -9,11 +9,11 @@ import {
 import { InsertDriveFileOutlined, SendRounded, UploadFileOutlined } from "@mui/icons-material";
 import type { StageState } from "../types";
 import { UploadProgress } from "./UploadProgress";
-import { InitialCharacterLimitSlider } from "./InitialCharacterLimitSlider";
+import { InitialTranscriptionSettings, type InitialTranscriptionSettingsProps } from "./InitialTranscriptionSettings";
 import { useEffect, useRef, useState } from "react";
 import { MAX_MEDIA_BYTES, MEDIA_SIZE_ERROR } from "../../mediaPolicy.js";
 
-type UploadFormProps = {
+type UploadFormProps = InitialTranscriptionSettingsProps & {
   file: File | null;
   isSubmitting: boolean;
   uploadProgress: number | null;
@@ -35,6 +35,7 @@ export function UploadForm({
   onMaxCharactersChange,
   onSubmit,
   onBackToUpload,
+  ...settings
 }: UploadFormProps) {
   const [dragging, setDragging] = useState(false);
   const dragDepth = useRef(0);
@@ -63,7 +64,7 @@ export function UploadForm({
   };
 
   return (
-    <Stack component="form" dir="rtl" spacing={{ xs: "clamp(10px, calc(5dvh - 20px), 24px)", sm: 3 }} onSubmit={onSubmit}>
+    <Stack component="form" dir="rtl" spacing={1} onSubmit={onSubmit}>
       {isSubmitting ? (
         <Typography variant="body1" textAlign="center" sx={{ overflowWrap: "anywhere" }}>{file ? file.name : "בודקים את מצב העיבוד בשרת..."}</Typography>
       ) : !file ? <Box
@@ -83,7 +84,7 @@ export function UploadForm({
         textAlign="center"
         gap={{ xs: 1.5, sm: 2 }}
         px={{ xs: 1.5, sm: 3 }}
-        py={{ xs: 3, sm: 4 }}
+        py={2}
         border="1px dashed"
         borderColor="divider"
         borderRadius={2}
@@ -91,7 +92,7 @@ export function UploadForm({
           bgcolor: dragging ? "action.hover" : "background.paper",
           borderColor: dragging ? "primary.main" : "divider",
           minWidth: 0,
-          minHeight: { xs: "clamp(200px, 34dvh, 290px)", sm: undefined },
+          minHeight: "clamp(170px, 30dvh, 250px)",
           transition: (theme) => theme.transitions.create(["border-color", "box-shadow"]),
           "&:hover": {
             borderColor: "primary.main",
@@ -120,25 +121,29 @@ export function UploadForm({
         <Typography variant="caption" color="text.secondary" sx={{ display: { xs: "none", sm: "block" } }}>
           טרם נבחר קובץ
         </Typography>
-      </Box> : <Box display="flex" justifyContent="center">
-        <Button component="label" variant="outlined" size="large" disabled={isSubmitting} sx={{ minHeight: { xs: 36, sm: 48 } }}>
-          החלפת סרטון
+      </Box> : <Box display="flex" alignItems="center" gap={1}>
+        <Typography variant="body2" noWrap sx={{ flex: 1, minWidth: 0 }} title={file.name}>{file.name}</Typography>
+        <Button component="label" variant="outlined" size="small" disabled={isSubmitting} sx={{ minHeight: 32, flexShrink: 0 }}>
+          החלפת קובץ
           <input hidden type="file" accept="video/*,audio/*,.wav,.flac,.mp3,.m4a,.mp4,.mov,.mkv" disabled={isSubmitting} onChange={handleFileChange} />
         </Button>
       </Box>}
 
-      {!isSubmitting && <Typography variant="caption" color="text.secondary" textAlign="center">עד 500MB לקובץ. סרטונים והכתוביות שלהם נמחקים לאחר 30 יום ללא פתיחה או עריכה.</Typography>}
       {fileError && <Alert severity="error">{fileError}</Alert>}
-      {previewUrl && !isSubmitting && <Stack spacing={{ xs: 0.25, sm: 1 }} alignItems="center">
+      {file && !isSubmitting && <Box sx={{ display: "grid", gridTemplateColumns: { xs: "minmax(0, 1fr)", sm: "minmax(0, 1fr) minmax(0, 1.2fr)" }, alignItems: "center", gap: 1.5 }}>
+      {previewUrl && <Stack spacing={0.25} alignItems="center" sx={{ minWidth: 0 }}>
         <Box component={file?.type.startsWith("audio/") || /\.(wav|flac|mp3|m4a|aac|ogg|opus)$/i.test(file?.name || "") ? "audio" : "video"}
           controls src={previewUrl} preload="metadata" onError={() => setFileError("הדפדפן לא מצליח לנגן את הקובץ. אפשר לנסות לתמלל אותו או לבחור פורמט אחר.")}
           onLoadedMetadata={(event: React.SyntheticEvent<HTMLMediaElement>) => {
             const media = event.currentTarget as HTMLVideoElement;
             const ratio = media.videoWidth && media.videoHeight ? ` · ${media.videoWidth}×${media.videoHeight} · ${media.videoHeight > media.videoWidth ? "אנכי" : "אופקי"}` : " · אודיו בלבד";
             setMediaInfo(`${Math.round(media.duration)} שניות${ratio}`);
-          }} sx={{ maxWidth: "100%", maxHeight: { xs: "clamp(100px, calc(40dvh - 100px), 240px)", sm: 220 }, borderRadius: 2 }} />
-        <Typography variant="caption" sx={{ fontSize: { xs: "0.75rem", sm: "0.875rem" } }}>{mediaInfo}</Typography>
+          }} sx={{ width: "100%", objectFit: "contain", maxHeight: { xs: "clamp(64px, calc(100dvh - 510px), 240px)", sm: "clamp(100px, calc(100dvh - 300px), 260px)" }, borderRadius: 2, bgcolor: "grey.900" }} />
+        <Typography variant="caption" sx={{ fontSize: "0.75rem", "@media (max-height: 650px)": { display: "none" } }}>{mediaInfo}</Typography>
       </Stack>}
+      <InitialTranscriptionSettings {...settings} maxCharactersPerSubtitle={maxCharactersPerSubtitle} onMaxCharactersChange={onMaxCharactersChange} />
+      </Box>}
+      {!isSubmitting && <Typography variant="caption" color="text.secondary" textAlign="center" sx={{ fontSize: "0.6875rem", lineHeight: 1.4 }}>עד 500MB לקובץ. סרטונים והכתוביות שלהם נמחקים לאחר 30 יום ללא פתיחה או עריכה.</Typography>}
       {!file && !isSubmitting && <Typography variant="body2" color="text.secondary" textAlign="center" sx={{ display: { xs: "none", sm: "block" } }}>
         אחרי התמלול תוכלו לשנות את חלוקת הכתוביות, כיוון הטקסט, FPS ופורמט ההורדה — ללא תמלול נוסף.
       </Typography>}
@@ -165,9 +170,6 @@ export function UploadForm({
         </Typography>}
       </Stack>}
 
-      {file && !isSubmitting && <Box sx={{ display: { xs: "block", sm: "none" } }}>
-        <InitialCharacterLimitSlider value={maxCharactersPerSubtitle} onChange={onMaxCharactersChange} />
-      </Box>}
     </Stack>
   );
 }

@@ -213,11 +213,12 @@ export function TranscriptionResult({
   navigationRef.current = leaveEditor;
   const navigationBlocked = isBurning || hasTimelineDrafts || saveState === "saving";
   useEffect(() => {
+    if (narrow) return;
     registerNavigation(async destination => {
       if (!navigationBlocked) await navigationRef.current(destination);
     }, navigationBlocked);
     return () => registerNavigation(null);
-  }, [registerNavigation, navigationBlocked]);
+  }, [registerNavigation, navigationBlocked, narrow]);
 
   const {
     handleVideoTimeUpdate,
@@ -287,6 +288,7 @@ export function TranscriptionResult({
           {!narrow && !desktop && activeWordEnabled && !hasEstimatedTimingWarning && editableWords.some(word => word.timingSource === "estimated") && <Alert severity="info">לחלק מהמילים הושלם תזמון משוער. אפשר לדייק אותן בציר המילים של המקטע; הטקסט המתוקן נשמר במלואו.</Alert>}
 
           <TranscriptionMainContent
+            onNavigateAway={destination => navigationRef.current(destination)}
             fontId={fontId} onFontChange={setFontId} activeWordColor={activeWordColor}
             onActiveWordColorChange={setActiveWordColor}
             captionStyles={<CaptionStylePicker appearance={{ fontId, fontSize, fontColor, outlineColor, activeWordColor, activeWordEnabled, offsetYPercent, marginPercent, captionMotion, popIntensity }} onApply={applyCaptionStyle} disabled={isBurning} />}
