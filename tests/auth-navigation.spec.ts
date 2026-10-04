@@ -96,6 +96,21 @@ test('failed sign-out keeps the signed-in account on the current screen', async 
   await expect(page.getByRole('status', { name: 'טוען את החשבון' })).toHaveCount(0);
 });
 
+for (const width of [390, 500, 768, 1280]) {
+  test(`sign-out places the home page directly below the header at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 844 });
+    await prepareSession(page);
+    await page.goto('/?screen=videos');
+    await page.getByTestId('app-header').locator('.MuiAvatar-root').click();
+    await page.getByRole('menuitem', { name: 'התנתקות' }).click();
+    await expect(page.getByRole('button', { name: 'התחברות', exact: true })).toBeVisible();
+    await expect(page.locator('.marketing-hero')).toBeVisible();
+    const header = (await page.getByTestId('app-header').boundingBox())!;
+    const home = (await page.locator('.marketing-hero').boundingBox())!;
+    expect(Math.abs(home.y - header.y - header.height)).toBeLessThan(1);
+  });
+}
+
 test('mobile editor sign-out waits for a successful draft save', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await prepareSession(page);

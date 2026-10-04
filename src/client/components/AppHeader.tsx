@@ -1,4 +1,5 @@
 import { LegacyAppHeader } from "./LegacyAppHeader";
+import { QaEnvironmentBadge } from "./QaEnvironmentBadge";
 import type { MouseEvent } from "react";
 import { AppBar, Box, Button, ButtonBase, Chip, CircularProgress, Divider, IconButton, Menu, MenuItem, Toolbar, Tooltip, Typography } from "@mui/material";
 import { VideoLibraryRounded, HomeRounded, AccountBalanceWalletRounded, UploadFileOutlined, MenuRounded, ShareRounded, ChevronLeftRounded } from "@mui/icons-material";
@@ -48,6 +49,7 @@ function MobileEditorHeader({ user, authLoading, profileAnchorEl, currentPage, c
     <AppBar position="fixed" color="default" elevation={0} data-testid="app-header" sx={{ height: headerHeight, borderBottom: 1, borderColor: "divider", bgcolor: "background.paper" }}>
       <Toolbar variant="dense" sx={{ minHeight: `${headerHeight - 1}px !important`, px: { xs: 1, sm: 1.5 }, direction: "rtl", gap: 1, justifyContent: "space-between" }}>
         <Box sx={{ display: "flex", alignItems: "center", gap: 0.5, flexShrink: 0 }}>
+          <QaEnvironmentBadge />
           {user && <>
             <IconButton aria-label="תפריט" aria-haspopup="menu" aria-controls={menuOpen ? "app-navigation-menu" : undefined} aria-expanded={menuOpen}
               onClick={onProfileClick} sx={{ width: actionSize, height: actionSize, borderRadius: 2, ...(menuOpen ? { bgcolor: "action.selected" } : {}) }}><MenuRounded sx={{ fontSize: 20 }} /></IconButton>

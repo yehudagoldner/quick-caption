@@ -10,6 +10,7 @@ import { BuyCreditsPage } from "./components/BuyCreditsPage";
 import { AdminPage } from "./components/AdminPage";
 import { adminRequest } from "./adminApi";
 import { useTranscriptionWorkflow } from "./hooks/useTranscriptionWorkflow";
+import { useNarrowViewport } from "./hooks/useNarrowViewport";
 import { EditorNavigationContext, type EditorNavigationGuard } from "./contexts/EditorNavigationContext";
 import { EditorHeaderContext, type EditorHeaderActions } from "./contexts/EditorHeaderContext";
 import "./App.css";
@@ -64,6 +65,7 @@ function updateUrl(screen: AppScreen, videoToken?: string) {
 function App() {
   const workflow = useTranscriptionWorkflow();
   const desktopHome = useMediaQuery(theme.breakpoints.up("md"));
+  const narrowViewport = useNarrowViewport();
   const [initialRoute] = useState(getScreenFromUrl);
   const [currentScreen, setCurrentScreen] = useState<AppScreen>(initialRoute.screen);
   const [videoToken, setVideoToken] = useState<string | undefined>(initialRoute.videoToken);
@@ -221,7 +223,6 @@ function App() {
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
-      {import.meta.env.VITE_APP_ENV === "qa" && <Alert severity="warning" sx={{ borderRadius: 0 }}>סביבת QA — נתוני בדיקה, התשלומים כבויים</Alert>}
       <EditorNavigationContext.Provider value={registerEditorNavigation}>
       <EditorHeaderContext.Provider value={setEditorHeaderActions}>
       <Box sx={{ minHeight: "100vh", display: "flow-root", bgcolor: "background.default" }}>
@@ -280,7 +281,7 @@ function App() {
           pt: marketingHome ? 0 : { xs: currentScreen === "transcription" ? 7 : 2, md: editing ? 1 : currentScreen === "transcription" ? 1.5 : 6 },
           pb: marketingHome ? 0 : { xs: currentScreen === "transcription" ? 1 : 2, md: editing ? 1 : currentScreen === "transcription" ? 1.5 : 6 },
           px: marketingHome ? 0 : { xs: 1.5, md: 3 },
-          mt: marketingHome ? { xs: 6, md: 8 } : { xs: currentScreen === "transcription" ? 0 : 10, md: currentScreen === "transcription" ? 8 : editing ? 8 : 10 },
+          mt: marketingHome ? { xs: narrowViewport ? '49px' : '57px', sm: '65px' } : { xs: currentScreen === "transcription" ? 0 : 10, md: currentScreen === "transcription" ? 8 : editing ? 8 : 10 },
         }}>
           {signingOut || (currentScreen !== "home" && workflow.authLoading) ? (
             <Stack alignItems="center" py={8} role="status" aria-label="טוען את החשבון">

@@ -14,6 +14,7 @@ import {
 import { VideoLibraryRounded, HomeRounded, AccountBalanceWalletRounded, UploadFileOutlined } from "@mui/icons-material";
 import { useAuth } from "../contexts/AuthContext";
 import { useNarrowViewport } from "../hooks/useNarrowViewport";
+import { QaEnvironmentBadge } from "./QaEnvironmentBadge";
 
 import type { AppHeaderProps } from "./AppHeader";
 
@@ -43,6 +44,7 @@ export function LegacyAppHeader({
       <Toolbar variant={narrow ? "dense" : "regular"} sx={narrow ? { minHeight: 48, px: 1 } : undefined}>
         <Box sx={{ flexGrow: 1, display: "flex", alignItems: "center", gap: 2 }}>
           <Box component="img" src={`${import.meta.env.BASE_URL}quickcaption-logo.svg`} alt="QuickCaption" sx={{ height: narrow ? 24 : 32 }} />
+          <QaEnvironmentBadge />
           {isDevBypass && !narrow && (
             <Chip size="small" color="warning" variant="outlined" label="משתמש דמה מקומי" />
           )}
