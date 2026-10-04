@@ -7,9 +7,6 @@ import { SubtitleEditor } from "./SubtitleEditor";
 import { VideoToolbar } from "./VideoToolbar";
 import { MobileCaptionEditor } from "./MobileCaptionEditor";
 import { useNarrowViewport } from "../hooks/useNarrowViewport";
-import { useEditorHeaderActions } from "../contexts/EditorHeaderContext";
-import { useVideoSharing } from "../hooks/useVideoSharing";
-import { VideoShareDialog } from "./VideoShareDialog";
 import type { EditorNavigationGuard } from "../contexts/EditorNavigationContext";
 import type { CaptionFontSizeSetting } from "../../captionStyle.js";
 import type { CaptionBatchAction } from "../../captionBatchEditing.js";
@@ -160,16 +157,6 @@ export function TranscriptionMainContent({
   const [showSubtitles, setShowSubtitles] = useState(true);
   const isNarrow = useNarrowViewport();
   const desktop = useMediaQuery(useTheme().breakpoints.up("md"));
-  const canShare = !isNarrow && Boolean(videoDimensions?.width && mediaUrl) && fontReady && !hasTimelineDrafts && saveState !== "saving" && !isBurning;
-  const videoSharing = useVideoSharing(canShare, onBurnVideo);
-  useEditorHeaderActions(!isNarrow, {
-    showShare: Boolean(videoDimensions?.width && mediaUrl),
-    canShare: canShare && !videoSharing.sharing,
-    sharing: isBurning || videoSharing.sharing,
-    backDisabled: Boolean(backDisabled),
-    onShare: () => { void videoSharing.shareVideo(); },
-    onMyVideos,
-  });
   const editorSettingsBlock = <>
     {editorSettings}
     <Box sx={{ p: 2 }}>
@@ -246,7 +233,7 @@ export function TranscriptionMainContent({
 
   return (
     <>
-      <Stack data-testid="desktop-caption-editor" direction={{ xs: "column", md: "row" }} spacing={1.5} alignItems="flex-start" sx={{ width: "100%", minWidth: 0, height: { md: "calc(100dvh - 96px)" } }}>
+      <Stack data-testid="desktop-caption-editor" direction={{ xs: "column", md: "row" }} spacing={1.5} alignItems="flex-start" sx={{ width: "100%", minWidth: 0, height: { md: "calc(100dvh - 104px)" } }}>
         <Stack className="preview-wrapper" spacing={desktop ? 1 : 2} sx={{ flex: 1, minWidth: 0, width: "100%", height: { md: "100%" } }}>
           <Stack direction="column" spacing={1.5} alignItems="center" justifyContent="center" sx={{ width: "100%", minWidth: 0 }}>
             <VideoToolbar
@@ -348,7 +335,6 @@ export function TranscriptionMainContent({
           </>
         )}
       </Stack>
-      <VideoShareDialog open={Boolean(videoSharing.readyToShare)} onClose={videoSharing.closeShare} onShare={videoSharing.shareReadyVideo} />
     </>
   );
 }

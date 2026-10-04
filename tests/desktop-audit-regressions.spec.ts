@@ -85,11 +85,11 @@ test('browser Back restores the editor while dirty and preserves Back/Forward af
   await page.getByTestId('subtitle-clip').first().click();
   const field = page.getByRole('textbox', { name: 'טקסט המקטע' });
   state.gate = deferred(); await field.fill('טיוטה לפני חזרה');
-  await expect(page.getByRole('button', { name: 'לסרטונים שלי', exact: true })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'סרטון חדש', exact: true })).toBeDisabled();
   await page.evaluate(() => history.back());
   await expect(page).toHaveURL(/screen=edit/); await expect(field).toHaveValue('טיוטה לפני חזרה');
   await field.blur(); await expect.poll(() => state.saves).toBeGreaterThan(0); state.gate.release();
-  await expect(page.getByRole('button', { name: 'לסרטונים שלי', exact: true })).toBeEnabled();
+  await expect(page.getByRole('button', { name: 'סרטון חדש', exact: true })).toBeEnabled();
   await page.evaluate(() => history.back()); await expect(page.getByRole('button', { name: 'המשך עריכה' })).toBeVisible();
   await page.evaluate(() => history.forward()); await expect(page).toHaveURL(/screen=edit/);
   await page.getByTestId('subtitle-clip').first().click(); await expect(field).toHaveValue('טיוטה לפני חזרה');
@@ -99,13 +99,13 @@ test('profile purchase and signout cannot bypass a failed subtitle save', async 
   const { state, open } = await setup(page); await open(); state.reject = true;
   await page.getByTestId('subtitle-clip').first().click();
   await page.getByRole('textbox', { name: 'טקסט המקטע' }).fill('טיוטה מוגנת');
-  await page.getByRole('button', { name: 'תפריט', exact: true }).click();
+  await page.locator('header .MuiIconButton-root').last().click();
   await expect(page.getByRole('menuitem', { name: 'רכישת קרדיטים' })).toBeDisabled();
   await expect(page.getByRole('menuitem', { name: 'התנתקות' })).toBeDisabled();
   await expect(page).toHaveURL(/screen=edit/);
   await page.keyboard.press('Escape'); state.reject = false;
   await expect.poll(() => state.segments[0].text, { timeout: 7000 }).toBe('טיוטה מוגנת');
-  await page.getByRole('button', { name: 'תפריט', exact: true }).click();
+  await page.locator('header .MuiIconButton-root').last().click();
   await page.getByRole('menuitem', { name: 'רכישת קרדיטים' }).click(); await expect(page).toHaveURL(/screen=buy-credits/);
 });
 
@@ -129,7 +129,7 @@ test('closing an empty draft allows single-click reopening and cancellation', as
   await expect(page.getByRole('textbox', { name: 'טקסט המקטע' })).toHaveValue('');
   await page.getByRole('button', { name: 'ביטול טיוטה', exact: true }).click();
   await expect(page.getByRole('textbox', { name: 'טקסט המקטע' })).toHaveValue('שלום עולם');
-  await expect(page.getByRole('button', { name: 'לסרטונים שלי', exact: true })).toBeEnabled(); expect(state.saves).toBe(0);
+  await expect(page.getByRole('button', { name: 'סרטון חדש', exact: true })).toBeEnabled(); expect(state.saves).toBe(0);
 });
 
 test('AI failure keeps instructions and a durable error, then permits a successful retry', async ({ page }) => {
@@ -212,7 +212,7 @@ test('repeated saves retain one export Blob URL and leaving releases it', async 
     await field.fill(`שינוי ${index}`); await field.blur(); await expect.poll(() => state.segments[0].text).toBe(`שינוי ${index}`);
   }
   await expect.poll(() => page.evaluate(() => (window as any).__liveExportUrls.size)).toBe(1);
-  await page.getByRole('button', { name: 'לסרטונים שלי', exact: true }).click();
+  await page.getByRole('button', { name: 'היסטוריית סרטונים', exact: true }).click();
   await expect.poll(() => page.evaluate(() => (window as any).__liveExportUrls.size)).toBe(0);
 });
 

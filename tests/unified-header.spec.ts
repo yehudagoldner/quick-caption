@@ -1,7 +1,54 @@
 import { test, expect } from '@playwright/test';
 import { prepareApp, portraitVideo } from './app-fixtures';
 
-for (const width of [320, 390, 768, 1280]) {
+for (const width of [320, 390, 499, 500, 768, 1280]) {
+  test(`production header stays on non-editor pages at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 844 });
+    await prepareApp(page);
+    for (const screen of ['home', 'transcription', 'videos', 'buy-credits']) {
+      await page.goto(screen === 'home' ? '/' : `/?screen=${screen}`);
+      const header = page.getByTestId('app-header');
+      await expect(header.locator('.MuiAvatar-root')).toBeVisible();
+      await expect(header.locator('img').first()).toHaveAttribute('src', /quickcaption-logo\.svg$/);
+      await expect(header.getByText('50 קרדיטים', { exact: true })).toBeVisible();
+      await expect(header.getByRole('button', { name: 'תפריט', exact: true })).toHaveCount(0);
+      await expect(header.getByRole('button', { name: 'שיתוף סרטון עם כתוביות' })).toHaveCount(0);
+      expect((await header.boundingBox())!.height).toBe(width < 500 ? 49 : width < 600 ? 57 : 65);
+    }
+  });
+}
+
+for (const width of [500, 768, 1280]) {
+  test(`editor keeps production header outside mobile at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 844 });
+    await prepareApp(page);
+    await page.goto('/?screen=edit&video=review-token');
+    await expect(page.getByTestId('desktop-caption-editor')).toBeVisible();
+    const header = page.getByTestId('app-header');
+    await expect(header.locator('.MuiAvatar-root')).toBeVisible();
+    await expect(header.locator('img').first()).toHaveAttribute('src', /quickcaption-logo\.svg$/);
+    await expect(header.getByText('50 קרדיטים', { exact: true })).toBeVisible();
+    await expect(header.getByRole('button', { name: 'תפריט', exact: true })).toHaveCount(0);
+    await expect(header.getByRole('button', { name: 'שיתוף סרטון עם כתוביות' })).toHaveCount(0);
+    if (width >= 900) await expect(header.getByRole('button', { name: 'סרטון חדש', exact: true })).toBeVisible();
+  });
+}
+
+test('resizing an open editor switches between mobile and production headers', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await prepareApp(page);
+  await page.goto('/?screen=edit&video=review-token');
+  const header = page.getByTestId('app-header');
+  await expect(header.getByRole('button', { name: 'שיתוף סרטון עם כתוביות' })).toBeEnabled();
+  await page.setViewportSize({ width: 1280, height: 844 });
+  await expect(header.locator('.MuiAvatar-root')).toBeVisible();
+  await expect(header.getByRole('button', { name: 'שיתוף סרטון עם כתוביות' })).toHaveCount(0);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(header.getByRole('button', { name: 'שיתוף סרטון עם כתוביות' })).toBeEnabled();
+  expect((await header.boundingBox())!.height).toBe(44);
+});
+
+for (const width of [320, 390]) {
   test(`unified header fits ${width}px and keeps account details in the menu`, async ({ page }) => {
     await page.setViewportSize({ width, height: 844 });
     await prepareApp(page);
@@ -33,14 +80,13 @@ for (const width of [320, 390, 768, 1280]) {
     await expect(header.getByRole('button', { name: 'תפריט', exact: true, includeHidden: true })).toHaveAttribute('aria-expanded', 'true');
     await expect(page.getByRole('menu').getByText('Review', { exact: true })).toBeVisible();
     await expect(page.getByRole('menu').getByText('50 קרדיטים', { exact: true })).toBeVisible();
-    await expect(page.getByRole('menuitem', { name: 'דיווח על תקלה' })).toBeVisible();
     await expect(page.locator('#app-navigation-menu .MuiPaper-root')).toHaveCSS('opacity', '1');
     if (width === 390) await page.screenshot({ path: 'tmp/review/unified-header-menu.png' });
     await page.keyboard.press('Escape');
     await header.getByRole('button', { name: 'לסרטונים שלי', exact: true }).click();
     await expect(page).toHaveURL(/screen=videos/);
     await expect(header.getByRole('button', { name: 'שיתוף סרטון עם כתוביות' })).toHaveCount(0);
-    await menu.click();
+    await header.locator('.MuiIconButton-root').last().click();
     await page.getByRole('menuitem', { name: 'סרטון חדש', exact: true }).click();
     await expect(page).toHaveURL(/screen=transcription/);
     await expect(header.getByRole('button', { name: 'שיתוף סרטון עם כתוביות' })).toHaveCount(0);
@@ -72,14 +118,14 @@ test('menu navigation retains a failed mobile draft and saves it before leaving 
   expect(saved).toBe('טיוטה לפני מעבר מהתפריט');
 });
 
-for (const width of [390, 1280]) {
+for (const width of [390]) {
   test(`header shares a burned video with download fallback at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 844 });
     await prepareApp(page);
     let burns = 0;
     await page.route('**/api/burn-subtitles', async route => {
       burns++;
-      await route.fulfill({ contentType: 'video/mp4', headers: { 'Content-Disposition': 'attachment; filename="captions.mp4"' }, body: portraitVideo });
+      await route.fulfill({ contentType: 'video/mp4', headers: { 'Content-Disposition': 'attachment; filename="captions.mp4"', 'Access-Control-Expose-Headers': 'Content-Disposition' }, body: portraitVideo });
     });
     await page.goto('/?screen=edit&video=review-token');
     const share = page.getByTestId('app-header').getByRole('button', { name: 'שיתוף סרטון עם כתוביות' });

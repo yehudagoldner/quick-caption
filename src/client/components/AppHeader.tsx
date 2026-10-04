@@ -1,3 +1,4 @@
+import { LegacyAppHeader } from "./LegacyAppHeader";
 import type { MouseEvent } from "react";
 import { AppBar, Box, Button, ButtonBase, Chip, CircularProgress, Divider, IconButton, Menu, MenuItem, Toolbar, Tooltip, Typography } from "@mui/material";
 import { VideoLibraryRounded, HomeRounded, AccountBalanceWalletRounded, UploadFileOutlined, MenuRounded, ShareRounded, ChevronLeftRounded } from "@mui/icons-material";
@@ -5,11 +6,12 @@ import type { AuthUser } from "../hooks/useTranscriptionWorkflow";
 import type { EditorHeaderActions } from "../contexts/EditorHeaderContext";
 import { useAuth } from "../contexts/AuthContext";
 import { useNarrowViewport } from "../hooks/useNarrowViewport";
-import { DESKTOP_APP_HEADER_HEIGHT, MOBILE_APP_HEADER_HEIGHT } from "../utils/appLayout";
+import { MOBILE_APP_HEADER_HEIGHT } from "../utils/appLayout";
 
 type HeaderPage = "home" | "videos" | "transcription";
 
-type AppHeaderProps = {
+export type AppHeaderProps = {
+  editing: boolean;
   user: AuthUser;
   authLoading: boolean;
   profileAnchorEl: HTMLElement | null;
@@ -28,13 +30,17 @@ type AppHeaderProps = {
   editorActions?: EditorHeaderActions | null;
 };
 
-export function AppHeader({ user, authLoading, profileAnchorEl, currentPage, credits, onProfileClick, onProfileClose,
+export function AppHeader(props: AppHeaderProps) {
+  const narrow = useNarrowViewport();
+  return narrow && props.editing ? <MobileEditorHeader {...props} /> : <LegacyAppHeader {...props} />;
+}
+
+function MobileEditorHeader({ user, authLoading, profileAnchorEl, currentPage, credits, onProfileClick, onProfileClose,
   onSignIn, onSignOut, onNavigate, onBuyCredits, navigationBlocked = false, isAdmin = false, onAdmin, onReportIssue, editorActions,
 }: AppHeaderProps) {
   const { isDevBypass } = useAuth();
-  const narrow = useNarrowViewport();
-  const headerHeight = narrow ? MOBILE_APP_HEADER_HEIGHT : DESKTOP_APP_HEADER_HEIGHT;
-  const actionSize = narrow ? 36 : 44;
+  const headerHeight = MOBILE_APP_HEADER_HEIGHT;
+  const actionSize = 36;
   const creditsColor = credits === null ? "default" : credits < 20 ? "error" : credits < 50 ? "warning" : "success";
   const menuOpen = Boolean(profileAnchorEl);
 
@@ -42,14 +48,13 @@ export function AppHeader({ user, authLoading, profileAnchorEl, currentPage, cre
     <AppBar position="fixed" color="default" elevation={0} data-testid="app-header" sx={{ height: headerHeight, borderBottom: 1, borderColor: "divider", bgcolor: "background.paper" }}>
       <Toolbar variant="dense" sx={{ minHeight: `${headerHeight - 1}px !important`, px: { xs: 1, sm: 1.5 }, direction: "rtl", gap: 1, justifyContent: "space-between" }}>
         <Box sx={{ display: "flex", alignItems: "center", gap: 0.5, flexShrink: 0 }}>
-          {!narrow && <Box component="img" src={`${import.meta.env.BASE_URL}quickcaption-favicon.svg`} alt="QuickCaption" sx={{ width: 32, height: 32, mr: 0.5 }} />}
           {user && <>
             <IconButton aria-label="תפריט" aria-haspopup="menu" aria-controls={menuOpen ? "app-navigation-menu" : undefined} aria-expanded={menuOpen}
-              onClick={onProfileClick} sx={{ width: actionSize, height: actionSize, borderRadius: 2, ...(menuOpen ? { bgcolor: "action.selected" } : {}) }}><MenuRounded sx={{ fontSize: narrow ? 20 : 24 }} /></IconButton>
+              onClick={onProfileClick} sx={{ width: actionSize, height: actionSize, borderRadius: 2, ...(menuOpen ? { bgcolor: "action.selected" } : {}) }}><MenuRounded sx={{ fontSize: 20 }} /></IconButton>
             {editorActions?.showShare && <Tooltip title="שיתוף סרטון עם כתוביות">
               <span><IconButton aria-label="שיתוף סרטון עם כתוביות" disabled={!editorActions.canShare} onClick={editorActions.onShare}
-                sx={{ width: narrow ? actionSize : 40, height: narrow ? actionSize : 40, ml: 0.5, bgcolor: "primary.main", color: "#fff", "&:hover": { bgcolor: "primary.dark" }, "&.Mui-disabled": { bgcolor: "action.disabledBackground", color: "action.disabled" } }}>
-                {editorActions.sharing ? <CircularProgress size={20} color="inherit" /> : <ShareRounded sx={{ fontSize: narrow ? 20 : 24 }} />}
+                sx={{ width: actionSize, height: actionSize, ml: 0.5, bgcolor: "primary.main", color: "#fff", "&:hover": { bgcolor: "primary.dark" }, "&.Mui-disabled": { bgcolor: "action.disabledBackground", color: "action.disabled" } }}>
+                {editorActions.sharing ? <CircularProgress size={20} color="inherit" /> : <ShareRounded sx={{ fontSize: 20 }} />}
               </IconButton></span>
             </Tooltip>}
           </>}
@@ -82,7 +87,7 @@ export function AppHeader({ user, authLoading, profileAnchorEl, currentPage, cre
               <AccountBalanceWalletRounded sx={{ ml: 1.5 }} />רכישת קרדיטים
             </MenuItem>
             {isAdmin && <MenuItem disabled={navigationBlocked} onClick={() => { onProfileClose(); onAdmin?.(); }}>ניהול</MenuItem>}
-            <MenuItem onClick={() => { onProfileClose(); onReportIssue?.(); }}>דיווח על תקלה</MenuItem>
+            {onReportIssue && <MenuItem onClick={() => { onProfileClose(); onReportIssue(); }}>דיווח על תקלה</MenuItem>}
             <Divider />
             <MenuItem disabled={navigationBlocked} onClick={() => { onProfileClose(); void onSignOut(); }}>התנתקות</MenuItem>
           </Menu>
