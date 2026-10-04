@@ -48,7 +48,8 @@ test('admin deep link, user search, audited credit grants, admin invitations and
   await page.getByRole('button', { name: 'הוספת גישת ניהול' }).click();
   await expect(page.getByText('another@example.com', { exact: true })).toBeVisible();
   await page.screenshot({ path: 'tmp/review/admin-desktop.png', fullPage: true });
-  await page.getByRole('button', { name: 'דף הבית', exact: true }).click();
+  await page.getByRole('button', { name: 'תפריט', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'דף הבית', exact: true }).click();
   await expect(page).toHaveURL(/\/$/);
   await page.goBack();
   await expect(page).toHaveURL(/\/admin$/);

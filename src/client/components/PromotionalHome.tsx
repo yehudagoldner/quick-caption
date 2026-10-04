@@ -6,7 +6,7 @@ import {
   TuneRounded, UploadFileRounded, VerifiedRounded, VideoLibraryRounded,
 } from "@mui/icons-material";
 import { DesktopEditorDemo, PhoneEditorDemo, CaptionOverlay } from "./marketing/EditorDemo";
-import { DEMO_IMAGE, LOOK_PRESETS, sameLook, useCaptionDemo, useElementSize, useInView, type CaptionDemo, type CaptionLook } from "./marketing/captionDemo";
+import { DEMO_IMAGE, LOOK_PRESETS, sameLook, useCaptionDemo, useCaptionDemoTime, useElementSize, useInView, type CaptionDemo, type CaptionLook } from "./marketing/captionDemo";
 import { findSegment } from "../utils/transcriptionUtils";
 import "./PromotionalHome.css";
 
@@ -32,11 +32,12 @@ const sections = [["caption-demo", "הדגמה"], ["styles", "סגנונות"], 
 function LookCard({ name, note, look, demo, selected, onApply }: { name: string; note: string; look: CaptionLook; demo: CaptionDemo; selected: boolean; onApply: () => void }) {
   const frame = useRef<HTMLDivElement>(null);
   const size = useElementSize(frame);
-  const segment = findSegment(demo.segments, demo.time) ?? null;
+  const time = useCaptionDemoTime(demo, useInView(frame));
+  const segment = findSegment(demo.segments, time) ?? null;
   return <article className={`marketing-look ${selected ? "is-selected" : ""}`}>
     <div className="marketing-look-frame" ref={frame}>
       <img src={DEMO_IMAGE} alt="" width="1024" height="1536" loading="lazy" />
-      <CaptionOverlay look={look} segments={demo.segments} segment={segment} time={demo.time} render={size} />
+      <CaptionOverlay look={look} segments={demo.segments} segment={segment} time={time} render={size} />
     </div>
     <div className="marketing-look-meta">
       <div><h3>{name}</h3><p>{note}</p></div>
@@ -46,6 +47,16 @@ function LookCard({ name, note, look, demo, selected, onApply }: { name: string;
       {selected ? <><CheckRounded /> פעיל בהדגמה</> : <>נסו בעורך <ArrowBackRounded /></>}
     </button>
   </article>;
+}
+
+function LiveEditorPreview({ demo, wide, onStart }: { demo: CaptionDemo; wide: boolean; onStart: () => void }) {
+  useCaptionDemoTime(demo);
+  return wide ? <DesktopEditorDemo demo={demo} onStart={onStart} /> : <PhoneEditorDemo demo={demo} onStart={onStart} />;
+}
+
+function DecorativePhonePreview({ demo, onStart }: { demo: CaptionDemo; onStart: () => void }) {
+  useCaptionDemoTime(demo);
+  return <PhoneEditorDemo demo={demo} onStart={onStart} decorative />;
 }
 
 function useCarouselIndex(ref: RefObject<HTMLElement | null>) {
@@ -78,7 +89,15 @@ function useCarouselIndex(ref: RefObject<HTMLElement | null>) {
 
 function CarouselDots({ target, count, label, behavior }: { target: RefObject<HTMLElement | null>; count: number; label: string; behavior: ScrollBehavior }) {
   const index = useCarouselIndex(target);
-  const go = (position: number) => (target.current?.children[position] as HTMLElement | undefined)?.scrollIntoView({ behavior, inline: "center", block: "nearest" });
+  const go = (position: number) => {
+    const container = target.current;
+    const child = container?.children[position] as HTMLElement | undefined;
+    if (!container || !child) return;
+    const box = container.getBoundingClientRect();
+    const card = child.getBoundingClientRect();
+    // Relative geometry works in RTL too; scroll only the carousel, never its ancestors.
+    container.scrollTo({ left: container.scrollLeft + card.left + card.width / 2 - box.left - box.width / 2, behavior });
+  };
   return <div className="marketing-dots" role="group" aria-label={label}>
     {Array.from({ length: count }, (_, position) => <button key={position} type="button" className={position === index ? "is-active" : undefined}
       aria-label={`${position + 1} מתוך ${count}`} aria-current={position === index || undefined} onClick={() => go(position)} />)}
@@ -150,8 +169,8 @@ export function PromotionalHome({ authLoading, onSignIn, isAuthenticated, onStar
                 <span className="qc-window-url"><VerifiedRounded /> quick-caption.com</span>
                 <span className="qc-window-live"><b /> הדגמה חיה</span>
               </div>
-              <DesktopEditorDemo demo={demo} onStart={start} />
-            </div> : <PhoneEditorDemo demo={demo} onStart={start} />}
+              <LiveEditorPreview demo={demo} wide onStart={start} />
+            </div> : <LiveEditorPreview demo={demo} wide={false} onStart={start} />}
             <div className="marketing-float marketing-float-a" aria-hidden="true"><TimelineRounded /> דיוק עד רמת הפריים</div>
             <div className="marketing-float marketing-float-b" aria-hidden="true"><span>כל</span> <b>מילה</b> <span>בזמן</span></div>
             <div className="marketing-float marketing-float-c" aria-hidden="true"><DownloadRounded /> SRT · VTT · MP4</div>
@@ -256,7 +275,7 @@ export function PromotionalHome({ authLoading, onSignIn, isAuthenticated, onStar
             </article>
             {wide && <article className="marketing-tile marketing-tile-phone">
               <div className="marketing-tile-copy"><span className="marketing-tile-icon"><PhoneIphoneRounded /></span><h3>עורכים גם מהטלפון</h3><p>עורך מלא שמותאם למגע: ניגון, תיקון, תזמון ועיצוב.</p></div>
-              <PhoneEditorDemo demo={gallery} onStart={start} decorative />
+              <DecorativePhonePreview demo={gallery} onStart={start} />
             </article>}
             <article className="marketing-tile marketing-tile-rtl">
               <div className="marketing-tile-copy"><span className="marketing-tile-icon"><FormatTextdirectionRToLRounded /></span><h3>עברית, מימין לשמאל</h3><p>פיסוק במקום, מילים באנגלית נשארות שלמות, ואפשר לעבור ל־LTR בלחיצה.</p></div>

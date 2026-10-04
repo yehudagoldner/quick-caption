@@ -1,6 +1,6 @@
 import { apiFetch } from "./api";
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Alert, Box, CircularProgress, Container, CssBaseline, Stack, ThemeProvider, createTheme, useMediaQuery } from "@mui/material";
+import { Alert, Box, Container, CssBaseline, ThemeProvider, createTheme } from "@mui/material";
 import { AppHeader } from "./components/AppHeader";
 import { PromotionalHome } from "./components/PromotionalHome";
 import { TranscriptionPage } from "./components/TranscriptionPage";
@@ -68,7 +68,6 @@ function App() {
   const workflow = useTranscriptionWorkflow();
   const narrow = useNarrowViewport();
   const headerHeight = narrow ? MOBILE_APP_HEADER_HEIGHT : DESKTOP_APP_HEADER_HEIGHT;
-  const desktopHome = useMediaQuery(theme.breakpoints.up("md"));
   const [currentScreen, setCurrentScreen] = useState<AppScreen>("home");
   const [videoToken, setVideoToken] = useState<string | undefined>();
   const [projectError, setProjectError] = useState<string | null>(null);
@@ -287,13 +286,7 @@ function App() {
             </Alert>
           )}
 
-          {currentScreen === "home" && workflow.authLoading && !desktopHome && (
-            <Stack alignItems="center" py={8}>
-              <CircularProgress />
-            </Stack>
-          )}
-
-          {currentScreen === "home" && (desktopHome || !workflow.authLoading) && (
+          {currentScreen === "home" && (
             <PromotionalHome
               authLoading={workflow.authLoading}
               onSignIn={workflow.onSignIn}

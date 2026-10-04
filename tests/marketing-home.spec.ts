@@ -91,7 +91,12 @@ test('phone layout shows the start dock after the hero and swipes features with 
   await expect(dots.getByRole('button', { name: '1 מתוך 6' })).toHaveAttribute('aria-current', 'true');
   await dots.getByRole('button', { name: '3 מתוך 6' }).click();
   await expect(dots.getByRole('button', { name: '3 מתוך 6' })).toHaveAttribute('aria-current', 'true');
-  await expect(page.getByRole('heading', { name: 'עריכה עם AI' })).toBeInViewport({ ratio: 1 });
+  // Navigation changes the visible card without pulling the whole page upward.
+  await expect.poll(() => page.getByRole('heading', { name: 'עריכה עם AI' }).evaluate(el => {
+    const card = el.getBoundingClientRect();
+    const carousel = el.closest('.marketing-bento')!.getBoundingClientRect();
+    return card.left >= carousel.left && card.right <= carousel.right;
+  })).toBe(true);
 
   await page.getByRole('button', { name: 'לסרטון הבא שלכם' }).scrollIntoViewIfNeeded();
   await expect(dockStart).toBeHidden();

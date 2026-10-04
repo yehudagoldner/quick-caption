@@ -10,11 +10,12 @@ type Props = {
   mediaUrl: string | null;
   onSeek: (time: number) => void;
   compact?: boolean;
+  allowPageScroll?: boolean;
 };
 
 // Keep the thumb under the pointer while decoding catches up. Preview seeks are
 // limited to 10 per second; release always applies the exact final position.
-export function VideoSeekBar({ currentTime, duration, fps, mediaUrl, onSeek, compact }: Props) {
+export function VideoSeekBar({ currentTime, duration, fps, mediaUrl, onSeek, compact, allowPageScroll = false }: Props) {
   const player = useVideoPlayer();
   const [preview, setPreview] = useState<number | null>(null);
   const drag = useRef<{ id: number; time: number; player: HTMLVideoElement | null; resume: boolean } | null>(null);
@@ -110,7 +111,7 @@ export function VideoSeekBar({ currentTime, duration, fps, mediaUrl, onSeek, com
       latest.current.onSeek(bounded(next));
     }}
     sx={{ width: "100%", height: compact ? 28 : 40, position: "relative", display: "flex", alignItems: "center",
-      flexShrink: 0, cursor: "pointer", touchAction: "none", userSelect: "none", outline: "none",
+      flexShrink: 0, cursor: "pointer", touchAction: allowPageScroll ? "pan-y" : "none", userSelect: "none", outline: "none",
       "&:focus-visible": { outline: "2px solid", outlineColor: "primary.main", outlineOffset: 2, borderRadius: 1 } }}
   >
     <Box sx={{ position: "relative", width: "100%", height: compact ? 6 : 4, bgcolor: compact ? "#e8edf3" : "primary.main", opacity: 1, borderRadius: 999 }}>
