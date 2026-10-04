@@ -16,7 +16,7 @@ for (const viewport of [{ width: 320, height: 568 }, { width: 390, height: 844 }
       await page.getByRole('button', { name: mode, exact: true }).click();
       await fits();
       await expect(page.getByRole('button', { name: 'שלחו לעיבוד' })).toBeInViewport({ ratio: 1 });
-      await expect(page.getByRole('combobox', { name: 'שפת הכתוביות', exact: true })).toBeInViewport({ ratio: 1 });
+      await expect(page.getByRole('combobox', { name: 'שפת התמלול', exact: true })).toBeInViewport({ ratio: 1 });
       await expect(page.getByRole('combobox', { name: 'שפות נוספות בסרטון' })).toBeInViewport({ ratio: 1 });
     }
     await page.getByRole('button', { name: 'לפי תווים', exact: true }).click();
@@ -40,7 +40,7 @@ for (const mode of ['characters', 'words', 'none']) {
       await expect(limit).toHaveValue('12');
     }
     if (mode === 'words') await page.getByRole('spinbutton', { name: 'מספר מילים' }).fill('3');
-    await expect(page.getByRole('combobox', { name: 'שפת הכתוביות', exact: true })).toHaveValue('עברית · Hebrew');
+    await expect(page.getByRole('combobox', { name: 'שפת התמלול', exact: true })).toHaveValue('עברית · Hebrew');
     const languages = page.getByRole('combobox', { name: 'שפות נוספות בסרטון' });
     await languages.click();
     await languages.fill('English');
@@ -80,7 +80,7 @@ test('changing the output language places it first and clearing source hints kee
   await prepareApp(page);
   await page.goto('/?screen=transcription');
   await page.locator('input[type=file]').setInputFiles({ name: 'portrait.webm', mimeType: 'video/webm', buffer: portraitVideo });
-  const target = page.getByRole('combobox', { name: 'שפת הכתוביות', exact: true });
+  const target = page.getByRole('combobox', { name: 'שפת התמלול', exact: true });
   const sources = page.getByRole('combobox', { name: 'שפות נוספות בסרטון' });
   await sources.fill('English');
   await page.getByRole('option', { name: /English/ }).click();
@@ -105,5 +105,5 @@ test('empty saved selections migrate to the required Hebrew output language', as
   await page.addInitScript(() => localStorage.setItem('quickcaption:initial-transcription-settings', JSON.stringify({ languages: [] })));
   await page.goto('/?screen=transcription');
   await page.locator('input[type=file]').setInputFiles({ name: 'portrait.webm', mimeType: 'video/webm', buffer: portraitVideo });
-  await expect(page.getByRole('combobox', { name: 'שפת הכתוביות', exact: true })).toHaveValue('עברית · Hebrew');
+  await expect(page.getByRole('combobox', { name: 'שפת התמלול', exact: true })).toHaveValue('עברית · Hebrew');
 });
