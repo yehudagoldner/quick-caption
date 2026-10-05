@@ -10,6 +10,15 @@ export function validateTranscriptionLanguages(languages) {
   return [...new Set(languages)];
 }
 
+export const SECONDARY_LANGUAGE_MODES = ["original", "translate", "transliterate"];
+
+export function validateSecondaryLanguageMode(mode = "translate") {
+  if (!SECONDARY_LANGUAGE_MODES.includes(mode)) {
+    throw new RangeError("בחרו אופן הצגה תקין לשפות הנוספות");
+  }
+  return mode;
+}
+
 export function parseTranscriptionSettings(body = {}) {
   const maxCharactersPerSubtitle = body.maxCharactersPerSubtitle === undefined ? null : Number(body.maxCharactersPerSubtitle);
   const maxWordsPerSubtitle = body.maxWordsPerSubtitle === undefined ? 5 : Number(body.maxWordsPerSubtitle);
@@ -24,22 +33,43 @@ export function parseTranscriptionSettings(body = {}) {
     try { languages = normalizeTranscriptionLanguages(JSON.parse(body.languages)); }
     catch { throw new RangeError("בחרו שפות מתוך רשימת שפות התמלול"); }
   }
-  return { maxCharactersPerSubtitle, maxWordsPerSubtitle, languages };
+  const secondaryLanguageMode = validateSecondaryLanguageMode(body.secondaryLanguageMode);
+  return { maxCharactersPerSubtitle, maxWordsPerSubtitle, languages, secondaryLanguageMode };
 }
 
-export function transcriptionLanguageOptions(languages) {
+export function transcriptionLanguageOptions(languages, secondaryLanguageMode) {
   languages = normalizeTranscriptionLanguages(languages);
+  if (secondaryLanguageMode !== undefined) validateSecondaryLanguageMode(secondaryLanguageMode);
   const names = new Intl.DisplayNames(["en"], { type: "language" });
   return {
     languages,
-    targetLanguage: languages[0],
+    // Calls without the new setting retain the legacy output-language contract.
+    targetLanguage: secondaryLanguageMode === undefined ? languages[0] : secondaryLanguageMode === "translate" ? "he" : undefined,
+    ...(secondaryLanguageMode !== undefined ? { secondaryLanguageMode, primaryLanguage: languages[0], translate: false } : {}),
     language: languages.length === 1 ? (languages[0] === "jv" ? "jw" : languages[0]) : undefined,
     ...(languages.length > 1 ? { prompt: `The recording contains speech in ${languages.map(code => names.of(code)).join(", ")}. Preserve each spoken language without translating.` } : {}),
   };
 }
 
-// The first selection is the required output language; later selections are
-// additional languages expected in the recording. Preserve the user's order.
+export function transcriptionCorrectionPrompt(options) {
+  const names = new Intl.DisplayNames(["en"], { type: "language" });
+  const preserveCues = "Preserve meaning, speaker intent, names, numbers, and the original caption timestamps. Return every base segment with its original id, start, and end, and non-empty text. Do not omit speech, invent content, merge segments, or split segments.";
+  if (options.secondaryLanguageMode) {
+    const primary = `${names.of(options.primaryLanguage)} (${options.primaryLanguage})`;
+    const instructions = {
+      original: "Preserve every spoken language in its original script. Never translate or transliterate speech.",
+      translate: "Faithfully translate speech in languages other than the primary language into Hebrew (he). Do not transliterate foreign sentences.",
+      transliterate: "Phonetically transliterate speech in languages other than the primary language into Hebrew letters, preserving the foreign words and their pronunciation. Never translate their meaning. For example, when English is not the primary language, 'Good morning' becomes 'גוד מורנינג', not 'בוקר טוב'. Speech already in Hebrew stays in Hebrew.",
+    };
+    return `You are an expert multilingual transcription editor. The primary language is ${primary}; keep speech in this language in its original language and script. ${instructions[options.secondaryLanguageMode]} Apply this rule to each spoken phrase, including code-switching within a segment; do not convert primary-language phrases in mixed segments. The expected spoken languages are ${options.languages.join(", ")}; use this context and both transcripts to resolve ambiguous words and accents. ${preserveCues}`;
+  }
+  return options.targetLanguage
+    ? `You are an expert multilingual transcription editor and translator. Output ALL subtitle text in ${names.of(options.targetLanguage)} (${options.targetLanguage}). Transcribe speech already in this target language and faithfully translate speech in any other language into this target language. The expected spoken languages are ${options.languages.join(", ")}; use this context and both transcripts to resolve ambiguous words, accents, and code-switching. ${preserveCues} Do not transliterate foreign sentences.`
+    : "You are an expert multilingual transcription editor. Improve accuracy and grammar while preserving meaning, speaker intent, timestamps, and every original spoken language. Never translate the transcript.";
+}
+
+// The first selection is the primary language; later selections are additional
+// languages expected in the recording. Preserve the user's order.
 export function normalizeTranscriptionLanguages(languages) {
   const selected = validateTranscriptionLanguages(languages);
   return selected.length ? selected : ["he"];

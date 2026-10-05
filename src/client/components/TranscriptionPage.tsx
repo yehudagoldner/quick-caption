@@ -32,6 +32,8 @@ export function TranscriptionPage({ workflow, onMyVideos }: TranscriptionPagePro
         subtitleLimitMode={workflow.subtitleLimitMode}
         maxWordsPerSubtitle={workflow.maxWordsPerSubtitle}
         languages={workflow.languages}
+        secondaryLanguageMode={workflow.secondaryLanguageMode}
+        onSecondaryLanguageModeChange={workflow.onSecondaryLanguageModeChange}
         onSubtitleLimitModeChange={workflow.onSubtitleLimitModeChange}
         onMaxWordsChange={workflow.onMaxWordsChange}
         onLanguagesChange={workflow.onLanguagesChange}

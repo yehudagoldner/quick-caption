@@ -19,6 +19,12 @@ for (const viewport of [{ width: 320, height: 568 }, { width: 390, height: 844 }
       await expect(page.getByRole('combobox', { name: 'שפת התמלול', exact: true })).toBeInViewport({ ratio: 1 });
       await expect(page.getByRole('combobox', { name: 'שפות נוספות בסרטון' })).toBeInViewport({ ratio: 1 });
     }
+    for (const label of ['מקור', 'תרגום לעברית', 'תעתיק עברי']) {
+      await page.getByRole('button', { name: label, exact: true }).click();
+      await fits();
+      await expect(page.getByRole('button', { name: label, exact: true })).toBeInViewport({ ratio: 1 });
+      await expect(page.getByRole('button', { name: 'שלחו לעיבוד' })).toBeInViewport({ ratio: 1 });
+    }
     await page.getByRole('button', { name: 'לפי תווים', exact: true }).click();
     await page.screenshot({ path: `tmp/review/upload-settings-${viewport.width}x${viewport.height}.png` });
   });
@@ -60,9 +66,33 @@ for (const mode of ['characters', 'words', 'none']) {
     await page.getByRole('button', { name: 'שלחו לעיבוד' }).click();
     await expect.poll(() => posted).not.toBeNull();
     expect(posted).toContain('name="languages"\r\n\r\n["he","en"]');
+    expect(posted).toContain('name="secondaryLanguageMode"\r\n\r\ntranslate');
     expect(posted).toContain(`name="maxWordsPerSubtitle"\r\n\r\n${mode === 'words' ? 3 : 0}`);
     if (mode === 'characters') expect(posted).toContain('name="maxCharactersPerSubtitle"\r\n\r\n12');
     else expect(posted).not.toContain('name="maxCharactersPerSubtitle"');
+  });
+}
+
+for (const [mode, label] of [['original', 'מקור'], ['translate', 'תרגום לעברית'], ['transliterate', 'תעתיק עברי']]) {
+  test(`${mode} secondary language preference survives reload and is submitted`, async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await prepareApp(page);
+    await page.goto('/?screen=transcription');
+    const selectFile = () => page.locator('input[type=file]').setInputFiles({ name: 'portrait.webm', mimeType: 'video/webm', buffer: portraitVideo });
+    await selectFile();
+    const button = page.getByRole('button', { name: label, exact: true });
+    await button.click();
+    await button.click(); // An exclusive selector cannot clear its current value.
+    await expect(button).toHaveAttribute('aria-pressed', 'true');
+    await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('quickcaption:initial-transcription-settings')!).secondaryLanguageMode)).toBe(mode);
+    await page.reload();
+    await selectFile();
+    await expect(button).toHaveAttribute('aria-pressed', 'true');
+    let posted: string | null = null;
+    await page.route('**/api/transcribe', async route => { posted = route.request().postData(); await route.fulfill({ json: { text: 'שלום', segments: [], subtitle: { content: '', format: '.srt' } } }); });
+    await page.getByRole('button', { name: 'שלחו לעיבוד' }).click();
+    await expect.poll(() => posted).not.toBeNull();
+    expect(posted).toContain(`name="secondaryLanguageMode"\r\n\r\n${mode}`);
   });
 }
 

@@ -1,5 +1,5 @@
 import { Autocomplete, Box, Checkbox, Stack, TextField, ToggleButton, ToggleButtonGroup, Typography } from "@mui/material";
-import { TRANSCRIPTION_LANGUAGE_CODES } from "../../transcriptionSettings.js";
+import { TRANSCRIPTION_LANGUAGE_CODES, type SecondaryLanguageMode } from "../../transcriptionSettings.js";
 import { useEffect, useState } from "react";
 
 export type SubtitleLimitMode = "characters" | "words" | "none";
@@ -8,10 +8,12 @@ export type InitialTranscriptionSettingsProps = {
   maxCharactersPerSubtitle: number;
   maxWordsPerSubtitle: number;
   languages: string[];
+  secondaryLanguageMode: SecondaryLanguageMode;
   onSubtitleLimitModeChange: (mode: SubtitleLimitMode) => void;
   onMaxCharactersChange: (value: number) => void;
   onMaxWordsChange: (value: number) => void;
   onLanguagesChange: (languages: string[]) => void;
+  onSecondaryLanguageModeChange: (mode: SecondaryLanguageMode) => void;
 };
 
 const hebrewNames = new Intl.DisplayNames(["he"], { type: "language" });
@@ -37,8 +39,8 @@ function SubtitleLimitInput({ mode, value, onChange }: { mode: "characters" | "w
   }} slotProps={{ htmlInput: { min, max, step: 1 } }} sx={{ width: 125, flexShrink: 0 }} />;
 }
 
-export function InitialTranscriptionSettings({ subtitleLimitMode, maxCharactersPerSubtitle, maxWordsPerSubtitle, languages, onSubtitleLimitModeChange, onMaxCharactersChange, onMaxWordsChange, onLanguagesChange }: InitialTranscriptionSettingsProps) {
-  return <Stack spacing={0.75} sx={{ p: 1, borderRadius: 2, bgcolor: "action.hover", minWidth: 0 }}>
+export function InitialTranscriptionSettings({ subtitleLimitMode, maxCharactersPerSubtitle, maxWordsPerSubtitle, languages, secondaryLanguageMode, onSubtitleLimitModeChange, onMaxCharactersChange, onMaxWordsChange, onLanguagesChange, onSecondaryLanguageModeChange }: InitialTranscriptionSettingsProps) {
+  return <Stack spacing={0.75} sx={{ p: 1, borderRadius: 2, bgcolor: "action.hover", minWidth: 0, "@media (max-width: 599px) and (max-height: 650px)": { py: 0.75, "& > :not(style) ~ :not(style)": { mt: 0.25 } } }}>
     <Typography variant="subtitle2" fontWeight={700}>אורך הכתובית</Typography>
     <ToggleButtonGroup exclusive fullWidth color="primary" size="small" value={subtitleLimitMode} onChange={(_, value: SubtitleLimitMode | null) => value && onSubtitleLimitModeChange(value)} aria-label="הגבלת אורך כתובית" sx={{ gap: 0.5, "&& .MuiToggleButton-root": { m: 0, border: "1px solid", borderColor: "divider", borderRadius: 1, px: 0.75, py: 0.5, whiteSpace: "nowrap", color: "text.primary", "&.Mui-selected": { bgcolor: "primary.main", color: "primary.contrastText", borderColor: "primary.main", "&:hover": { bgcolor: "primary.dark" } } } }}>
       <ToggleButton value="characters">לפי תווים</ToggleButton>
@@ -56,6 +58,12 @@ export function InitialTranscriptionSettings({ subtitleLimitMode, maxCharactersP
       const { key, ...optionProps } = props;
       return <li key={key} {...optionProps}><Checkbox checked={selected} size="small" sx={{ p: 0.5, mr: 0.5 }} />{languageLabel(code)}</li>;
     }} renderInput={params => <TextField {...params} label="שפות נוספות בסרטון" placeholder={languages.length > 1 ? "חיפוש" : "בחירה מרובה"} />} slotProps={{ listbox: { sx: { maxHeight: "min(240px, 35dvh)", direction: "rtl" } } }} sx={{ "& .MuiAutocomplete-inputRoot": { flexWrap: "nowrap" }, "& .MuiAutocomplete-input": { minWidth: "20px !important" } }} />
-    <Typography variant="caption" color="text.secondary" sx={{ fontSize: "0.6875rem", lineHeight: 1.3 }}>השפות הנוספות משפרות את הזיהוי ומתורגמות לשפת התמלול.</Typography>
+    <Typography variant="caption" fontWeight={700}>הצגת השפות הלא ראשיות</Typography>
+    <ToggleButtonGroup exclusive fullWidth color="primary" size="small" value={secondaryLanguageMode} onChange={(_, value: SecondaryLanguageMode | null) => value && onSecondaryLanguageModeChange(value)} aria-label="הצגת השפות הלא ראשיות" sx={{ "& .MuiToggleButton-root": { px: 0.5, py: 0.5, fontSize: "0.75rem", whiteSpace: "nowrap", "&.Mui-selected": { bgcolor: "primary.main", color: "primary.contrastText", "&:hover": { bgcolor: "primary.dark" } } } }}>
+      <ToggleButton value="original">מקור</ToggleButton>
+      <ToggleButton value="translate">תרגום לעברית</ToggleButton>
+      <ToggleButton value="transliterate">תעתיק עברי</ToggleButton>
+    </ToggleButtonGroup>
+    <Typography variant="caption" color="text.secondary" sx={{ fontSize: "0.6875rem", lineHeight: 1.3 }}>{secondaryLanguageMode === "original" ? "כל שפה מוצגת בכתב המקורי שלה." : secondaryLanguageMode === "translate" ? "השפות הלא ראשיות מתורגמות לעברית; השפה הראשית נשמרת." : "לפי ההגייה: Good morning ← גוד מורנינג."}</Typography>
   </Stack>;
 }

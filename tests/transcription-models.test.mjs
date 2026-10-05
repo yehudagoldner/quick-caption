@@ -147,6 +147,67 @@ test('translation failure cannot silently return captions in the source language
   await assert.rejects(() => transcribeMedia({ ...context, languages: ['he', 'en'] }), /התמלול או התרגום/);
 });
 
+for (const mode of ['original', 'translate', 'transliterate']) {
+  test(`explicit ${mode} mode preserves the primary language, cues and output word alignment`, async t => {
+    const context = await setup(t);
+    process.env.OPENAI_TRANSLATE = 'true';
+    const source = [
+      { id: 1, start: 0, end: 2, text: 'שלום עולם' },
+      { id: 2, start: 2, end: 4, text: 'Good morning' },
+      { id: 3, start: 4, end: 6, text: 'שלום Good morning' },
+    ];
+    const foreign = { original: 'Good morning', translate: 'בוקר טוב', transliterate: 'גוד מורנינג' }[mode];
+    const output = ['שלום עולם', foreign, `שלום ${foreign}`];
+    t.mock.method(Transcriptions.prototype, 'create', async request => {
+      context.audioRequests.push(request);
+      request.file.destroy();
+      return { segments: source, text: source.map(s => s.text).join(' ') };
+    });
+    t.mock.method(Responses.prototype, 'create', async request => {
+      context.textRequests.push(request);
+      return { output_text: JSON.stringify({ segments: source.map((s, i) => ({ ...s, start: 99, end: 100, text: output[i] })).reverse() }) };
+    });
+    const result = await transcribeMedia({ ...context, languages: ['he', 'en'], secondaryLanguageMode: mode });
+    assert.equal(context.audioRequests[0].translate, false, 'audio transcription must preserve source languages before applying the display mode');
+    const prompt = context.textRequests[0].input[0].content[0].text;
+    assert.match(prompt, /primary language is Hebrew \(he\)/);
+    assert.match(prompt, /including code-switching within a segment/);
+    assert.match(prompt, mode === 'original' ? /Never translate or transliterate/ : mode === 'translate' ? /translate speech.*into Hebrew/ : /Phonetically transliterate.*Hebrew letters/);
+    const payload = JSON.parse(context.textRequests[0].input[2].content[0].text);
+    assert.equal(payload.secondary_language_mode, mode);
+    assert.equal(payload.primary_language, 'he');
+    assert.deepEqual(result.segments, source.map((s, i) => ({ ...s, text: output[i] })));
+    assert.deepEqual(result.words.map(w => w.word), output.join(' ').split(' '));
+    assert.match(result.subtitle.content, new RegExp(foreign));
+    assert.ok(result.words.every(w => w.start >= 0 && w.end <= 6 && w.start < w.end));
+  });
+}
+
+test('Hebrew translation preserves a non-Hebrew primary language in its original script', async t => {
+  const context = await setup(t);
+  await transcribeMedia({ ...context, languages: ['en', 'ar'], secondaryLanguageMode: 'translate' });
+  const prompt = context.textRequests[0].input[0].content[0].text;
+  assert.match(prompt, /primary language is English \(en\); keep speech in this language in its original language and script/);
+  assert.match(prompt, /translate speech in languages other than the primary language into Hebrew/);
+});
+
+test('transliteration runs with correction disabled and fails rather than returning source text', async t => {
+  const context = await setup(t);
+  process.env.OPENAI_CORRECTION_MODEL = '';
+  await transcribeMedia({ ...context, languages: ['he', 'en'], secondaryLanguageMode: 'transliterate' });
+  assert.equal(context.textRequests.length, 1);
+  t.mock.method(Responses.prototype, 'create', async () => { throw new Error('conversion failed'); });
+  await assert.rejects(() => transcribeMedia({ ...context, languages: ['he', 'en'], secondaryLanguageMode: 'transliterate' }), /התעתיק/);
+});
+
+for (const mode of ['translate', 'transliterate']) {
+  test(`${mode} rejects nonempty conversion text with a missing source id`, async t => {
+    const context = await setup(t);
+    t.mock.method(Responses.prototype, 'create', async () => ({ output_text: JSON.stringify({ segments: [{ ...segment, id: 999 }] }) }));
+    await assert.rejects(() => transcribeMedia({ ...context, languages: ['he', 'en'], secondaryLanguageMode: mode }), /התמלול או התרגום/);
+  });
+}
+
 test('translation still runs when optional correction is disabled', async t => {
   const context = await setup(t);
   process.env.OPENAI_CORRECTION_MODEL = '';
