@@ -17,6 +17,7 @@ test('retention migration, activity, deletion, concurrency and crash recovery us
   });
   await db.execute("CREATE TEMPORARY TABLE videos (id INT PRIMARY KEY, user_uid VARCHAR(128), stored_path VARCHAR(255), transcription_id VARCHAR(255), status VARCHAR(20), updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP)");
   await db.execute('CREATE TEMPORARY TABLE transcription_jobs (id VARCHAR(255), user_uid VARCHAR(128), status VARCHAR(20), result_json JSON)');
+  await db.execute('CREATE TEMPORARY TABLE bunny_media_deletions (stored_path VARCHAR(512) PRIMARY KEY, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)');
   await db.execute("INSERT INTO videos VALUES (1,'buyer','old.mp4',NULL,'completed',DATE_SUB(NOW(), INTERVAL 90 DAY))");
   // ALTER ADD DEFAULT CURRENT_TIMESTAMP grants pre-existing files a 30-day grace.
   await ensureVideoRetention(db);
@@ -65,6 +66,15 @@ test('retention migration, activity, deletion, concurrency and crash recovery us
   assert.equal((await cleanupInactiveVideos({connection:db,storageDir:dir,dryRun:false})).recovered,2);
   assert.equal(await fs.readFile(path.join(dir,'viewed.mp4'),'utf8'),'keep');
   assert.deepEqual(await fs.readdir(path.join(dir,'.retention-trash')),[]);
+  const remotePath = 'bunny://123/11111111-1111-4111-8111-111111111111';
+  await db.execute("INSERT INTO videos VALUES (8,'buyer',?,NULL,'completed',DATE_SUB(NOW(), INTERVAL 31 DAY),DATE_SUB(NOW(), INTERVAL 31 DAY))", [remotePath]);
+  await assert.rejects(cleanupInactiveVideos({connection:failing,storageDir:dir,dryRun:false}), /Simulated SQL failure/);
+  assert.equal((await db.execute('SELECT stored_path FROM bunny_media_deletions'))[0].length, 0, 'Rolled-back metadata deletion must not enqueue remote deletion');
+  const remoteFailure = await cleanupInactiveVideos({connection:db,storageDir:dir,dryRun:false,removeRemoteMedia:async()=>{throw new Error('Network down');}});
+  assert.equal(remoteFailure.remotePending, 1);
+  const removed = [];
+  const retry = await cleanupInactiveVideos({connection:db,storageDir:dir,dryRun:false,removeRemoteMedia:async value=>removed.push(value)});
+  assert.equal(retry.remoteDeleted, 1); assert.deepEqual(removed, [remotePath]);
   // Traversal must never delete files outside the media directory.
   await db.execute("INSERT INTO videos VALUES (7,'buyer','../outside.mp4',NULL,'completed',DATE_SUB(NOW(), INTERVAL 31 DAY),DATE_SUB(NOW(), INTERVAL 31 DAY))");
   await assert.rejects(cleanupInactiveVideos({connection:db,storageDir:dir,dryRun:false}),/Unsafe stored media path/);

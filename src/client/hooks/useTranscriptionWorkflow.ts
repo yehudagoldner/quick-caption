@@ -1,4 +1,5 @@
 import { apiFetch, apiHeaders } from "../api";
+import { requestBurn } from '../utils/burnRequest';
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type MouseEvent } from "react";
 import { io } from "socket.io-client";
 import type { ManagerOptions, SocketOptions } from "socket.io-client";
@@ -585,17 +586,11 @@ export function useTranscriptionWorkflow(): TranscriptionWorkflow {
         throw new Error("לא ניתן לשרוף כתוביות ללא תוצאות תקינות.");
       }
 
-      let media = file;
-      if (!media && videoId && user?.uid) {
-        const mediaResponse = await apiFetch(`${API_BASE_URL || ""}/api/videos/${videoId}/media?userUid=${encodeURIComponent(user.uid)}`);
-        if (!mediaResponse.ok) throw new Error("לא ניתן לטעון את הסרטון השמור לצריבת כתוביות.");
-        const blob = await mediaResponse.blob();
-        media = new File([blob], response.originalFilename || "video.mp4", { type: blob.type });
-      }
-      if (!media) throw new Error("קובץ הסרטון אינו זמין לצריבת כתוביות.");
+      if (!videoId && !file) throw new Error("קובץ הסרטון אינו זמין לצריבת כתוביות.");
 
       const formData = new FormData();
-      formData.append("media", media);
+      if (videoId) formData.append('videoId', String(videoId));
+      else formData.append('media', file!);
       formData.append("subtitleContent", options.subtitleContent ?? response.subtitle.content);
       formData.append("textDirection", options.textDirection ?? "rtl");
       formData.append("captionMotion", options.captionMotion ?? "none");
@@ -619,18 +614,7 @@ export function useTranscriptionWorkflow(): TranscriptionWorkflow {
         formData.append("videoHeight", String(Math.round(options.videoHeight)));
       }
 
-      const burnResponse = await apiFetch(BURN_ENDPOINT, {
-        method: "POST",
-        body: formData,
-      });
-
-      if (!burnResponse.ok) {
-        throw new Error(await readErrorMessage(burnResponse));
-      }
-
-      const blob = await burnResponse.blob();
-      const filename = parseContentDispositionFilename(burnResponse.headers.get("Content-Disposition"));
-      return { blob, filename };
+      return requestBurn(BURN_ENDPOINT, formData, options.onProgress);
     },
     [file, response?.subtitle?.content, response?.originalFilename, videoId, user?.uid],
   );
@@ -841,21 +825,6 @@ function createUploadActiveStages(): StageState[] {
   }));
 }
 
-function parseContentDispositionFilename(value: string | null): string | undefined {
-  if (!value) {
-    return undefined;
-  }
-  const utfMatch = value.match(/filename\*=UTF-8''([^;]+)/i);
-  if (utfMatch?.[1]) {
-    try {
-      return decodeURIComponent(utfMatch[1]);
-    } catch (error) {
-      console.warn("Failed to decode filename from header:", error);
-    }
-  }
-  const quotedMatch = value.match(/filename="?([^";]+)"?/i);
-  return quotedMatch?.[1] ?? undefined;
-}
 
 async function readErrorMessage(response: Response): Promise<string> {
   const contentType = response.headers.get("Content-Type") ?? "";

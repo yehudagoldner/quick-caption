@@ -2,6 +2,7 @@ import type { ChangeEvent } from "react";
 import { useCallback, useEffect, useRef } from "react";
 import type { ApiResponse, Segment, Word } from "../types";
 import type { BurnOptions } from "../components/VideoToolbar";
+import type { BurnProgress } from '../utils/burnRequest';
 import type { CaptionMotion, PopIntensity } from "../../captionMotion.js";
 import { findSegment } from "../utils/transcriptionUtils";
 import { serializeSubtitles } from "../utils/subtitleExport";
@@ -40,6 +41,7 @@ type UseTranscriptionHandlersProps = {
   setMarginPercent: (percent: number) => void;
   setBurnError: (error: string | null) => void;
   setIsBurning: (burning: boolean) => void;
+  setBurnProgress: (progress: BurnProgress) => void;
   setBurnedVideo: (video: BurnedVideo | null) => void;
   persistSegments: (segments: Segment[], words?: Word[], options?: { throwOnError?: boolean }) => Promise<void>;
   videoPlayer: HTMLVideoElement | null;
@@ -77,6 +79,7 @@ export function useTranscriptionHandlers({
   setMarginPercent,
   setBurnError,
   setIsBurning,
+  setBurnProgress,
   setBurnedVideo,
   persistSegments,
   videoPlayer,
@@ -232,10 +235,12 @@ export function useTranscriptionHandlers({
       return burnedVideo;
     }
 
+    setBurnProgress({ stage: 'preparing', percent: null });
     setIsBurning(true);
     setBurnError(null);
     try {
       const result = await onBurn({
+        onProgress: setBurnProgress,
         captionMotion,
         popIntensity,
         activeWordEnabled,
@@ -281,6 +286,7 @@ export function useTranscriptionHandlers({
     setBurnError,
     setIsBurning,
     onBurn,
+    setBurnProgress,
     onDownloadVideo,
     editableSegments,
     editableWords,

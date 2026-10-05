@@ -1,9 +1,9 @@
-﻿import express from "express";
+import express from "express";
 import path from "path";
 import os from "os";
 import { promises as fsp } from "fs";
 import { randomUUID } from "crypto";
-import { spawn } from "child_process";
+import { buildBurnArguments, probeBurnDuration, runBurnFfmpeg } from "../src/burnVideo.js";
 import { fileURLToPath } from "url";
 import { renderActiveWordSrt } from "../src/activeWordSubtitles.js";
 import { renderWordPopAss, sanitizeCaptionMotion, sanitizePopIntensity } from "../src/captionMotion.js";
@@ -17,17 +17,51 @@ const TEMP_OUTPUT_DIR = path.join(os.tmpdir(), "subtitles-api-output-temp");
 await fsp.mkdir(TEMP_SUBTITLE_DIR, { recursive: true });
 await fsp.mkdir(TEMP_OUTPUT_DIR, { recursive: true });
 
-export function createBurnSubtitlesRouter(upload) {
+export function createBurnSubtitlesRouter(upload, { resolveVideo } = {}) {
   const router = express.Router();
+  const jobs = new Map();
+  router.get('/progress/:id', (req, res) => {
+    const job = jobs.get(req.params.id);
+    res.set('Cache-Control', 'private, no-store');
+    if (!job || !req.identity?.uid || job.owner !== req.identity.uid) return res.status(404).json({ error: 'Progress not found' });
+    res.json({ stage: job.stage, percent: job.percent });
+  });
 
-  router.post("/", upload.single("media"), async (req, res) => {
-    if (!req.file) {
+  router.post("/", (req, res, next) => {
+    const id = req.get('X-Burn-Job-Id');
+    // Register before the upload so the popup covers preparation as well.
+    for (const [key, value] of jobs) if (value.expires && value.expires < Date.now()) jobs.delete(key);
+    if (id && (!/^[a-f0-9-]{36}$/i.test(id) || jobs.has(id) || jobs.size >= 1000)) return res.status(409).json({ error: 'Invalid or duplicate burn job' });
+    const job = { owner: req.identity?.uid, stage: 'preparing', percent: null };
+    if (id && job.owner) jobs.set(id, job);
+    const expire = () => {
+      if (job.expires) return;
+      job.expires = Date.now() + 10 * 60_000;
+      if (id && job.owner) {
+        const timer = setTimeout(() => { if (jobs.get(id) === job) jobs.delete(id); }, 10 * 60_000);
+        timer.unref();
+      }
+    };
+    req.burnJob = job;
+    req.burnController = new AbortController();
+    res.once('close', () => {
+      req.burnController.abort();
+      if (!res.writableFinished) job.stage = 'failed';
+      expire();
+    });
+    res.once('finish', () => {
+      if (res.statusCode >= 400) job.stage = 'failed';
+      expire();
+    });
+    next();
+  }, upload.single("media"), async (req, res) => {
+    if (!req.file && !req.body?.videoId) {
       return res.status(400).json({ error: "נדרש קובץ וידאו לצריבת כתוביות." });
     }
 
     let subtitleContent = req.body?.subtitleContent;
     if (!subtitleContent) {
-      await safeUnlink(req.file.path);
+      await safeUnlink(req.file?.path);
       return res.status(400).json({ error: "נדרש תוכן כתוביות לצריבה." });
     }
 
@@ -42,7 +76,7 @@ export function createBurnSubtitlesRouter(upload) {
         timedWords = words;
         if (motion !== "pop") subtitleContent = renderActiveWordSrt(segments, words, req.body.textDirection, req.body.activeWordColor);
       } catch {
-        await safeUnlink(req.file.path);
+        await safeUnlink(req.file?.path);
         return res.status(400).json({ error: "נתוני תזמון המילים אינם תקינים. נסו לשמור את הכתוביות ולצרוב שוב." });
       }
     }
@@ -55,14 +89,24 @@ export function createBurnSubtitlesRouter(upload) {
     const videoWidth = sanitizeDimension(req.body?.videoWidth);
     const videoHeight = sanitizeDimension(req.body?.videoHeight);
     if (motion === "pop" && (!videoWidth || !videoHeight)) {
-      await safeUnlink(req.file.path);
+      await safeUnlink(req.file?.path);
       return res.status(400).json({ error: "נדרש גודל וידאו תקין לאנימציה. המתינו לטעינת הסרטון ונסו שוב." });
     }
 
     const subtitlePath = path.join(TEMP_SUBTITLE_DIR, `${randomUUID()}.${motion === "pop" ? "ass" : "srt"}`);
     const outputPath = path.join(TEMP_OUTPUT_DIR, `${randomUUID()}.mp4`);
+    let source = req.file ? { ...req.file, temporary: true } : null;
+    const { signal } = req.burnController;
+    const job = req.burnJob;
+    const cleanup = () => Promise.all([source?.temporary && safeUnlink(source.path), safeUnlink(subtitlePath), safeUnlink(outputPath)]);
 
     try {
+      if (!source) {
+        const videoId = Number(req.body.videoId);
+        if (!Number.isSafeInteger(videoId) || videoId < 1 || !resolveVideo) return res.status(400).json({ error: 'נדרש סרטון שמור תקין.' });
+        source = await resolveVideo({ videoId, userUid: req.identity?.uid, signal });
+        if (!source) return res.status(404).json({ error: 'הסרטון לא נמצא או שאין לכם הרשאה לצפות בו.' });
+      }
       // Wrap subtitle lines with RTL markers for proper Hebrew punctuation rendering
       const rtlSubtitleContent = motion === "pop"
         ? renderWordPopAss(timedSegments, timedWords, { intensity: sanitizePopIntensity(req.body?.popIntensity), direction: req.body?.textDirection === "ltr" ? "ltr" : "rtl", videoWidth, videoHeight, outlineWidth: CAPTION_OUTLINE_WIDTH })
@@ -80,32 +124,30 @@ export function createBurnSubtitlesRouter(upload) {
         wholeTextLayout: req.body?.activeWordEnabled === "true" || motion === "pop",
       });
 
-      await runFfmpeg([
-        "-hide_banner",
-        "-loglevel",
-        "error",
-        "-y",
-        "-i",
-        req.file.path,
-        "-vf",
-        filter,
-        "-c:a",
-        "copy",
-        outputPath,
-      ]);
+      const duration = await probeBurnDuration(source.path, { signal });
+      job.stage = 'burning';
+      job.percent = duration ? 0 : null;
+      await runBurnFfmpeg(buildBurnArguments(source.path, filter, outputPath), {
+        duration, signal, onProgress: percent => { job.percent = percent; },
+      });
+      job.stage = 'downloading';
+      job.percent = 100;
 
-      const originalBase = path.parse(req.file.originalname ?? "video").name;
+      const originalBase = path.parse(source.originalname ?? "video").name;
       const downloadName = `${originalBase}-subtitled.mp4`;
       res.download(outputPath, downloadName, async (error) => {
         if (error) {
           console.error("Failed to send burned video:", error);
         }
-        await Promise.all([safeUnlink(req.file.path), safeUnlink(subtitlePath), safeUnlink(outputPath)]);
+        job.stage = error ? 'failed' : 'complete';
+        await cleanup();
       });
     } catch (error) {
-      await Promise.all([safeUnlink(req.file.path), safeUnlink(subtitlePath), safeUnlink(outputPath)]);
+      job.stage = 'failed';
+      await cleanup();
+      if (signal.aborted || res.destroyed) return;
       console.error("Burn subtitles route failed:", error);
-      res.status(500).json({ error: error.message ?? "אירעה שגיאה בצריבת הכתוביות." });
+      res.status(error.status ?? 500).json({ error: "אירעה שגיאה בצריבת הכתוביות. נסו שוב." });
     }
   });
 
@@ -215,30 +257,6 @@ function sanitizePercent(raw, fallback) {
   return Math.min(100, Math.max(0, numeric));
 }
 
-async function runFfmpeg(args) {
-  return new Promise((resolve, reject) => {
-    const ffmpeg = spawn("ffmpeg", args);
-    let stderr = "";
-
-    ffmpeg.stderr.on("data", (data) => {
-      stderr += data.toString();
-    });
-
-    ffmpeg.on("error", (error) => {
-      reject(new Error(error.message ?? "FFmpeg failed to start"));
-    });
-
-    ffmpeg.on("close", (code) => {
-      if (code === 0) {
-        resolve();
-      } else {
-        console.error("FFmpeg failed", { args, stderr });
-        reject(new Error(`FFmpeg exited with code ${code}: ${truncate(stderr, 400)}`));
-      }
-    });
-  });
-}
-
 async function safeUnlink(filePath) {
   if (!filePath) {
     return;
@@ -251,11 +269,3 @@ async function safeUnlink(filePath) {
     }
   }
 }
-
-function truncate(value, maxLength) {
-  if (!value || value.length <= maxLength) {
-    return value;
-  }
-  return `${value.slice(0, maxLength)}...`;
-}
-

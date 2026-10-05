@@ -53,6 +53,10 @@ async function burn(page: Page, mobile: boolean) {
   const download = page.waitForEvent('download');
   await page.getByRole(mobile ? 'button' : 'menuitem', { name: 'הורד סרטון עם כתוביות', exact: true }).click();
   await download;
+  await expect(page.getByRole('dialog', { name: 'מכין את הסרטון עם הכתוביות' })).not.toBeVisible();
+  const feedback = page.getByRole('dialog', { name: 'איך הייתה החוויה?' });
+  await expect(feedback).toBeVisible();
+  await feedback.getByRole('button', { name: 'אולי אחר כך' }).click();
 }
 mkdirSync('tmp/caption-motion', { recursive: true });
 
@@ -119,7 +123,7 @@ for (const mobile of [false, true]) {
 
 test('new transcription sends animation settings and word timings to burning', async ({ page }) => {
   const burns = await setup(page, false);
-  await page.route('**/api/transcribe', route => route.fulfill({ json: { text: 'כן, כן!', segments, words, subtitle: { format: '.srt', content: 'test' } } }));
+  await page.route('**/api/transcribe', route => route.fulfill({ json: { videoId: 42, text: 'כן, כן!', segments, words, subtitle: { format: '.srt', content: 'test' } } }));
   await page.goto('/?screen=transcription');
   await page.locator('input[type=file]').setInputFiles({ name: 'new.webm', mimeType: 'video/webm', buffer: portraitVideo });
   await page.getByRole('button', { name: 'שלחו לעיבוד', exact: true }).click();

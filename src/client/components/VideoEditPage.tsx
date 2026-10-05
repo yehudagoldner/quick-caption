@@ -7,6 +7,7 @@ import type { AuthUser } from "../hooks/useTranscriptionWorkflow";
 import type { ApiResponse, Segment } from "../types";
 import type { BurnOptions } from "./TranscriptionResult";
 import { subtitleDownloadName } from "../utils/subtitleExport";
+import { requestBurn } from '../utils/burnRequest';
 
 interface VideoEditPageProps {
   user: AuthUser;
@@ -112,20 +113,12 @@ export function VideoEditPage({ user, videoToken, onSaveSegments, onNewUpload, o
       throw new Error("אין כתוביות לשריפה");
     }
 
-    // For editing mode, we need to fetch the original video file
     if (!videoId || !user?.uid) {
       throw new Error("שגיאה בטעינת הסרטון לשריפה");
     }
 
-    const videoResponse = await apiFetch(`${API_BASE_URL || ""}/api/videos/${videoId}/file?userUid=${encodeURIComponent(user.uid)}`);
-    if (!videoResponse.ok) {
-      throw new Error("לא ניתן לטעון את הסרטון לשריפה");
-    }
-
-    const videoBlob = await videoResponse.blob();
-
     const formData = new FormData();
-    formData.append("media", videoBlob, "video");
+    formData.append('videoId', String(videoId));
     formData.append("subtitleContent", options.subtitleContent ?? response.subtitle.content);
     formData.append("textDirection", options.textDirection ?? "rtl");
     formData.append("captionMotion", options.captionMotion ?? "none");
@@ -150,18 +143,7 @@ export function VideoEditPage({ user, videoToken, onSaveSegments, onNewUpload, o
       formData.append("videoHeight", String(Math.round(options.videoHeight)));
     }
 
-    const burnResponse = await apiFetch(`${API_BASE_URL || ""}/api/burn-subtitles`, {
-      method: "POST",
-      body: formData,
-    });
-
-    if (!burnResponse.ok) {
-      throw new Error("שגיאה בשריפת הכתוביות");
-    }
-
-    const blob = await burnResponse.blob();
-    const filename = parseContentDispositionFilename(burnResponse.headers.get("Content-Disposition"));
-    return { blob, filename };
+    return requestBurn(`${API_BASE_URL || ''}/api/burn-subtitles`, formData, options.onProgress);
   };
 
   const handleSaveSegments = async (segments: Segment[], subtitleContent: string, words?: any[]) => {
@@ -266,20 +248,4 @@ function formatSrtTimestamp(seconds: number) {
   const secs = Math.floor((totalMillis % 60_000) / 1000);
   const millis = totalMillis % 1000;
   return `${String(hrs).padStart(2, "0")}:${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")},${String(millis).padStart(3, "0")}`;
-}
-
-function parseContentDispositionFilename(value: string | null): string | undefined {
-  if (!value) {
-    return undefined;
-  }
-  const utfMatch = value.match(/filename\*=UTF-8''([^;]+)/i);
-  if (utfMatch?.[1]) {
-    try {
-      return decodeURIComponent(utfMatch[1]);
-    } catch (error) {
-      console.warn("Failed to decode filename from header:", error);
-    }
-  }
-  const quotedMatch = value.match(/filename="?([^";]+)"?/i);
-  return quotedMatch?.[1] ?? undefined;
 }

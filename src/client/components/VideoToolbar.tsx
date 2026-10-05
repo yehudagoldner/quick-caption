@@ -4,6 +4,7 @@ import type { Segment, Word } from "../types";
 import { AUTO_CAPTION_FONT_SIZE, CAPTION_FONT_SIZES, type CaptionFontSizeSetting } from "../../captionStyle.js";
 import { CaptionFontPicker } from "./CaptionFontPicker";
 import type { CaptionMotion, PopIntensity } from "../../captionMotion.js";
+import type { BurnProgress } from '../utils/burnRequest';
 import {
   Box,
   Button,
@@ -39,6 +40,7 @@ import {
 } from "@mui/icons-material";
 
 export type BurnOptions = {
+  onProgress?: (progress: BurnProgress) => void;
   activeWordColor?: string;
   captionMotion?: CaptionMotion;
   popIntensity?: PopIntensity;

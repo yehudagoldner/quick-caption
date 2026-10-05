@@ -4,7 +4,7 @@ import cors from "cors";
 import { createMediaUpload, mediaUploadError } from "./src/mediaUpload.js";
 import path from "path";
 import os from "os";
-import crypto from "crypto";
+import { createBunnyStreamStorage, createMediaStorage, localMediaPath, parseBunnyReference, serveBunnyMedia } from './src/bunnyStreamStorage.js';
 import { promises as fsp } from "fs";
 import { createServer } from "http";
 import { Server as SocketIOServer } from "socket.io";
@@ -13,6 +13,7 @@ import "./src/loadAppEnv.js";
 import { transcribeMedia, normalizeSubtitleFormat, transcribeWithWordTimestamps, getMediaDuration, resegmentWithGPT, intelligentSplitSegment, aiEditSubtitles } from "./src/transcription.js";
 import { parseTranscriptionSettings } from "./src/transcriptionSettings.js";
 import { createBurnSubtitlesRouter } from "./routes/burnSubtitles.js";
+import { createBurnSourceResolver } from './src/burnSource.js';
 import paypalRouter from "./routes/paypal.js";
 import pool from "./db.js";
 import { createAdminStore } from "./src/adminStore.js";
@@ -38,12 +39,14 @@ const adminStore = createAdminStore(pool);
 const downloadStore = createDownloadStore(pool);
 const errorRecorder = createErrorRecorder(adminStore);
 app.use(captureApiErrors(errorRecorder));
-app.use(cors({ origin: allowedOrigins ?? true }));
+app.use(cors({ origin: allowedOrigins ?? true, exposedHeaders: ['Content-Disposition'] }));
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
 const uploadDir = path.join(os.tmpdir(), "subtitles-api-uploads");
 const videosStorageDir = path.join(process.cwd(), "stored-videos");
+const bunnyStorage = createBunnyStreamStorage();
+const mediaStorage = createMediaStorage({ bunny: bunnyStorage, localDir: videosStorageDir });
 await fsp.mkdir(uploadDir, { recursive: true });
 await fsp.mkdir(videosStorageDir, { recursive: true });
 await ensureSchema();
@@ -86,7 +89,9 @@ app.use('/api', (req, res, next) => {
 const upload = createMediaUpload(uploadDir);
 app.post('/api/client-errors', createClientErrorHandler(errorRecorder));
 app.use('/api/downloads', createDownloadsRouter({ store: downloadStore }));
-app.use("/api/burn-subtitles", createBurnSubtitlesRouter(upload));
+app.use("/api/burn-subtitles", createBurnSubtitlesRouter(upload, {
+  resolveVideo: createBurnSourceResolver({ getVideoById, bunny: bunnyStorage, localDir: videosStorageDir, tempDir: uploadDir }),
+}));
 app.use("/api/payments", paypalRouter);
 
 const httpServer = createServer(app);
@@ -248,7 +253,10 @@ app.get("/api/videos/:id/media", async (req, res) => {
       return res.status(404).json({ error: 'Video file not found' });
     }
 
-    const fullPath = path.join(videosStorageDir, video.stored_path);
+    res.set('Referrer-Policy', 'no-referrer');
+    res.set('Cache-Control', 'private, no-store');
+    if (parseBunnyReference(video.stored_path)) return await serveBunnyMedia(req, res, video, bunnyStorage);
+    const fullPath = localMediaPath(videosStorageDir, video.stored_path);
 
     try {
       await fsp.access(fullPath);
@@ -261,7 +269,8 @@ app.get("/api/videos/:id/media", async (req, res) => {
     res.sendFile(fullPath);
   } catch (error) {
     console.error('Failed to serve video:', error);
-    res.status(500).json({ error: 'Failed to serve video' });
+    if (res.headersSent) return res.destroy();
+    res.status(error.code === 'BUNNY_STORAGE_ERROR' ? error.status : 500).json({ error: error.code === 'BUNNY_STORAGE_ERROR' ? error.message : 'Failed to serve video' });
   }
 });
 
@@ -362,7 +371,10 @@ app.get("/api/videos/:id/file", async (req, res) => {
       return res.status(404).json({ error: 'Video file not found' });
     }
 
-    const fullPath = path.join(videosStorageDir, video.stored_path);
+    res.set('Referrer-Policy', 'no-referrer');
+    res.set('Cache-Control', 'private, no-store');
+    if (parseBunnyReference(video.stored_path)) return await serveBunnyMedia(req, res, video, bunnyStorage);
+    const fullPath = localMediaPath(videosStorageDir, video.stored_path);
 
     try {
       await fsp.access(fullPath);
@@ -375,7 +387,8 @@ app.get("/api/videos/:id/file", async (req, res) => {
     res.sendFile(fullPath);
   } catch (error) {
     console.error('Failed to serve video file:', error);
-    res.status(500).json({ error: 'Failed to serve video file' });
+    if (res.headersSent) return res.destroy();
+    res.status(error.code === 'BUNNY_STORAGE_ERROR' ? error.status : 500).json({ error: error.code === 'BUNNY_STORAGE_ERROR' ? error.message : 'Failed to serve video file' });
   }
 });
 
@@ -493,8 +506,6 @@ app.post("/api/transcribe", upload.single("media"), async (req, res) => {
     }
   }
 
-  emitStage("upload", "done");
-
   let format = ".srt";
   try {
     if (req.body?.format) {
@@ -562,7 +573,12 @@ app.post("/api/transcribe", upload.single("media"), async (req, res) => {
   }
 
   let savedVideoId = null;
+  let storedPath = null;
   try {
+    // Remote persistence is mandatory for new videos and happens before paid AI
+    // processing. The uploaded local file is only a temporary working copy.
+    storedPath = await mediaStorage.persist(req.file, originalFilename);
+    emitStage("upload", "done");
     const { value: result, costUSD: measuredCostUSD, unpricedCalls } = await measureAICost(() => transcribeMedia({
       inputPath: req.file.path,
       format,
@@ -571,74 +587,20 @@ app.post("/api/transcribe", upload.single("media"), async (req, res) => {
       onStage: emitStage,
     }));
 
-    let storedPath = null;
-    if (userUid && req.file) {
-      try {
-        // Create unique filename with timestamp and random suffix
-        const timestamp = Date.now();
-        const randomSuffix = crypto.randomBytes(4).toString('hex');
-
-        // Get file extension safely
-        const ext = path.extname(originalFilename || req.file.filename || '.mp4');
-        const baseName = path.basename(originalFilename || req.file.filename || 'upload', ext);
-
-        // Create sanitized but readable filename (preserve Hebrew if possible)
-        let sanitizedBaseName;
-        try {
-          // Try to keep Hebrew characters readable
-          sanitizedBaseName = baseName
-            .replace(/[<>:"/\\|?*]/g, '_') // Remove forbidden characters but keep Hebrew
-            .replace(/\s+/g, '_') // Replace spaces with underscores
-            .substring(0, 50); // Limit length
-        } catch (e) {
-          // Fallback to ASCII-safe version
-          sanitizedBaseName = baseName.replace(/[^a-zA-Z0-9._-]/g, '_').substring(0, 50);
-        }
-
-        const storedFilename = `${userUid}_${timestamp}_${randomSuffix}_${sanitizedBaseName}${ext}`;
-        storedPath = path.join(videosStorageDir, storedFilename);
-
-        // Ensure the path doesn't already exist (double-check uniqueness)
-        let uniqueStoredPath = storedPath;
-        let counter = 1;
-        while (true) {
-          try {
-            await fsp.access(uniqueStoredPath);
-            // File exists, try next number
-            const uniqueFilename = `${userUid}_${timestamp}_${randomSuffix}_${counter}_${sanitizedBaseName}${ext}`;
-            uniqueStoredPath = path.join(videosStorageDir, uniqueFilename);
-            counter++;
-          } catch {
-            // File doesn't exist, we can use this path
-            break;
-          }
-        }
-        storedPath = uniqueStoredPath;
-
-        await fsp.copyFile(req.file.path, storedPath);
-
-        savedVideoId = await saveVideo({
-          userUid,
-          originalFilename,
-          storedPath: path.basename(storedPath),
-          status: 'completed',
-          mediaType: req.file?.mimetype?.startsWith('audio/') ? 'audio' : 'video',
-          mimeType: req.file?.mimetype ?? null,
-          format,
-          durationSeconds: Number.isFinite(durationSeconds) ? Math.round(durationSeconds) : null,
-          sizeBytes: req.file?.size ?? null,
-          transcriptionId: null,
-          subtitleJson: result.segments ? JSON.stringify(result.segments) : null,
-          wordsJson: result.words ? JSON.stringify(result.words) : null,
-        });
-      } catch (videoError) {
-        console.error('Failed to store video metadata:', videoError);
-        if (storedPath) {
-          await safeUnlink(storedPath);
-        }
-        throw videoError;
-      }
-    }
+    savedVideoId = await saveVideo({
+      userUid,
+      originalFilename,
+      storedPath,
+      status: 'completed',
+      mediaType: req.file.mimetype?.startsWith('audio/') ? 'audio' : 'video',
+      mimeType: req.file.mimetype ?? null,
+      format,
+      durationSeconds: Number.isFinite(durationSeconds) ? Math.round(durationSeconds) : null,
+      sizeBytes: req.file.size ?? null,
+      transcriptionId: null,
+      subtitleJson: result.segments ? JSON.stringify(result.segments) : null,
+      wordsJson: result.words ? JSON.stringify(result.words) : null,
+    });
 
     // Calculate actual credits used based on API usage
     const actualCredits = transcriptionCredits(result.usage || {}, measuredCostUSD);
@@ -671,7 +633,7 @@ app.post("/api/transcribe", upload.single("media"), async (req, res) => {
         await saveVideo({
           userUid,
           originalFilename,
-          storedPath: null,
+          storedPath,
           status: 'failed',
           mediaType: req.file?.mimetype?.startsWith('audio/') ? 'audio' : 'video',
           mimeType: req.file?.mimetype ?? null,
@@ -683,10 +645,15 @@ app.post("/api/transcribe", upload.single("media"), async (req, res) => {
         });
       } catch (videoError) {
         console.error('Failed to store failed video metadata:', videoError);
+        if (storedPath) {
+          try { await mediaStorage.remove(storedPath); }
+          catch (cleanupError) { console.error('Failed to remove untracked media:', { code: cleanupError.code }); }
+        }
       }
     }
     console.error("Transcription failed:", { status: error.status, code: error.code });
     const message = savedVideoId ? "הסרטון נשמר ב׳הסרטונים שלי׳, אך עדכון מצב העיבוד נכשל. אפשר לפתוח אותו משם."
+      : error.code === 'BUNNY_STORAGE_ERROR' ? error.message
       : error.status === 401 || /incorrect api key|invalid_api_key/i.test(error.message ?? "")
       ? "שירות התמלול אינו זמין: מפתח הגישה של השרת נדחה. יש לעדכן את הגדרת השירות ולנסות שוב."
       : "התמלול נכשל. בדקו שקובץ המדיה תקין ונסו שוב.";
@@ -772,19 +739,31 @@ app.post("/api/transcribe-words", upload.single("media"), async (req, res) => {
     return res.status(400).json({ error: 'Media file is required under field name "media".' });
   }
 
+  let storedPath = null;
+  let savedVideoId = null;
   try {
+    storedPath = await mediaStorage.persist(req.file, req.file.originalname);
     const result = await transcribeWithWordTimestamps({
       inputPath: req.file.path,
       logger: createRequestLogger(req),
     });
 
+    savedVideoId = await saveVideo({ userUid: req.identity.uid, originalFilename: req.file.originalname,
+      storedPath, mediaType: req.file.mimetype?.startsWith('audio/') ? 'audio' : 'video',
+      mimeType: req.file.mimetype, sizeBytes: req.file.size, format: '.srt',
+      subtitleJson: JSON.stringify(result.segments ?? []), wordsJson: JSON.stringify(result.words ?? []) });
     res.json({
+      videoId: savedVideoId,
       text: result.text,
       segments: result.segments,
       words: result.words,
       formattedOutput: result.formattedOutput,
     });
   } catch (error) {
+    if (storedPath && !savedVideoId) {
+      try { await mediaStorage.remove(storedPath); }
+      catch (cleanupError) { console.error('Failed to remove untracked word-transcription media:', { code: cleanupError.code }); }
+    }
     console.error("Word transcription error:", error);
     res.status(500).json({ error: error.message ?? "Internal Server Error" });
   } finally {

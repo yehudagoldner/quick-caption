@@ -25,6 +25,8 @@ import { EditorNavigationContext } from "../contexts/EditorNavigationContext";
 import { DownloadContext } from "../contexts/DownloadContext";
 import { useDownloadExperience } from "../hooks/useDownloadExperience";
 import { DownloadFeedbackDialog } from "./DownloadFeedbackDialog";
+import { BurnProgressDialog } from './BurnProgressDialog';
+import type { BurnProgress } from '../utils/burnRequest';
 
 export type { BurnOptions };
 type BurnResult = { blob: Blob; filename?: string; };
@@ -58,6 +60,7 @@ export function TranscriptionResult({
 }: TranscriptionResultProps) {
   const { preferences } = useEditorPreferences();
   const downloads = useDownloadExperience(videoId);
+  const [burnProgress, setBurnProgress] = useState<BurnProgress>({ stage: 'preparing', percent: null });
   const [hasTimelineDrafts, setHasTimelineDrafts] = useState(false);
   const [loopEnabled, setLoopEnabled] = useState(false);
   const loopEnabledRef = useRef(loopEnabled);
@@ -271,10 +274,12 @@ export function TranscriptionResult({
     marginPercent,
     videoDimensions,
     onBurn,
+    setBurnProgress,
   });
 
   return (
     <DownloadContext.Provider value={downloads.actions}>
+    <BurnProgressDialog open={isBurning} progress={burnProgress} />
     <Card ref={playbackRoot} elevation={narrow ? 0 : 3} sx={{ overflow: "visible", ...(narrow ? { bgcolor: "transparent", boxShadow: "none" } : {}) }}>
       <CardContent sx={narrow ? { p: 0, "&:last-child": { pb: 0 } } : { p: { md: 1.5 }, "&:last-child": { pb: { md: 1.5 } } }}>
         <Stack spacing={narrow ? 0 : 1.5}>

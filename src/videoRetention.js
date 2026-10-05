@@ -1,8 +1,37 @@
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
 import { VIDEO_RETENTION_DAYS } from './mediaPolicy.js';
+import { parseBunnyReference } from './bunnyStreamStorage.js';
+
+export async function ensureRemoteMediaDeletionQueue(db) {
+  try { await db.execute('SELECT stored_path FROM bunny_media_deletions LIMIT 0'); return; }
+  catch (error) { if (error.code !== 'ER_NO_SUCH_TABLE') throw error; }
+  await db.execute(`CREATE TABLE IF NOT EXISTS bunny_media_deletions (
+    stored_path VARCHAR(512) CHARACTER SET ascii COLLATE ascii_bin PRIMARY KEY,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  )`);
+}
+
+// Delete remote media only after the SQL transaction commits. Failed deletes
+// remain queued so a later run can retry after a network outage or a restart.
+export async function drainRemoteMediaDeletions(db, removeRemoteMedia) {
+  if (!removeRemoteMedia) return { removed: 0, pending: 0 };
+  const [entries] = await db.execute('SELECT stored_path FROM bunny_media_deletions ORDER BY created_at LIMIT 1000');
+  let removed = 0, pending = 0;
+  for (const { stored_path: storedPath } of entries) {
+    if (!parseBunnyReference(storedPath)) throw new Error('Unsafe remote media reference');
+    const [references] = await db.execute('SELECT id FROM videos WHERE stored_path = ? LIMIT 1', [storedPath]);
+    if (!references.length) {
+      try { await removeRemoteMedia(storedPath); removed++; }
+      catch { pending++; continue; }
+    }
+    await db.execute('DELETE FROM bunny_media_deletions WHERE stored_path = ?', [storedPath]);
+  }
+  return { removed, pending };
+}
 
 export async function ensureVideoRetention(db) {
+  await ensureRemoteMediaDeletionQueue(db);
   const [columns] = await db.query("SHOW COLUMNS FROM videos LIKE 'last_accessed_at'");
   if (!columns.length) {
     // Existing videos get a full grace period because historical reads were not tracked.
@@ -69,7 +98,7 @@ async function recoverJournal(db, root, trash) {
   return recovered;
 }
 
-export async function cleanupInactiveVideos({ connection, storageDir, dryRun = true }) {
+export async function cleanupInactiveVideos({ connection, storageDir, dryRun = true, removeRemoteMedia }) {
   const root = await fs.realpath(storageDir);
   const db = connection;
   const [[lock]] = await db.execute("SELECT GET_LOCK('quick-caption-video-retention', 0) AS acquired");
@@ -78,6 +107,7 @@ export async function cleanupInactiveVideos({ connection, storageDir, dryRun = t
   const trash = path.join(root, '.retention-trash');
   try {
     if (!dryRun) {
+      await ensureRemoteMediaDeletionQueue(db);
       await fs.mkdir(trash, { mode: 0o700 });
     }
   } catch (error) {
@@ -103,15 +133,19 @@ export async function cleanupInactiveVideos({ connection, storageDir, dryRun = t
         if (!video) { await db.commit(); continue; }
         let removedBytes = 0;
         if (video.stored_path) {
-          const original = mediaPath(root, video.stored_path);
           const [otherReferences] = await db.execute('SELECT id FROM videos WHERE stored_path = ? AND id <> ? LIMIT 1', [video.stored_path, id]);
-          const stat = await regularFile(original);
-          if (stat && !otherReferences.length) {
-            journal = path.join(trash, String(id));
-            await fs.mkdir(journal, { mode: 0o700 });
-            await fs.writeFile(path.join(journal, 'manifest.json'), JSON.stringify({ storedPath: video.stored_path }), { flag: 'wx', mode: 0o600 });
-            await fs.rename(original, path.join(journal, 'media'));
-            removedBytes = stat.size;
+          if (parseBunnyReference(video.stored_path)) {
+            if (!otherReferences.length) await db.execute('INSERT IGNORE INTO bunny_media_deletions (stored_path) VALUES (?)', [video.stored_path]);
+          } else {
+            const original = mediaPath(root, video.stored_path);
+            const stat = await regularFile(original);
+            if (stat && !otherReferences.length) {
+              journal = path.join(trash, String(id));
+              await fs.mkdir(journal, { mode: 0o700 });
+              await fs.writeFile(path.join(journal, 'manifest.json'), JSON.stringify({ storedPath: video.stored_path }), { flag: 'wx', mode: 0o600 });
+              await fs.rename(original, path.join(journal, 'media'));
+              removedBytes = stat.size;
+            }
           }
         }
         await db.execute("DELETE FROM transcription_jobs WHERE user_uid = ? AND status <> 'processing' AND (JSON_UNQUOTE(JSON_EXTRACT(result_json, '$.videoId')) = ? OR id = ?)", [video.user_uid, String(id), video.transcription_id ?? '']);
@@ -130,6 +164,7 @@ export async function cleanupInactiveVideos({ connection, storageDir, dryRun = t
         throw error;
       }
     }
-    return stats;
+    const remote = await drainRemoteMediaDeletions(db, removeRemoteMedia);
+    return { ...stats, remoteDeleted: remote.removed, remotePending: remote.pending };
   } finally { await db.execute("SELECT RELEASE_LOCK('quick-caption-video-retention')"); }
 }

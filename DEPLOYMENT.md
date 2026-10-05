@@ -8,6 +8,14 @@ Use the personal `quick-caption-deploy` skill for SSH authentication and deploym
 A request mentioning QA, staging, or a test environment targets QA exclusively.
 Production deployment remains the default when no environment is specified.
 
+New video uploads require `BUNNY_STREAM_LIBRARY_ID`, `BUNNY_STREAM_API_KEY`, and
+`BUNNY_STREAM_CDN_HOSTNAME` in the release's server environment. Enable **Keep
+original files** in that library before accepting uploads. These are server-only
+settings; do not prefix credentials with `VITE_`. Without a working Bunny
+configuration, new video uploads fail rather than being stored locally. Existing
+local media remains readable; do not remove the shared `stored-videos` directory.
+See `docs/video-retention.md` for remote cleanup and optional CDN protection.
+
 ## Deploy to QA
 
 Commit the requested changes and push their branch. Do not update `server-changes`
