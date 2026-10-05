@@ -1,6 +1,7 @@
 import { Autocomplete, Box, Checkbox, Stack, TextField, ToggleButton, ToggleButtonGroup, Typography } from "@mui/material";
 import { TRANSCRIPTION_LANGUAGE_CODES, type SecondaryLanguageMode } from "../../transcriptionSettings.js";
 import { useEffect, useState } from "react";
+import { SecondaryLanguageModePicker } from "./SecondaryLanguageModePicker";
 
 export type SubtitleLimitMode = "characters" | "words" | "none";
 export type InitialTranscriptionSettingsProps = {
@@ -59,11 +60,7 @@ export function InitialTranscriptionSettings({ subtitleLimitMode, maxCharactersP
       return <li key={key} {...optionProps}><Checkbox checked={selected} size="small" sx={{ p: 0.5, mr: 0.5 }} />{languageLabel(code)}</li>;
     }} renderInput={params => <TextField {...params} label="שפות נוספות בסרטון" placeholder={languages.length > 1 ? "חיפוש" : "בחירה מרובה"} />} slotProps={{ listbox: { sx: { maxHeight: "min(240px, 35dvh)", direction: "rtl" } } }} sx={{ "& .MuiAutocomplete-inputRoot": { flexWrap: "nowrap" }, "& .MuiAutocomplete-input": { minWidth: "20px !important" } }} />
     <Typography variant="caption" fontWeight={700}>הצגת השפות הלא ראשיות</Typography>
-    <ToggleButtonGroup exclusive fullWidth color="primary" size="small" value={secondaryLanguageMode} onChange={(_, value: SecondaryLanguageMode | null) => value && onSecondaryLanguageModeChange(value)} aria-label="הצגת השפות הלא ראשיות" sx={{ "& .MuiToggleButton-root": { px: 0.5, py: 0.5, fontSize: "0.75rem", whiteSpace: "nowrap", "&.Mui-selected": { bgcolor: "primary.main", color: "primary.contrastText", "&:hover": { bgcolor: "primary.dark" } } } }}>
-      <ToggleButton value="original">מקור</ToggleButton>
-      <ToggleButton value="translate">תרגום לעברית</ToggleButton>
-      <ToggleButton value="transliterate">תעתיק עברי</ToggleButton>
-    </ToggleButtonGroup>
+    <SecondaryLanguageModePicker value={secondaryLanguageMode} onChange={onSecondaryLanguageModeChange} />
     <Typography variant="caption" color="text.secondary" sx={{ fontSize: "0.6875rem", lineHeight: 1.3 }}>{secondaryLanguageMode === "original" ? "כל שפה מוצגת בכתב המקורי שלה." : secondaryLanguageMode === "translate" ? "השפות הלא ראשיות מתורגמות לעברית; השפה הראשית נשמרת." : "לפי ההגייה: Good morning ← גוד מורנינג."}</Typography>
   </Stack>;
 }
