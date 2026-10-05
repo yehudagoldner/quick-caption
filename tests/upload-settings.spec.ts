@@ -36,6 +36,8 @@ for (const viewport of [{ width: 320, height: 568 }, { width: 360, height: 640 }
     }
     for (const mode of ['לפי תווים', 'לפי מילים', 'ללא הגבלה']) {
       await page.getByRole('button', { name: mode, exact: true }).click();
+      if (mode === 'ללא הגבלה') await expect(page.getByRole('slider')).toHaveCount(0);
+      else await expect(page.locator('.MuiSlider-root')).toBeInViewport({ ratio: 1 });
       await fits();
       await expect(page.getByRole('button', { name: 'שלחו לעיבוד' })).toBeInViewport({ ratio: 1 });
       if (viewport.width < 600) {
@@ -75,11 +77,33 @@ for (const mode of ['characters', 'words', 'none']) {
     await page.getByRole('button', { name: labels[mode as keyof typeof labels], exact: true }).click();
     if (mode === 'characters') {
       const limit = page.getByRole('spinbutton', { name: 'מספר תווים' });
+      const slider = page.getByRole('slider', { name: 'מספר תווים בכתובית', exact: true });
+      await slider.press('Home');
+      await expect(limit).toHaveValue('7');
+      await slider.press('End');
+      await expect(limit).toHaveValue('20');
+      const track = await page.locator('.MuiSlider-root').boundingBox();
+      const thumb = await page.locator('.MuiSlider-thumb').boundingBox();
+      expect(Math.abs(thumb!.x + thumb!.width / 2 - track!.x)).toBeLessThan(1);
+      await slider.press('ArrowDown');
+      await expect(limit).toHaveValue('19');
       await limit.fill('');
       await limit.pressSequentially('12');
       await expect(limit).toHaveValue('12');
+      await expect(slider).toHaveAttribute('aria-valuenow', '12');
     }
-    if (mode === 'words') await page.getByRole('spinbutton', { name: 'מספר מילים' }).fill('3');
+    if (mode === 'words') {
+      const limit = page.getByRole('spinbutton', { name: 'מספר מילים' });
+      const slider = page.getByRole('slider', { name: 'מספר מילים בכתובית', exact: true });
+      await slider.press('End');
+      await expect(limit).toHaveValue('30');
+      await slider.press('Home');
+      await expect(limit).toHaveValue('1');
+      await slider.press('ArrowUp');
+      await expect(limit).toHaveValue('2');
+      await limit.fill('3');
+      await expect(slider).toHaveAttribute('aria-valuenow', '3');
+    }
     await openLanguageSettings(page);
     await expect(page.getByRole('combobox', { name: 'שפת התמלול', exact: true })).toHaveValue('עברית · Hebrew');
     const languages = page.getByRole('combobox', { name: 'שפות נוספות בסרטון' });

@@ -1,4 +1,4 @@
-import { Autocomplete, Box, Button, Checkbox, Dialog, DialogActions, DialogContent, DialogTitle, IconButton, Stack, TextField, ToggleButton, ToggleButtonGroup, Typography, useMediaQuery } from "@mui/material";
+import { Autocomplete, Box, Button, Checkbox, Dialog, DialogActions, DialogContent, DialogTitle, IconButton, Slider, Stack, TextField, ToggleButton, ToggleButtonGroup, Typography, useMediaQuery } from "@mui/material";
 import CloseRounded from "@mui/icons-material/CloseRounded";
 import LanguageRounded from "@mui/icons-material/LanguageRounded";
 import TuneRounded from "@mui/icons-material/TuneRounded";
@@ -41,7 +41,7 @@ function SubtitleLimitInput({ mode, value, onChange }: { mode: "characters" | "w
     const next = draft ? Math.min(max, Math.max(min, Math.round(Number(draft)))) : value;
     onChange(Number.isFinite(next) ? next : value);
     setDraft(String(Number.isFinite(next) ? next : value));
-  }} slotProps={{ htmlInput: { min, max, step: 1 } }} sx={{ width: 125, flexShrink: 0 }} />;
+  }} slotProps={{ htmlInput: { min, max, step: 1 } }} sx={{ width: { xs: 96, sm: 110 }, flexShrink: 0 }} />;
 }
 
 export function InitialTranscriptionSettings({ subtitleLimitMode, maxCharactersPerSubtitle, maxWordsPerSubtitle, languages, secondaryLanguageMode, onSubtitleLimitModeChange, onMaxCharactersChange, onMaxWordsChange, onLanguagesChange, onSecondaryLanguageModeChange }: InitialTranscriptionSettingsProps) {
@@ -57,10 +57,22 @@ export function InitialTranscriptionSettings({ subtitleLimitMode, maxCharactersP
       <ToggleButton value="words">לפי מילים</ToggleButton>
       <ToggleButton value="none">ללא הגבלה</ToggleButton>
     </ToggleButtonGroup>
-    <Box sx={{ minHeight: 40, display: "flex", alignItems: "center", gap: 1 }}>
+    <Box sx={{ minHeight: 44, display: "flex", alignItems: "center", gap: 1.5 }}>
       {subtitleLimitMode === "none" ? <Typography variant="caption" color="text.secondary">חלוקה טבעית לפי הדיבור, ללא הגבלת אורך.</Typography> : <>
         <SubtitleLimitInput key={subtitleLimitMode} mode={subtitleLimitMode} value={subtitleLimitMode === "characters" ? maxCharactersPerSubtitle : maxWordsPerSubtitle} onChange={subtitleLimitMode === "characters" ? onMaxCharactersChange : onMaxWordsChange} />
-        <Typography variant="caption" color="text.secondary">{subtitleLimitMode === "characters" ? "כולל רווחים, בלי לחתוך מילים" : "מילים לכל כתובית"}</Typography>
+        <Stack sx={{ flex: 1, minWidth: 0, px: 1 }}>
+          <Slider
+            aria-label={subtitleLimitMode === "characters" ? "מספר תווים בכתובית" : "מספר מילים בכתובית"}
+            value={subtitleLimitMode === "characters" ? maxCharactersPerSubtitle : maxWordsPerSubtitle}
+            onChange={(_, value) => (subtitleLimitMode === "characters" ? onMaxCharactersChange : onMaxWordsChange)(value as number)}
+            min={subtitleLimitMode === "characters" ? 7 : 1}
+            max={subtitleLimitMode === "characters" ? 20 : 30}
+            step={1}
+            valueLabelDisplay="auto"
+            sx={{ display: "block", py: 1.25, "& .MuiSlider-thumb": { width: 20, height: 20, left: "auto", transform: "translate(50%, -50%)" } }}
+          />
+          <Typography variant="caption" color="text.secondary" textAlign="center" sx={{ fontSize: "0.625rem", lineHeight: 1.3 }}>{subtitleLimitMode === "characters" ? "כולל רווחים · מילים שלמות" : "מילים לכל כתובית"}</Typography>
+        </Stack>
       </>}
     </Box>
     {mobile ? <>
