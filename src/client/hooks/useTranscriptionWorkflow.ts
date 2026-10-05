@@ -60,10 +60,10 @@ function readInitialSettings() {
     return {
       mode: (["characters", "words", "none"].includes(saved.mode) ? saved.mode : "characters") as SubtitleLimitMode,
       words: Number.isInteger(saved.words) && saved.words >= 1 && saved.words <= 30 ? saved.words as number : 5,
-      languages: normalizeTranscriptionLanguages(saved.languages || []),
-      secondaryLanguageMode: (SECONDARY_LANGUAGE_MODES.includes(saved.secondaryLanguageMode) ? saved.secondaryLanguageMode : "translate") as SecondaryLanguageMode,
+      languages: saved.languageDefaultsVersion === 1 ? normalizeTranscriptionLanguages(saved.languages || []).slice(0, 1) : ["he"],
+      secondaryLanguageMode: (saved.languageDefaultsVersion === 1 && SECONDARY_LANGUAGE_MODES.includes(saved.secondaryLanguageMode) ? saved.secondaryLanguageMode : "original") as SecondaryLanguageMode,
     };
-  } catch { return { mode: "characters" as SubtitleLimitMode, words: 5, languages: ["he"], secondaryLanguageMode: "translate" as SecondaryLanguageMode }; }
+  } catch { return { mode: "characters" as SubtitleLimitMode, words: 5, languages: ["he"], secondaryLanguageMode: "original" as SecondaryLanguageMode }; }
 }
 
 function savePendingJob(uid: string, jobId: string) {
@@ -136,7 +136,8 @@ export function useTranscriptionWorkflow(): TranscriptionWorkflow {
   const [languages, setLanguages] = useState(initialSettings.languages);
   const [secondaryLanguageMode, setSecondaryLanguageMode] = useState(initialSettings.secondaryLanguageMode);
   useEffect(() => {
-    try { localStorage.setItem(INITIAL_SETTINGS_KEY, JSON.stringify({ mode: subtitleLimitMode, words: maxWordsPerSubtitle, languages, secondaryLanguageMode })); } catch { /* Storage may be disabled. */ }
+    // Extra language hints belong to this file, rather than the next upload.
+    try { localStorage.setItem(INITIAL_SETTINGS_KEY, JSON.stringify({ mode: subtitleLimitMode, words: maxWordsPerSubtitle, languages: languages.slice(0, 1), secondaryLanguageMode, languageDefaultsVersion: 1 })); } catch { /* Storage may be disabled. */ }
   }, [subtitleLimitMode, maxWordsPerSubtitle, languages, secondaryLanguageMode]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -312,6 +313,7 @@ export function useTranscriptionWorkflow(): TranscriptionWorkflow {
         const job = await res.json() as { status: "processing" | "completed" | "failed"; result?: ApiResponse; error?: string; stages?: StageEvent[] };
         if (!isCurrentJob()) return;
         if (job.status === "completed" && job.result) {
+          setLanguages(previous => previous.slice(0, 1));
           setResponse(job.result);
           setVideoId(job.result.videoId ?? null);
           if (job.result.videoId) {
@@ -473,6 +475,7 @@ export function useTranscriptionWorkflow(): TranscriptionWorkflow {
           }
 
           if (xhr.status >= 200 && xhr.status < 300) {
+            setLanguages(previous => previous.slice(0, 1));
             setResponse(payload);
             setVideoId(payload?.videoId ?? null);
             setError(null);
@@ -665,6 +668,7 @@ export function useTranscriptionWorkflow(): TranscriptionWorkflow {
   }, [signOut, handleProfileClose]);
 
   const handleFileChange = useCallback((nextFile: File | null) => {
+    setLanguages(previous => previous.slice(0, 1));
     setFile(nextFile);
   }, []);
 

@@ -3,14 +3,14 @@ import assert from 'node:assert/strict';
 import { parseTranscriptionSettings, TRANSCRIPTION_LANGUAGE_CODES, transcriptionLanguageOptions } from '../src/transcriptionSettings.js';
 
 test('explicit unlimited mode keeps zero rather than restoring the five-word default', () => {
-  assert.deepEqual(parseTranscriptionSettings({ maxWordsPerSubtitle: '0', languages: '[]' }), { maxWordsPerSubtitle: 0, maxCharactersPerSubtitle: null, languages: ['he'], secondaryLanguageMode: 'translate' });
+  assert.deepEqual(parseTranscriptionSettings({ maxWordsPerSubtitle: '0', languages: '[]' }), { maxWordsPerSubtitle: 0, maxCharactersPerSubtitle: null, languages: ['he'], secondaryLanguageMode: 'original' });
   assert.equal(parseTranscriptionSettings().maxWordsPerSubtitle, 5);
   assert.equal(parseTranscriptionSettings({ maxWordsPerSubtitle: '3' }).maxWordsPerSubtitle, 3);
   assert.equal(parseTranscriptionSettings({ maxCharactersPerSubtitle: '12' }).maxCharactersPerSubtitle, 12);
 });
 
-test('secondary language modes default to translation and validate client input', () => {
-  assert.equal(parseTranscriptionSettings().secondaryLanguageMode, 'translate');
+test('secondary language modes default to original speech and validate client input', () => {
+  assert.equal(parseTranscriptionSettings().secondaryLanguageMode, 'original');
   for (const mode of ['original', 'translate', 'transliterate']) {
     assert.equal(parseTranscriptionSettings({ secondaryLanguageMode: mode }).secondaryLanguageMode, mode);
     const options = transcriptionLanguageOptions(['en', 'ar'], mode);

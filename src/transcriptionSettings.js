@@ -12,7 +12,7 @@ export function validateTranscriptionLanguages(languages) {
 
 export const SECONDARY_LANGUAGE_MODES = ["original", "translate", "transliterate"];
 
-export function validateSecondaryLanguageMode(mode = "translate") {
+export function validateSecondaryLanguageMode(mode = "original") {
   if (!SECONDARY_LANGUAGE_MODES.includes(mode)) {
     throw new RangeError("בחרו אופן הצגה תקין לשפות הנוספות");
   }
