@@ -19,7 +19,7 @@ async function addLanguage(page: Page, name: string) {
   await sources.press('Escape');
 }
 
-for (const viewport of [{ width: 320, height: 568 }, { width: 390, height: 844 }, { width: 768, height: 600 }, { width: 1366, height: 600 }, { width: 1366, height: 768 }]) {
+for (const viewport of [{ width: 320, height: 568 }, { width: 360, height: 640 }, { width: 390, height: 664 }, { width: 390, height: 700 }, { width: 390, height: 844 }, { width: 768, height: 600 }, { width: 1366, height: 600 }, { width: 1366, height: 768 }]) {
   test(`all upload settings fit ${viewport.width}x${viewport.height}`, async ({ page }) => {
     await page.setViewportSize(viewport);
     await prepareApp(page);
@@ -30,6 +30,10 @@ for (const viewport of [{ width: 320, height: 568 }, { width: 390, height: 844 }
     await fits();
     await page.locator('input[type=file]').setInputFiles({ name: 'סרטון עם שם ארוך במיוחד לבדיקת התצוגה המלאה.webm', mimeType: 'video/webm', buffer: portraitVideo });
     await expect.poll(() => page.locator('video').evaluate((v: HTMLVideoElement) => v.readyState)).toBeGreaterThan(0);
+    if (viewport.width < 600) {
+      const preview = await page.locator('video').boundingBox();
+      expect(preview!.height).toBeGreaterThanOrEqual(96);
+    }
     for (const mode of ['לפי תווים', 'לפי מילים', 'ללא הגבלה']) {
       await page.getByRole('button', { name: mode, exact: true }).click();
       await fits();
@@ -43,6 +47,7 @@ for (const viewport of [{ width: 320, height: 568 }, { width: 390, height: 844 }
       }
     }
     await openLanguageSettings(page);
+    if (viewport.width < 600) await expect(page.getByRole('button', { name: 'סגירת הגדרות שפות', exact: true })).toBeInViewport({ ratio: 1 });
     await expect(page.getByRole('combobox', { name: 'שפת התמלול', exact: true })).toBeInViewport({ ratio: 1 });
     await expect(page.getByRole('combobox', { name: 'שפות נוספות בסרטון' })).toBeInViewport({ ratio: 1 });
     for (const label of ['מקור', 'תרגום לעברית', 'תעתיק עברי']) {
@@ -266,6 +271,54 @@ test('mobile language settings are hidden until opened and migrate old preferenc
   await expect.poll(() => posted).not.toBeNull();
   expect(posted).toContain('name="languages"\r\n\r\n["he"]');
   expect(posted).toContain('name="secondaryLanguageMode"\r\n\r\noriginal');
+});
+
+for (const dismissal of ['Back', 'X', 'Done', 'Escape', 'backdrop']) {
+  test(`mobile language dialog closes with ${dismissal} and keeps normal Back navigation`, async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await prepareApp(page);
+    await page.goto('/');
+    await page.getByRole('button', { name: 'התחילו ליצור כתוביות', exact: true }).click();
+    await expect(page).toHaveURL(/screen=transcription/);
+    await page.locator('input[type=file]').setInputFiles({ name: 'portrait.webm', mimeType: 'video/webm', buffer: portraitVideo });
+    await openLanguageSettings(page);
+    await addLanguage(page, 'English');
+    await page.getByRole('button', { name: 'תעתיק עברי', exact: true }).click();
+    if (dismissal === 'Back') await page.goBack();
+    else if (dismissal === 'X') await page.getByRole('button', { name: 'סגירת הגדרות שפות', exact: true }).click();
+    else if (dismissal === 'Done') await page.getByRole('button', { name: 'סיום', exact: true }).click();
+    else if (dismissal === 'Escape') await page.keyboard.press('Escape');
+    else await page.mouse.click(5, 5);
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await expect(page).toHaveURL(/screen=transcription/);
+    await expect(page.getByText('portrait.webm', { exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'הגדרות שפות', exact: true })).toBeFocused();
+    await openLanguageSettings(page);
+    await expect(page.getByText('אנגלית', { exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'תעתיק עברי', exact: true })).toHaveAttribute('aria-pressed', 'true');
+    await closeLanguageSettings(page);
+    await page.goBack();
+    await expect(page).toHaveURL('/');
+    await expect(page.getByRole('button', { name: 'התחילו ליצור כתוביות', exact: true })).toBeVisible();
+  });
+}
+
+test('Forward restores the language dialog and rotating to desktop removes its Back entry', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await prepareApp(page);
+  await page.goto('/');
+  await page.getByRole('button', { name: 'התחילו ליצור כתוביות', exact: true }).click();
+  await page.locator('input[type=file]').setInputFiles({ name: 'portrait.webm', mimeType: 'video/webm', buffer: portraitVideo });
+  await openLanguageSettings(page);
+  await page.goBack();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await page.goForward();
+  await expect(page.getByRole('dialog', { name: 'הגדרות שפות' })).toBeVisible();
+  await page.setViewportSize({ width: 844, height: 390 });
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(page.getByRole('combobox', { name: 'שפת התמלול', exact: true })).toBeVisible();
+  await page.goBack();
+  await expect(page).toHaveURL('/');
 });
 
 test('replacing a file clears extra language hints and failed processing retains hints for retry', async ({ page }) => {

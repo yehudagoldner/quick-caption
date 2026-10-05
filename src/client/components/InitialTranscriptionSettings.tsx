@@ -1,9 +1,11 @@
-import { Autocomplete, Box, Button, Checkbox, Dialog, DialogActions, DialogContent, DialogTitle, Stack, TextField, ToggleButton, ToggleButtonGroup, Typography, useMediaQuery } from "@mui/material";
+import { Autocomplete, Box, Button, Checkbox, Dialog, DialogActions, DialogContent, DialogTitle, IconButton, Stack, TextField, ToggleButton, ToggleButtonGroup, Typography, useMediaQuery } from "@mui/material";
+import CloseRounded from "@mui/icons-material/CloseRounded";
 import LanguageRounded from "@mui/icons-material/LanguageRounded";
 import TuneRounded from "@mui/icons-material/TuneRounded";
 import { TRANSCRIPTION_LANGUAGE_CODES, type SecondaryLanguageMode } from "../../transcriptionSettings.js";
 import { useEffect, useId, useState } from "react";
 import { SecondaryLanguageModePicker } from "./SecondaryLanguageModePicker";
+import { useHistoryDialog } from "../hooks/useHistoryDialog";
 
 export type SubtitleLimitMode = "characters" | "words" | "none";
 export type InitialTranscriptionSettingsProps = {
@@ -44,10 +46,11 @@ function SubtitleLimitInput({ mode, value, onChange }: { mode: "characters" | "w
 
 export function InitialTranscriptionSettings({ subtitleLimitMode, maxCharactersPerSubtitle, maxWordsPerSubtitle, languages, secondaryLanguageMode, onSubtitleLimitModeChange, onMaxCharactersChange, onMaxWordsChange, onLanguagesChange, onSecondaryLanguageModeChange }: InitialTranscriptionSettingsProps) {
   const mobile = useMediaQuery("(max-width: 599px)");
-  const [languagesOpen, setLanguagesOpen] = useState(false);
+  const languageDialog = useHistoryDialog();
   const titleId = useId();
+  useEffect(() => { if (!mobile && languageDialog.open) languageDialog.close(); }, [mobile, languageDialog.open, languageDialog.close]);
   const languageSettings = <TranscriptionLanguageSettings languages={languages} secondaryLanguageMode={secondaryLanguageMode} onLanguagesChange={onLanguagesChange} onSecondaryLanguageModeChange={onSecondaryLanguageModeChange} />;
-  return <Stack spacing={0.75} sx={{ p: 1, borderRadius: 2, bgcolor: "action.hover", minWidth: 0, "@media (max-width: 599px) and (max-height: 650px)": { py: 0.75, "& > :not(style) ~ :not(style)": { mt: 0.25 } } }}>
+  return <Stack spacing={{ xs: 1.25, sm: 0.75 }} sx={{ p: { xs: 1.5, sm: 1 }, borderRadius: 2, bgcolor: "action.hover", minWidth: 0, "@media (max-width: 599px) and (max-height: 650px)": { p: 1, "& > :not(style) ~ :not(style)": { mt: 0.75 } } }}>
     <Typography variant="subtitle2" fontWeight={700}>אורך הכתובית</Typography>
     <ToggleButtonGroup exclusive fullWidth color="primary" size="small" value={subtitleLimitMode} onChange={(_, value: SubtitleLimitMode | null) => value && onSubtitleLimitModeChange(value)} aria-label="הגבלת אורך כתובית" sx={{ gap: 0.5, "&& .MuiToggleButton-root": { m: 0, border: "1px solid", borderColor: "divider", borderRadius: 1, px: 0.75, py: 0.5, whiteSpace: "nowrap", color: "text.primary", "&.Mui-selected": { bgcolor: "primary.main", color: "primary.contrastText", borderColor: "primary.main", "&:hover": { bgcolor: "primary.dark" } } } }}>
       <ToggleButton value="characters">לפי תווים</ToggleButton>
@@ -61,16 +64,19 @@ export function InitialTranscriptionSettings({ subtitleLimitMode, maxCharactersP
       </>}
     </Box>
     {mobile ? <>
-      <Button type="button" variant="outlined" fullWidth aria-label="הגדרות שפות" aria-haspopup="dialog" startIcon={<LanguageRounded />} endIcon={<TuneRounded />} onClick={() => setLanguagesOpen(true)} sx={{ minHeight: 44, justifyContent: "space-between", gap: 1, "& .MuiButton-startIcon, & .MuiButton-endIcon": { m: 0 } }}>
+      <Button type="button" variant="outlined" fullWidth aria-label="הגדרות שפות" aria-haspopup="dialog" startIcon={<LanguageRounded />} endIcon={<TuneRounded />} onClick={languageDialog.show} sx={{ minHeight: 48, justifyContent: "space-between", gap: 1, "& .MuiButton-startIcon, & .MuiButton-endIcon": { m: 0 } }}>
         <Box sx={{ flex: 1, textAlign: "right" }}>
           <Typography component="span" display="block" variant="body2" fontWeight={600}>הגדרות שפות</Typography>
           <Typography component="span" display="block" variant="caption" color="text.secondary" sx={{ fontSize: "0.6875rem", lineHeight: 1.3 }}>{hebrewName(languages[0] || "he")} · {secondaryLanguageMode === "original" ? "שפות זרות במקור" : secondaryLanguageMode === "translate" ? "תרגום לעברית" : "תעתיק עברי"}{languages.length > 1 ? ` · עוד ${languages.length - 1}` : ""}</Typography>
         </Box>
       </Button>
-      <Dialog open={languagesOpen} onClose={() => setLanguagesOpen(false)} fullWidth maxWidth="xs" aria-labelledby={titleId} dir="rtl" slotProps={{ paper: { sx: { m: 2, width: "calc(100% - 32px)", borderRadius: 3 } } }}>
-        <DialogTitle id={titleId}>הגדרות שפות</DialogTitle>
+      <Dialog open={languageDialog.open} onClose={languageDialog.close} fullWidth maxWidth="xs" aria-labelledby={titleId} dir="rtl" slotProps={{ paper: { sx: { m: 2, width: "calc(100% - 32px)", borderRadius: 3 } } }}>
+        <DialogTitle id={titleId} sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 1, py: 1.5, pl: 1.5 }}>
+          הגדרות שפות
+          <IconButton aria-label="סגירת הגדרות שפות" onClick={languageDialog.close} sx={{ width: 44, height: 44 }}><CloseRounded /></IconButton>
+        </DialogTitle>
         <DialogContent sx={{ pt: "12px !important" }}>{languageSettings}</DialogContent>
-        <DialogActions sx={{ px: 3, pb: 2 }}><Button onClick={() => setLanguagesOpen(false)} variant="contained" fullWidth>סיום</Button></DialogActions>
+        <DialogActions sx={{ px: 3, pb: 2 }}><Button onClick={languageDialog.close} variant="contained" fullWidth>סיום</Button></DialogActions>
       </Dialog>
     </> : languageSettings}
   </Stack>;

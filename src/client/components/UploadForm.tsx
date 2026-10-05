@@ -68,7 +68,7 @@ export function UploadForm({
   };
 
   return (
-    <Stack component="form" dir="rtl" spacing={1} onSubmit={onSubmit}>
+    <Stack component="form" dir="rtl" spacing={{ xs: "clamp(8px, calc(3dvh - 9px), 16px)", sm: 1 }} onSubmit={onSubmit}>
       {isSubmitting ? (
         <Typography variant="body1" textAlign="center" sx={{ overflowWrap: "anywhere" }}>{file ? file.name : "בודקים את מצב העיבוד בשרת..."}</Typography>
       ) : !file ? <Box
@@ -145,7 +145,7 @@ export function UploadForm({
             }
             const ratio = media.videoWidth && media.videoHeight ? ` · ${media.videoWidth}×${media.videoHeight} · ${media.videoHeight > media.videoWidth ? "אנכי" : "אופקי"}` : " · אודיו בלבד";
             setMediaInfo(`${Math.round(media.duration)} שניות${ratio}`);
-          }} sx={{ width: "100%", objectFit: "contain", maxHeight: { xs: "clamp(64px, calc(100dvh - 510px), 240px)", sm: "clamp(100px, calc(100dvh - 300px), 260px)" }, borderRadius: 2, bgcolor: "grey.900" }} />
+          }} sx={{ width: "100%", objectFit: "contain", maxHeight: { xs: "clamp(96px, calc(80dvh - 348px), 280px)", sm: "clamp(100px, calc(100dvh - 300px), 260px)" }, borderRadius: 2, bgcolor: "grey.900" }} />
         <Typography variant="caption" sx={{ fontSize: "0.75rem", "@media (max-height: 650px)": { display: "none" } }}>{mediaInfo}</Typography>
       </Stack>}
       <InitialTranscriptionSettings {...settings} maxCharactersPerSubtitle={maxCharactersPerSubtitle} onMaxCharactersChange={onMaxCharactersChange} />
