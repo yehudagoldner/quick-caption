@@ -1,6 +1,6 @@
 import { createReadStream, promises as fs } from 'node:fs';
 import { Readable } from 'node:stream';
-import { pipeline } from 'node:stream/promises';
+import { finished, pipeline } from 'node:stream/promises';
 import path from 'node:path';
 import { randomUUID, createHash } from 'node:crypto';
 
@@ -70,7 +70,11 @@ export function createBunnyStreamStorage(env = process.env, fetchImpl = fetch) {
           const uploaded = await api(endpoint(libraryId, guid), { method: 'PUT', headers: { 'Content-Type': 'application/octet-stream', 'Content-Length': String(file.size) }, body: stream, duplex: 'half' });
           const result = await uploaded.json();
           if (result.success !== true) throw storageError('העלאת הסרטון לא אושרה על ידי Bunny.');
-        } finally { stream.destroy(); }
+        } finally {
+          const closed = finished(stream, { cleanup: true }).catch(() => {});
+          stream.destroy();
+          await closed;
+        }
         // A successful ingest is not enough if the editor cannot retrieve the
         // source later. Keep original files must be enabled before uploading.
         const check = await storage.open(storedPath, { method: 'GET', range: 'bytes=0-0' });
