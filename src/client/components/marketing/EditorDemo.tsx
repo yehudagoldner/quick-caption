@@ -4,7 +4,7 @@ import {
   Slider, Stack, Switch, TextField, ThemeProvider, Typography, createTheme, useTheme,
 } from "@mui/material";
 import {
-  AccessTimeRounded, AccountBalanceWalletRounded, AddRounded, ChevronLeftRounded, CloseRounded, ContentCutRounded,
+  AccessTimeRounded, AccountBalanceWalletRounded, AddRounded, ChevronLeftRounded, CloseRounded,
   DeleteOutlineRounded, EditOutlined, FullscreenRounded, HomeRounded, MenuRounded, MoreVertRounded, MyLocationRounded,
   OpenInFullRounded, PauseRounded, PlayArrowRounded, RedoRounded, RepeatRounded, RestartAltRounded, SettingsRounded,
   ShareRounded, ShortTextRounded, UndoRounded, UploadFileOutlined, VideoLibraryRounded, VolumeOffRounded, ZoomInRounded,
@@ -234,7 +234,6 @@ function DemoTimeline({ demo, fps, selectedId, onSelect }: { demo: CaptionDemo; 
           actions={<>
             <IconButton size="small" aria-label="נגן מכאן" onClick={() => { setTime(selected.start); setPlaying(true); }}><PlayArrowRounded /></IconButton>
             <IconButton size="small" aria-label="נגן מקטע בלולאה" aria-pressed={loop} color={loop ? "primary" : "default"} onClick={() => setLoop(value => !value)}><RepeatRounded /></IconButton>
-            <IconButton size="small" aria-label="פצל" disabled><ContentCutRounded /></IconButton>
             <IconButton size="small" aria-label="ביטול טיוטה" disabled><RestartAltRounded /></IconButton>
             <Box className="timeline-toolbar-divider" />
             <Box component="span" sx={{ display: "flex", alignItems: "center", color: "text.secondary", gap: .25 }}><ShortTextRounded fontSize="small" /><Typography variant="caption">מילים</Typography></Box>

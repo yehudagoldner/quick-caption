@@ -2,7 +2,7 @@ import "react-virtualized/styles.css";
 import "./SubtitleTimeline.css";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Alert, Box, Button, Dialog, DialogActions, DialogContent, DialogTitle, IconButton, InputAdornment, Slider, Stack, TextField, ThemeProvider, Tooltip, Typography, createTheme, useTheme } from "@mui/material";
-import { PlayArrowRounded, PauseRounded, UndoRounded, RedoRounded, RepeatRounded, ContentCutRounded, CloseRounded, RestartAltRounded, EditOutlined, OpenInFullRounded } from "@mui/icons-material";
+import { PlayArrowRounded, PauseRounded, UndoRounded, RedoRounded, RepeatRounded, CloseRounded, RestartAltRounded, EditOutlined, OpenInFullRounded } from "@mui/icons-material";
 import { Timeline, type TimelineRow, type TimelineState } from "@xzdarcy/react-timeline-editor";
 import type { Segment, Word } from "../types";
 import { useEditorPreferences } from "../contexts/EditorPreferences";
@@ -30,7 +30,6 @@ export type SubtitleTimelineProps = {
   onSegmentsChange: (segments: Segment[]) => void | Promise<void>;
   onAddSubtitle: (text: string, startTime: number, endTime: number) => void | Promise<void>;
   onSaveSegment: (segment: Segment, words: Word[]) => Promise<void>;
-  onSplitSegment: (id: Segment["id"], time: number, draft?: CaptionDraft) => Promise<void>;
   isPlaying?: boolean; onPlayPause?: () => void; onPlayFrom: (time: number) => void;
   loopEnabled: boolean; onLoopChange: (enabled: boolean) => void;
   onUndo: () => void; onRedo: () => void; canUndo: boolean; canRedo: boolean;
@@ -40,7 +39,7 @@ export type SubtitleTimelineProps = {
 };
 
 export function SubtitleTimeline({ activeWordEnabled, segments, words = [], disabled, busy, duration, currentTime = 0, mediaUrl,
-  selectedSegmentId, onSegmentSelect, onRequestTimeChange, onSegmentsChange, onAddSubtitle, onCaptionBatch, onSaveSegment, onSplitSegment,
+  selectedSegmentId, onSegmentSelect, onRequestTimeChange, onSegmentsChange, onAddSubtitle, onCaptionBatch, onSaveSegment,
   isPlaying, onPlayPause, onPlayFrom, loopEnabled, onLoopChange,   onUndo, onRedo, canUndo, canRedo, onDraftStateChange, layout = "full", compactDesktop = false,
 }: SubtitleTimelineProps) {
   const { preferences } = useEditorPreferences();
@@ -217,19 +216,6 @@ export function SubtitleTimeline({ activeWordEnabled, segments, words = [], disa
     const timer = window.setInterval(() => { void tick(); }, 3000);
     return () => window.clearInterval(timer);
   }, [mediaUrl]);
-  const save = async (split = false) => {
-    if (!draft || locked || flight.current || (!draft.segment.text.trim() && !draft.allowEmpty)) return false;
-    flight.current = true;
-    setSaving(true); setError(null);
-    try {
-      if (split) await onSplitSegment(draft.segment.id, time, draft);
-      else await commitDraft(draft);
-      if (split) clearDraft(draft.segment.id);
-      if (split) onSegmentSelect(null);
-      return true;
-    } catch (e) { setError((e as Error).message || "השמירה נכשלה; הטיוטה נשמרה בעורך."); return false; }
-    finally { flight.current = false; setSaving(false); }
-  };
   const deleteWords = async () => {
     if (!draft || locked || flight.current || !selectedWords.length) return;
     const remainingWords = draft.words.filter((_, i) => !selectedWords.includes(i)).map((word, wordIndex) => ({ ...word, segmentId: draft.segment.id, wordIndex }));
@@ -330,7 +316,6 @@ export function SubtitleTimeline({ activeWordEnabled, segments, words = [], disa
     window.addEventListener("keydown", keys); return () => window.removeEventListener("keydown", keys);
   });
   const compactTiming = layout === "timing";
-  const canSplit = draft && draft.segment.text.trim().split(/\s+/).length > 1 && time > draft.segment.start && time < draft.segment.end;
 
   return <Stack ref={root} tabIndex={-1} onPointerDownCapture={event => { if (!(event.target as HTMLElement).closest('input,textarea,button,[role="slider"],[data-testid="segment-inspector"]')) root.current?.focus({ preventScroll: true }); }} spacing={compactTiming || compactDesktop ? .75 : 1.5} className="subtitle-timeline" sx={{ width: "100%", minWidth: 0, flexShrink: 0, outline: "none" }}>
     {!compactTiming && !compactDesktop && <>
@@ -465,7 +450,6 @@ export function SubtitleTimeline({ activeWordEnabled, segments, words = [], disa
           toolbarActions={<>
             <Tooltip title="נגן מתחילת המקטע"><span><IconButton size="small" aria-label="נגן מכאן" onClick={() => onPlayFrom(draft.segment.start)} disabled={locked}><PlayArrowRounded /></IconButton></span></Tooltip>
             <Tooltip title="נגן מקטע בלולאה"><IconButton size="small" aria-label="נגן מקטע בלולאה" aria-pressed={loopEnabled} color={loopEnabled ? "primary" : "default"} onClick={() => onLoopChange(!loopEnabled)}><RepeatRounded /></IconButton></Tooltip>
-            <Tooltip title="פצל בגבול המילה הקרוב לסמן"><span><IconButton size="small" aria-label="פצל" disabled={locked || !canSplit} onClick={() => save(true)}><ContentCutRounded /></IconButton></span></Tooltip>
             <Tooltip title="ביטול טיוטת המקטע"><span><IconButton size="small" aria-label="ביטול טיוטה" disabled={locked || !drafts[String(draft.segment.id)]} onClick={() => clearDraft(draft.segment.id)}><RestartAltRounded /></IconButton></span></Tooltip>
           </>}
           toolbarPrimary={null}

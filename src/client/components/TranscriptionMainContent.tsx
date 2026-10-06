@@ -308,7 +308,6 @@ export function TranscriptionMainContent({
               onCaptionBatch={onCaptionBatch}
               selectedSegmentId={selectedSegmentId}
               onSegmentSelect={onSegmentSelect}
-              onSplitSegment={onSplitSegment}
               isPlaying={isPlaying}
               onPlayPause={onPlayPause}
               words={words}
