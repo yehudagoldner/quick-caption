@@ -230,9 +230,6 @@ export function MobileCaptionEditor({
   const selectionMode = mode === "timing" && checkedIds.length > 0;
   const singleChecked = checkedIds.length === 1 ? editableSegments.find(segment => segment.id === checkedIds[0]) : undefined;
   const canSplitChecked = canSplitCaptionAtTime(singleChecked, currentTime);
-  const splitHint = singleChecked && !canSplitChecked
-    ? singleChecked.text.trim().split(/\s+/u).length < 2 ? "לפיצול נדרשות לפחות שתי מילים בכתובית." : "הזיזו את הקו לתוך הכתובית כדי לפצל בנקודה הנוכחית."
-    : null;
   useEffect(() => { setCheckedIds([]); setBatchError(null); setBatchNotice(null); }, [mode, mediaUrl]);
   useEffect(() => {
     // A later edit owns Undo now; do not leave the previous batch's toast active.
@@ -768,9 +765,9 @@ export function MobileCaptionEditor({
         <Button aria-label="מחיקת כתוביות נבחרות" color="error" disabled={batchBusy || saveState === "saving"} onClick={() => void runBatch("delete")}
           sx={{ minHeight: 44, minWidth: 64, gap: 0.5, px: 0.75 }}><DeleteOutlineRounded fontSize="small" />מחיקה</Button>
       </Paper>}
-      {selectionMode && !batchBusy && (batchError || splitHint || (checkedIds.length > 1 && !canMergeCaptions(editableSegments, checkedIds))) &&
+      {selectionMode && !batchBusy && (batchError || (checkedIds.length > 1 && !canMergeCaptions(editableSegments, checkedIds))) &&
         <Alert severity={batchError ? "error" : "info"} sx={{ position: "absolute", bottom: "100%", mx: 1, mb: 0.5, left: 0, right: 0, zIndex: 9, py: 0 }}>
-          {batchError ?? splitHint ?? "לחיבור בחרו כתוביות רצופות. אפשר למחוק כל בחירה."}
+          {batchError ?? "לחיבור בחרו כתוביות רצופות. אפשר למחוק כל בחירה."}
         </Alert>}
       <Stack direction="row" component="nav" aria-label="מצבי עריכה" aria-hidden={selectionMode || undefined}
         sx={{ visibility: selectionMode ? "hidden" : "visible", flexShrink: 0, borderTop: 1, borderColor: "#e8edf3", bgcolor: "#ffffff", p: 0, zIndex: 8, position: "relative", "& .MuiSvgIcon-root": { fontSize: 20 } }}>
