@@ -45,8 +45,8 @@ test('real upload routes persist remote video, retain failed AI sources, clean t
   const thumbnail = await fetch(base + thumbnailUrl);
   assert.equal(thumbnail.status, 200);
   assert.equal(thumbnail.headers.get('content-type'), 'image/jpeg');
-  assert.equal(thumbnail.headers.get('cache-control'), 'private, max-age=300');
-  assert.deepEqual(Buffer.from(await thumbnail.arrayBuffer()), Buffer.from([255, 216, 255, 217]));
+  assert.equal(thumbnail.headers.get('cache-control'), 'private, max-age=3600, immutable');
+  assert.deepEqual(Buffer.from(await thumbnail.arrayBuffer()).subarray(0, 2), Buffer.from([255, 216]));
   const thumbnailToken = new URL(base + thumbnailUrl).searchParams.get('thumbnailToken');
   assert.equal((await fetch(`${base}/api/videos/${videoId}/media?mediaToken=${encodeURIComponent(thumbnailToken)}`)).status, 401);
   const head = await fetch(base + thumbnailUrl, { method: 'HEAD' });

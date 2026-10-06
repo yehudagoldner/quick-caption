@@ -2,6 +2,7 @@ import path from 'node:path';
 import { promises as fs } from 'node:fs';
 import { VIDEO_RETENTION_DAYS } from './mediaPolicy.js';
 import { parseBunnyReference } from './bunnyStreamStorage.js';
+import { thumbnailVersion } from './thumbnailCache.js';
 
 export async function ensureRemoteMediaDeletionQueue(db) {
   try { await db.execute('SELECT stored_path FROM bunny_media_deletions LIMIT 0'); return; }
@@ -131,9 +132,10 @@ export async function cleanupInactiveVideos({ connection, storageDir, dryRun = t
         const [rows] = await db.execute(`SELECT id, user_uid, stored_path, transcription_id FROM videos WHERE id = ? AND ${predicate} FOR UPDATE`, [id, cutoff, cutoff]);
         const video = rows[0];
         if (!video) { await db.commit(); continue; }
-        let removedBytes = 0;
+        let removedBytes = 0, removeCover = false;
         if (video.stored_path) {
           const [otherReferences] = await db.execute('SELECT id FROM videos WHERE stored_path = ? AND id <> ? LIMIT 1', [video.stored_path, id]);
+          removeCover = !otherReferences.length;
           if (parseBunnyReference(video.stored_path)) {
             if (!otherReferences.length) await db.execute('INSERT IGNORE INTO bunny_media_deletions (stored_path) VALUES (?)', [video.stored_path]);
           } else {
@@ -151,6 +153,7 @@ export async function cleanupInactiveVideos({ connection, storageDir, dryRun = t
         await db.execute("DELETE FROM transcription_jobs WHERE user_uid = ? AND status <> 'processing' AND (JSON_UNQUOTE(JSON_EXTRACT(result_json, '$.videoId')) = ? OR id = ?)", [video.user_uid, String(id), video.transcription_id ?? '']);
         await db.execute('DELETE FROM videos WHERE id = ?', [id]);
         await db.commit();
+        if (removeCover) await fs.unlink(path.join(root, '.thumbnails', `${thumbnailVersion(video.stored_path)}.jpg`)).catch(error => { if (error.code !== 'ENOENT') throw error; });
         stats.deleted++;
         if (journal) {
           await fs.unlink(path.join(journal, 'media'));

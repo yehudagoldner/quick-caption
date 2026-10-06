@@ -1,7 +1,9 @@
 import type { User } from 'firebase/auth';
+import { clearVideoLibrary } from './videoLibrary';
 
 let currentUser: User | null = null;
 export function setApiUser(user: User | null) {
+  if (currentUser?.uid !== user?.uid) clearVideoLibrary();
   currentUser = user;
   if (user) void import('./errorReporting').then(module => module.flushErrorReports()).catch(() => {});
 }

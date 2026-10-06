@@ -15,6 +15,7 @@ import { parseTranscriptionSettings } from "./src/transcriptionSettings.js";
 import { createBurnSubtitlesRouter } from "./routes/burnSubtitles.js";
 import { createBurnSourceResolver } from './src/burnSource.js';
 import { createVideoThumbnailHandler, withVideoThumbnail } from './src/videoThumbnails.js';
+import { createThumbnailCache } from './src/thumbnailCache.js';
 import paypalRouter from "./routes/paypal.js";
 import pool from "./db.js";
 import { createAdminStore } from "./src/adminStore.js";
@@ -47,6 +48,7 @@ app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 const uploadDir = path.join(os.tmpdir(), "subtitles-api-uploads");
 const videosStorageDir = path.join(process.cwd(), "stored-videos");
 const bunnyStorage = createBunnyStreamStorage();
+const thumbnailCache = createThumbnailCache({ directory: path.join(videosStorageDir, '.thumbnails'), localDir: videosStorageDir, bunny: bunnyStorage });
 const mediaStorage = createMediaStorage({ bunny: bunnyStorage, localDir: videosStorageDir });
 await fsp.mkdir(uploadDir, { recursive: true });
 await fsp.mkdir(videosStorageDir, { recursive: true });
@@ -186,13 +188,14 @@ app.get("/api/videos", async (req, res) => {
     const videos = await getUserVideos({ userUid, limit: limit + 1, offset });
     res.setHeader('Content-Type', 'application/json; charset=utf-8');
     res.json({ videos: videos.slice(0, limit).map(video => withVideoThumbnail(video, userUid, videoTokens)), hasMore: videos.length > limit });
+    if (offset === 0) thumbnailCache.warm(videos);
   } catch (error) {
     console.error('Failed to fetch videos:', error);
     res.status(500).json({ error: 'Failed to fetch videos' });
   }
 });
 
-app.get('/api/videos/:id/thumbnail', createVideoThumbnailHandler({ getVideoById, bunny: bunnyStorage }));
+app.get('/api/videos/:id/thumbnail', createVideoThumbnailHandler({ getVideoById, bunny: bunnyStorage, cache: thumbnailCache }));
 
 // Secure video loading endpoint using token (must be before /api/videos/:id)
 app.get("/api/videos/load", async (req, res) => {
@@ -587,6 +590,7 @@ app.post("/api/transcribe", upload.single("media"), async (req, res) => {
     // Remote persistence is mandatory for new videos and happens before paid AI
     // processing. The uploaded local file is only a temporary working copy.
     storedPath = await mediaStorage.persist(req.file, originalFilename);
+    if (parseBunnyReference(storedPath)) await thumbnailCache.prime(storedPath, req.file.path).catch(error => console.warn('Upload cover generation deferred:', error.code ?? error.name));
     emitStage("upload", "done");
     const { value: result, costUSD: measuredCostUSD, unpricedCalls } = await measureAICost(() => transcribeMedia({
       inputPath: req.file.path,
@@ -752,6 +756,7 @@ app.post("/api/transcribe-words", upload.single("media"), async (req, res) => {
   let savedVideoId = null;
   try {
     storedPath = await mediaStorage.persist(req.file, req.file.originalname);
+    if (parseBunnyReference(storedPath)) await thumbnailCache.prime(storedPath, req.file.path).catch(error => console.warn('Upload cover generation deferred:', error.code ?? error.name));
     const result = await transcribeWithWordTimestamps({
       inputPath: req.file.path,
       logger: createRequestLogger(req),

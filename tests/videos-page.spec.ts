@@ -9,6 +9,37 @@ const projects = [
 ];
 
 mkdirSync('tmp/history-thumbnails', { recursive: true });
+test('a thumbnail that is initially unavailable recovers without refreshing the page', async ({ page }) => {
+  await prepareApp(page);
+  await page.route('**/api/videos?**', route => route.fulfill({ json: { videos: [{ ...projects[0], thumbnail_url: '/api/videos/42/thumbnail?v=cover&thumbnailToken=fixture' }] } }));
+  let attempts = 0;
+  await page.route('**/api/videos/42/thumbnail?**', route => ++attempts === 1
+    ? route.fulfill({ status: 404, headers: { 'Cache-Control': 'no-store' } })
+    : route.fulfill({ contentType: 'image/webp', body: readFileSync('public/demo/creator.webp') }));
+  await page.goto('/?screen=videos');
+  const image = page.getByRole('img', { name: 'תמונה מקדימה של ראיון סופי' });
+  await expect(image).toHaveCSS('opacity', '1', { timeout: 10000 });
+  await expect.poll(() => image.evaluate((img: HTMLImageElement) => img.naturalWidth)).toBeGreaterThan(0);
+  expect(attempts).toBeGreaterThanOrEqual(2);
+  expect(new URL(await image.getAttribute('src') ?? '', 'http://localhost').searchParams.get('v')).toBe('cover');
+});
+test('returning to the library shows cached cards while the fresh list is still loading', async ({ page }) => {
+  await prepareApp(page);
+  let release: (() => void) | undefined, requests = 0;
+  await page.route('**/api/videos?**', async route => {
+    requests++;
+    if (requests === 2) await new Promise<void>(resolve => { release = resolve; });
+    return route.fulfill({ json: { videos: projects } });
+  });
+  await page.goto('/?screen=videos');
+  const cards = page.getByRole('list', { name: 'רשימת הסרטונים' }).getByRole('listitem');
+  await expect(cards).toHaveCount(3);
+  await page.getByRole('button', { name: 'דף הבית', exact: true }).click();
+  await page.getByRole('button', { name: 'היסטוריית סרטונים', exact: true }).click();
+  await expect.poll(() => requests).toBe(2);
+  await expect(cards).toHaveCount(3);
+  release?.();
+});
 for (const width of [1920, 390]) {
   test(`Bunny thumbnails load on ${width}px with audio and failed-image fallbacks`, async ({ page }) => {
     await page.setViewportSize({ width, height: 1080 });
@@ -26,7 +57,7 @@ for (const width of [1920, 390]) {
     const cards = page.getByRole('list', { name: 'רשימת הסרטונים' }).getByRole('listitem');
     await expect(cards).toHaveCount(3);
     const thumbnail = cards.first().getByRole('img', { name: 'תמונה מקדימה של ראיון סופי' });
-    await expect(thumbnail).toHaveAttribute('loading', 'lazy');
+    await expect(thumbnail).toHaveAttribute('loading', 'eager');
     await expect.poll(() => thumbnail.evaluate((img: HTMLImageElement) => img.naturalWidth)).toBeGreaterThan(0);
     await expect(thumbnail).toHaveCSS('opacity', '1');
     await expect(thumbnail).toHaveCSS('object-fit', 'cover');

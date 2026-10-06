@@ -5,6 +5,7 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { cleanupInactiveVideos, ensureVideoRetention, touchVideo } from '../src/videoRetention.js';
+import { thumbnailVersion } from '../src/thumbnailCache.js';
 
 test('retention migration, activity, deletion, concurrency and crash recovery use isolated temporary tables', { skip: process.env.RUN_MYSQL_TESTS !== '1' }, async t => {
   await import('../src/loadAppEnv.js');
@@ -25,6 +26,9 @@ test('retention migration, activity, deletion, concurrency and crash recovery us
   const [[grace]] = await db.execute('SELECT TIMESTAMPDIFF(SECOND, last_accessed_at, NOW()) AS age FROM videos WHERE id=1');
   assert.ok(grace.age < 10);
   await fs.writeFile(path.join(dir, 'old.mp4'), 'old-media');
+  await fs.mkdir(path.join(dir,'.thumbnails'));
+  await fs.writeFile(path.join(dir,'.thumbnails',thumbnailVersion('old.mp4')+'.jpg'),'old-cover');
+  await fs.writeFile(path.join(dir,'.thumbnails',thumbnailVersion('viewed.mp4')+'.jpg'),'keep-cover');
   await db.execute("UPDATE videos SET updated_at=DATE_SUB(NOW(), INTERVAL 31 DAY), last_accessed_at=DATE_SUB(NOW(), INTERVAL 31 DAY) WHERE id=1");
   for (const [id,name,status] of [[2,'viewed.mp4','completed'],[3,'edited.mp4','completed'],[4,'processing.mp4','processing'],[5,'missing.mp4','failed'],[6,'boundary.mp4','completed']]) {
     await db.execute('INSERT INTO videos VALUES (?, ?, ?, NULL, ?, DATE_SUB(NOW(), INTERVAL 31 DAY), DATE_SUB(NOW(), INTERVAL 31 DAY))', [id,'buyer',name,status]);
@@ -53,6 +57,8 @@ test('retention migration, activity, deletion, concurrency and crash recovery us
   const result=await cleanupInactiveVideos({connection:db,storageDir:dir,dryRun:false});
   assert.equal(result.deleted,1);
   assert.equal(result.bytesRemoved,9);
+  await assert.rejects(fs.access(path.join(dir,'.thumbnails',thumbnailVersion('old.mp4')+'.jpg')),{code:'ENOENT'});
+  assert.equal(await fs.readFile(path.join(dir,'.thumbnails',thumbnailVersion('viewed.mp4')+'.jpg'),'utf8'),'keep-cover');
   const [jobs]=await db.execute('SELECT id FROM transcription_jobs');
   assert.deepEqual(jobs.map(j=>j.id),['keep-job']);
   assert.equal((await cleanupInactiveVideos({connection:db,storageDir:dir,dryRun:false})).deleted,0);

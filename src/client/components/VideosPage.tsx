@@ -36,6 +36,7 @@ import {
 import { useAuth } from "../contexts/AuthContext";
 import { useDownloadExperience } from "../hooks/useDownloadExperience";
 import { formatDuration } from "../utils/formatTime";
+import { cachedVideoLibrary, loadVideoLibrary, preloadedThumbnail } from '../videoLibrary';
 import {
   parseSubtitleSegments,
   serializeSubtitles,
@@ -191,16 +192,27 @@ function StatusBadge({ video }: { video: Video }) {
   );
 }
 
-function Cover({ video, onOpen }: { video: Video; onOpen?: () => void }) {
+function Cover({ video, onOpen, priority = false }: { video: Video; onOpen?: () => void; priority?: boolean }) {
   const working = video.status === "uploaded" || video.status === "processing";
   const thumbnail = video.media_type !== 'audio' && video.thumbnail_url ? `${API_BASE_URL}${video.thumbnail_url}` : null;
   const [loadedThumbnail, setLoadedThumbnail] = useState<string | null>(null);
   const [failedThumbnail, setFailedThumbnail] = useState<string | null>(null);
-  const imageLoaded = Boolean(thumbnail && loadedThumbnail === thumbnail && failedThumbnail !== thumbnail);
+  const [attempt, setAttempt] = useState(0);
+  const imageLoaded = Boolean(thumbnail && (loadedThumbnail === thumbnail || preloadedThumbnail(thumbnail)) && failedThumbnail !== thumbnail);
+  useEffect(() => {
+    if (!thumbnail || failedThumbnail !== thumbnail) return;
+    const retry = () => { setFailedThumbnail(null); setAttempt(value => value + 1); };
+    const resume = () => { if (!document.hidden && navigator.onLine) retry(); };
+    const delay = Math.min(60_000, 1000 * 3 ** Math.min(attempt, 4));
+    const timer = !document.hidden && navigator.onLine ? window.setTimeout(resume, delay) : undefined;
+    window.addEventListener('online', resume);
+    document.addEventListener('visibilitychange', resume);
+    return () => { window.clearTimeout(timer); window.removeEventListener('online', resume); document.removeEventListener('visibilitychange', resume); };
+  }, [thumbnail, failedThumbnail, attempt]);
   const content = (
     <>
-      {thumbnail && failedThumbnail !== thumbnail && <Box component="img" src={thumbnail}
-        alt={`תמונה מקדימה של ${displayName(video)}`} loading="lazy" decoding="async" referrerPolicy="no-referrer"
+      {thumbnail && failedThumbnail !== thumbnail && <Box component="img" key={`${thumbnail}:${attempt}`} src={thumbnail}
+        alt={`תמונה מקדימה של ${displayName(video)}`} loading={priority ? 'eager' : 'lazy'} fetchPriority={priority ? 'high' : 'auto'} decoding="async" referrerPolicy="no-referrer"
         onLoad={() => setLoadedThumbnail(thumbnail)} onError={() => setFailedThumbnail(thumbnail)}
         sx={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', opacity: imageLoaded ? 1 : 0 }} />}
       {!imageLoaded && <>
@@ -267,8 +279,10 @@ export function VideosPage({ onEditVideo, onNewVideo }: VideosPageProps) {
   useEffect(() => {
     paginationRequest.current?.abort();
     setLoadingMore(false);
-    setVideos([]);
-    setHasMore(false);
+    const cached = user?.uid && reloadKey === 0 ? cachedVideoLibrary<Video>(user.uid) : null;
+    setVideos(cached ? cached.videos.map(normalizeVideo) : []);
+    setHasMore(cached?.hasMore ?? false);
+    setLoading(!cached);
     let cancelled = false;
     if (!user?.uid) {
       setLoading(false);
@@ -277,20 +291,15 @@ export function VideosPage({ onEditVideo, onNewVideo }: VideosPageProps) {
 
     const fetchVideos = async () => {
       try {
-        setLoading(true);
+        if (!cached) setLoading(true);
         setError(null);
-        const url = `${API_BASE_URL || ""}/api/videos?userUid=${encodeURIComponent(user.uid)}`;
-        const response = await apiFetch(url);
-        if (!response.ok) {
-          throw new Error("Failed to fetch videos");
-        }
-        const data = await response.json();
+        const data = await loadVideoLibrary<Video>(user.uid, true);
         if (cancelled) return;
         setHasMore(Boolean(data.hasMore));
         setVideos((data.videos || []).map(normalizeVideo));
       } catch (err) {
         if (cancelled) return;
-        setError(err instanceof Error ? err.message : "אירעה שגיאה בטעינת הווידאו");
+        if (!cached) setError(err instanceof Error ? err.message : "אירעה שגיאה בטעינת הווידאו");
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -365,7 +374,7 @@ export function VideosPage({ onEditVideo, onNewVideo }: VideosPageProps) {
     </Button>
   );
 
-  const renderProject = (video: Video) => {
+  const renderProject = (video: Video, index: number) => {
     const open = canOpenProject(video) && onEditVideo ? () => onEditVideo(video.id) : undefined;
     const details = [fileExtension(video), formatSize(video.size_bytes)].filter(Boolean);
     return (
@@ -384,7 +393,7 @@ export function VideosPage({ onEditVideo, onNewVideo }: VideosPageProps) {
         transition: "box-shadow .2s, transform .2s, border-color .2s",
         "@media (hover: hover)": { "&:hover": { borderColor: "transparent", boxShadow: "0 18px 40px -22px rgba(30,41,99,.45)", transform: "translateY(-2px)" } },
       }}>
-        <Cover video={video} onOpen={open} />
+        <Cover video={video} onOpen={open} priority={index < 6} />
         <Stack useFlexGap spacing={0.75} sx={{ minWidth: 0 }}>
           <Typography component="h3" title={video.original_filename} sx={{ fontWeight: 600, fontSize: { xs: 15, md: 16 }, lineHeight: 1.35, overflow: "hidden", display: "-webkit-box", WebkitLineClamp: { xs: 1, md: 2 }, WebkitBoxOrient: "vertical", wordBreak: "break-word" }}>
             <bdi>{displayName(video)}</bdi>

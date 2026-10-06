@@ -1,5 +1,6 @@
 import { registerHooks } from 'node:module';
 import { randomUUID } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 globalThis.__appEnvLoaded = true;
 const remote = new Map();
 // Run the real server and real storage adapter against an isolated provider.
@@ -21,8 +22,8 @@ globalThis.fetch = async (url, options = {}) => {
   }
   if (parsed.hostname === 'fixture.b-cdn.net') {
     if (parsed.pathname.endsWith('/thumbnail.jpg') && remote.has(parsed.pathname.split('/')[1])) {
-      const image = Buffer.from([255, 216, 255, 217]);
-      return new Response(options.method === 'HEAD' ? null : image, { headers: { 'Content-Type': 'image/jpeg', 'Content-Length': String(image.length) } });
+      const image = readFileSync(new URL('../../../public/demo/creator.webp', import.meta.url));
+      return new Response(options.method === 'HEAD' ? null : image, { headers: { 'Content-Type': 'image/webp', 'Content-Length': String(image.length) } });
     }
     const bytes = remote.get(parsed.pathname.split('/')[1]);
     if (!bytes) return new Response(null, { status: 404 });

@@ -5,7 +5,7 @@ export const testUid = 'review-user';
 export const portraitVideo = Buffer.from(readFileSync('tests/fixtures/portrait-video.base64', 'utf8').trim(), 'base64');
 export const segments = [{ id: 1, start: 0, end: 2, text: 'שלום עולם' }, { id: 2, start: 2, end: 4, text: 'סרטון לבדיקה' }];
 export async function prepareApp(page: Page) {
-  await page.route('**/src/client/contexts/AuthContext.tsx*', route => route.fulfill({ contentType: 'application/javascript', body: `const user = { uid: '${testUid}', displayName: 'Review' }; export const useAuth = () => ({ user, loading: false, signIn: async () => {}, signOut: async () => {} }); export const AuthProvider = ({ children }) => children;` }));
+  await page.route('**/src/client/contexts/AuthContext.tsx*', route => route.fulfill({ contentType: 'application/javascript', body: `import { setApiUser } from '/src/client/api.ts'; const user = { uid: '${testUid}', displayName: 'Review', getIdToken: async () => 'fixture-id-token' }; setApiUser(user); export const useAuth = () => ({ user, loading: false, signIn: async () => {}, signOut: async () => {} }); export const AuthProvider = ({ children }) => children;` }));
   await page.route('**/api/**', route => route.fulfill({ json: { credits: 50, videos: [] } }));
   await page.route('**/api/downloads', route => route.fulfill({ json: { success: true, downloadId: route.request().postDataJSON().id } }));
   await page.route('**/api/downloads/*/feedback', route => route.fulfill({ json: { success: true } }));

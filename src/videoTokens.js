@@ -29,7 +29,10 @@ export function createVideoTokens(secret = crypto.randomBytes(32), now = Date.no
   const sign = payload => crypto.createHmac('sha256', secret).update(payload).digest('base64url');
   return {
     issue(videoId, userUid, purpose, lifetime = 24 * 60 * 60 * 1000) {
-      const payload = Buffer.from(JSON.stringify({ videoId, userUid, purpose, exp: now() + lifetime })).toString('base64url');
+      // Covers keep the same signed URL within an hour, so private browser
+      // caching works. Do not change edit/media lifetimes or short test grants.
+      const issuedAt = purpose === 'thumbnail' && lifetime === 24 * 3600000 ? Math.floor(now() / 3600000) * 3600000 : now();
+      const payload = Buffer.from(JSON.stringify({ videoId, userUid, purpose, exp: issuedAt + lifetime })).toString('base64url');
       return `${payload}.${sign(payload)}`;
     },
     verify(token, purpose) {

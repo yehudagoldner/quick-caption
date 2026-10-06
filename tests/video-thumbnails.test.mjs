@@ -45,7 +45,7 @@ test('missing and unsafe thumbnail names do not trigger a CDN request; CDN error
   assert.equal(metadata, 2);
 });
 
-test('list summaries use separate thumbnail grants and preserve placeholders for audio and legacy local videos', () => {
+test('list summaries use separate thumbnail grants for video and preserve placeholders for audio', () => {
   const tokens = createVideoTokens('fixture-key');
   const summary = withVideoThumbnail({ id: 42, media_type: 'video', stored_path: ref }, 'owner', tokens);
   assert.ok(!('stored_path' in summary));
@@ -53,7 +53,7 @@ test('list summaries use separate thumbnail grants and preserve placeholders for
   assert.equal(tokens.verify(grant, 'thumbnail').userUid, 'owner');
   assert.equal(tokens.verify(grant, 'media'), null);
   assert.equal(withVideoThumbnail({ id: 43, media_type: 'audio', stored_path: ref }, 'owner', tokens).thumbnail_url, null);
-  assert.equal(withVideoThumbnail({ id: 44, media_type: 'video', stored_path: 'legacy.mp4' }, 'owner', tokens).thumbnail_url, null);
+  assert.ok(withVideoThumbnail({ id: 44, media_type: 'video', stored_path: 'legacy.mp4' }, 'owner', tokens).thumbnail_url);
 });
 
 test('thumbnail handler verifies ownership without renewing retention, rejects non-images and handles upstream failure', async t => {

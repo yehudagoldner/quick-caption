@@ -9,6 +9,7 @@ import { VideosPage } from "./components/VideosPage";
 import { BuyCreditsPage } from "./components/BuyCreditsPage";
 import { AdminPage } from "./components/AdminPage";
 import { adminRequest } from "./adminApi";
+import { warmVideoLibrary } from './videoLibrary';
 import { useTranscriptionWorkflow } from "./hooks/useTranscriptionWorkflow";
 import { useNarrowViewport } from "./hooks/useNarrowViewport";
 import { EditorNavigationContext, type EditorNavigationGuard } from "./contexts/EditorNavigationContext";
@@ -75,6 +76,12 @@ function App() {
   const historyIndex = useRef(Number(window.history.state?.editorIndex ?? 0));
   const [credits, setCredits] = useState<number | null>(null);
   const [adminUid, setAdminUid] = useState<string | null>(null);
+  useEffect(() => {
+    if (!workflow.user || currentScreen !== 'home') return;
+    const uid = workflow.user.uid;
+    const timer = window.setTimeout(() => { void warmVideoLibrary(uid); }, 750);
+    return () => window.clearTimeout(timer);
+  }, [workflow.user?.uid, currentScreen]);
   useEffect(() => {
     let cancelled = false;
     setAdminUid(null);
@@ -319,7 +326,7 @@ function App() {
           )}
 
           {currentScreen === "videos" && (
-            <VideosPage
+            <VideosPage key={workflow.user?.uid ?? 'guest'}
               onEditVideo={handleEditVideo}
               onNewVideo={handleNewVideo}
             />
