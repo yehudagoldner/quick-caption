@@ -215,7 +215,7 @@ export async function getUserVideos({ userUid, limit = 50, offset = 0 }) {
   const safeOffset = Math.max(0, Number(offset) || 0);
 
   const [rows] = await pool.execute(
-    `SELECT id, original_filename, status, media_type, format, size_bytes, created_at, updated_at,
+    `SELECT id, original_filename, stored_path, status, media_type, format, size_bytes, created_at, updated_at,
             (subtitle_json IS NOT NULL) AS has_subtitles,
             CASE
               WHEN duration_seconds IS NOT NULL THEN duration_seconds
@@ -234,8 +234,8 @@ export async function getUserVideos({ userUid, limit = 50, offset = 0 }) {
 }
 
 
-export async function getVideoById({ videoId, userUid }) {
-  await touchVideo(pool, videoId, userUid);
+export async function getVideoById({ videoId, userUid, touch = true }) {
+  if (touch) await touchVideo(pool, videoId, userUid);
   const [rows] = await pool.execute(
     `SELECT id, user_uid, original_filename, stored_path, status, media_type, mime_type, format, duration_seconds, size_bytes, transcription_id, subtitle_json, words_json, created_at, updated_at
      FROM videos

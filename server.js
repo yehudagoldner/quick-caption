@@ -14,6 +14,7 @@ import { transcribeMedia, normalizeSubtitleFormat, transcribeWithWordTimestamps,
 import { parseTranscriptionSettings } from "./src/transcriptionSettings.js";
 import { createBurnSubtitlesRouter } from "./routes/burnSubtitles.js";
 import { createBurnSourceResolver } from './src/burnSource.js';
+import { createVideoThumbnailHandler, withVideoThumbnail } from './src/videoThumbnails.js';
 import paypalRouter from "./routes/paypal.js";
 import pool from "./db.js";
 import { createAdminStore } from "./src/adminStore.js";
@@ -78,6 +79,12 @@ app.use('/api', (req, res, next) => {
   const grant = media && videoTokens.verify(req.query.mediaToken, 'media');
   if (grant && grant.videoId === Number(media[1])) {
     req.identity = { uid: grant.userUid };
+    return next();
+  }
+  const thumbnail = ['GET', 'HEAD'].includes(req.method) && req.path.match(/^\/videos\/(\d+)\/thumbnail$/);
+  const thumbnailGrant = thumbnail && videoTokens.verify(req.query.thumbnailToken, 'thumbnail');
+  if (thumbnailGrant && thumbnailGrant.videoId === Number(thumbnail[1])) {
+    req.identity = { uid: thumbnailGrant.userUid };
     return next();
   }
   privateAuthenticate(req, res, () => {
@@ -178,12 +185,14 @@ app.get("/api/videos", async (req, res) => {
   try {
     const videos = await getUserVideos({ userUid, limit: limit + 1, offset });
     res.setHeader('Content-Type', 'application/json; charset=utf-8');
-    res.json({ videos: videos.slice(0, limit), hasMore: videos.length > limit });
+    res.json({ videos: videos.slice(0, limit).map(video => withVideoThumbnail(video, userUid, videoTokens)), hasMore: videos.length > limit });
   } catch (error) {
     console.error('Failed to fetch videos:', error);
     res.status(500).json({ error: 'Failed to fetch videos' });
   }
 });
+
+app.get('/api/videos/:id/thumbnail', createVideoThumbnailHandler({ getVideoById, bunny: bunnyStorage }));
 
 // Secure video loading endpoint using token (must be before /api/videos/:id)
 app.get("/api/videos/load", async (req, res) => {

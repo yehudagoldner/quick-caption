@@ -36,8 +36,26 @@ test('real upload routes persist remote video, retain failed AI sources, clean t
   const failedAI = await upload('FAIL_AI'); assert.equal(failedAI.status, 500); await failedAI.json();
   const wordUpload = await upload('WORD_BYTES', '/api/transcribe-words'); assert.equal(wordUpload.status, 200); assert.ok((await wordUpload.json()).videoId);
   const videos = (await (await fetch(`${base}/api/videos`, { headers })).json()).videos;
+  const thumbnailUrl = videos.find(v => v.id === videoId).thumbnail_url;
+  assert.ok(thumbnailUrl);
+  assert.ok(!videos.some(v => 'stored_path' in v));
+  assert.equal((await fetch(`${base}/api/videos/${videoId}/thumbnail`)).status, 401);
+  assert.equal((await fetch(`${base}${thumbnailUrl.replace(`/videos/${videoId}/`, '/videos/999999/')}`)).status, 401);
+  assert.equal((await fetch(`${base}/api/videos/${videoId}/thumbnail?thumbnailToken=${grant.mediaToken}`)).status, 401);
+  const thumbnail = await fetch(base + thumbnailUrl);
+  assert.equal(thumbnail.status, 200);
+  assert.equal(thumbnail.headers.get('content-type'), 'image/jpeg');
+  assert.equal(thumbnail.headers.get('cache-control'), 'private, max-age=300');
+  assert.deepEqual(Buffer.from(await thumbnail.arrayBuffer()), Buffer.from([255, 216, 255, 217]));
+  const thumbnailToken = new URL(base + thumbnailUrl).searchParams.get('thumbnailToken');
+  assert.equal((await fetch(`${base}/api/videos/${videoId}/media?mediaToken=${encodeURIComponent(thumbnailToken)}`)).status, 401);
+  const head = await fetch(base + thumbnailUrl, { method: 'HEAD' });
+  assert.equal(head.status, 200); assert.equal(await head.text(), '');
   assert.equal(videos.filter(v => v.status === 'completed').length, 2);
-  assert.ok(videos.some(v => v.status === 'failed' && v.stored_path?.startsWith('bunny://')));
+  const failedVideo = videos.find(v => v.status === 'failed' && v.thumbnail_url);
+  assert.ok(failedVideo);
+  const failedDetails = (await (await fetch(`${base}/api/videos/${failedVideo.id}`, { headers })).json()).video;
+  assert.ok(failedDetails.stored_path.startsWith('bunny://'));
   for (const match of output.matchAll(/FIXTURE_INPUT=(.+)/g)) {
     // The response is sent immediately before finally deletes its working file.
     await new Promise(resolve => setTimeout(resolve, 20));

@@ -57,6 +57,7 @@ type Video = {
   created_at: string;
   updated_at: string;
   has_subtitles: boolean;
+  thumbnail_url?: string | null;
 };
 
 type VideosPageProps = {
@@ -192,12 +193,22 @@ function StatusBadge({ video }: { video: Video }) {
 
 function Cover({ video, onOpen }: { video: Video; onOpen?: () => void }) {
   const working = video.status === "uploaded" || video.status === "processing";
+  const thumbnail = video.media_type !== 'audio' && video.thumbnail_url ? `${API_BASE_URL}${video.thumbnail_url}` : null;
+  const [loadedThumbnail, setLoadedThumbnail] = useState<string | null>(null);
+  const [failedThumbnail, setFailedThumbnail] = useState<string | null>(null);
+  const imageLoaded = Boolean(thumbnail && loadedThumbnail === thumbnail && failedThumbnail !== thumbnail);
   const content = (
     <>
+      {thumbnail && failedThumbnail !== thumbnail && <Box component="img" src={thumbnail}
+        alt={`תמונה מקדימה של ${displayName(video)}`} loading="lazy" decoding="async" referrerPolicy="no-referrer"
+        onLoad={() => setLoadedThumbnail(thumbnail)} onError={() => setFailedThumbnail(thumbnail)}
+        sx={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', opacity: imageLoaded ? 1 : 0 }} />}
+      {!imageLoaded && <>
       <Box sx={{ position: "absolute", inset: 0, opacity: 0.22, backgroundImage: "radial-gradient(circle at 20% 20%, #fff 0, transparent 45%), repeating-linear-gradient(90deg, #ffffff22 0 2px, transparent 2px 14px)" }} />
       <Box sx={{ position: "relative", display: "grid", placeItems: "center", width: { xs: 34, md: 56 }, height: { xs: 34, md: 56 }, borderRadius: "50%", bgcolor: "#ffffff2e", backdropFilter: "blur(4px)", "& svg": { fontSize: { xs: 20, md: 30 } } }}>
         {video.media_type === "audio" ? <GraphicEqRounded /> : <MovieRounded />}
       </Box>
+      </>}
       {video.duration_seconds != null && (
         <Box component="span" dir="ltr" sx={{ position: "absolute", bottom: { xs: 4, md: 8 }, insetInlineStart: { xs: 4, md: 8 }, px: 0.75, py: 0.125, borderRadius: "6px", fontSize: { xs: 10.5, md: 12 }, fontWeight: 600, bgcolor: "#000000a6", fontVariantNumeric: "tabular-nums" }}>
           {formatDuration(video.duration_seconds)}
@@ -220,7 +231,7 @@ function Cover({ video, onOpen }: { video: Video; onOpen?: () => void }) {
   } as const;
   return onOpen
     ? <ButtonBase onClick={onOpen} aria-label={`פתיחת ${video.original_filename}`} sx={{ ...sx, "&:focus-visible": { outline: "3px solid", outlineColor: "primary.main", outlineOffset: 2 } }}>{content}</ButtonBase>
-    : <Box sx={sx} aria-hidden="true">{content}</Box>;
+    : <Box sx={sx}>{content}</Box>;
 }
 
 function ProjectSkeleton() {

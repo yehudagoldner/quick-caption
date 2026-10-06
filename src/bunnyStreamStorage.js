@@ -46,8 +46,8 @@ export function createBunnyStreamStorage(env = process.env, fetchImpl = fetch) {
     if (!parsed || parsed.libraryId !== config().libraryId) throw storageError('ספריית הסרטון אינה תואמת להגדרות האחסון.');
     return parsed;
   };
-  const originalUrl = videoId => {
-    const url = new URL(`https://${config().hostname}/${videoId}/original`);
+  const cdnUrl = (videoId, filename) => {
+    const url = new URL(`https://${config().hostname}/${videoId}/${filename}`);
     if (env.BUNNY_STREAM_TOKEN_KEY) {
       const expires = String(Math.floor(Date.now() / 1000) + 3600);
       const token = createHash('sha256').update(env.BUNNY_STREAM_TOKEN_KEY + url.pathname + expires).digest('base64url');
@@ -56,6 +56,7 @@ export function createBunnyStreamStorage(env = process.env, fetchImpl = fetch) {
     }
     return url;
   };
+  const thumbnailNames = new Map();
   const storage = {
     async upload(file, title) {
       const { libraryId } = config();
@@ -89,12 +90,38 @@ export function createBunnyStreamStorage(env = process.env, fetchImpl = fetch) {
       const { videoId } = reference(storedPath);
       let response;
       try {
-        response = await fetchImpl(originalUrl(videoId), { method, redirect: 'error', signal: signal ?? AbortSignal.timeout(15 * 60 * 1000),
+        response = await fetchImpl(cdnUrl(videoId, 'original'), { method, redirect: 'error', signal: signal ?? AbortSignal.timeout(15 * 60 * 1000),
           headers: { Referer: env.BUNNY_STREAM_REFERER || 'https://player.mediadelivery.net/', 'Accept-Encoding': 'identity', ...(range ? { Range: range } : {}) } });
       } catch { throw storageError('לא ניתן להתחבר לסרטון המאוחסן. נסו שוב.'); }
       if (!response.ok && response.status !== 416) {
         await response.body?.cancel();
         throw storageError(response.status === 404 ? 'קובץ המקור לא זמין ב־Bunny. ודאו שהאפשרות Keep original files מופעלת.' : 'Bunny חסם את קריאת הסרטון. בדקו את הגדרות הגישה לספרייה.', response.status === 404 ? 404 : 502);
+      }
+      return response;
+    },
+    async openThumbnail(storedPath, { method = 'GET', signal } = {}) {
+      const { libraryId, videoId } = reference(storedPath);
+      const requestSignal = signal ? AbortSignal.any([signal, AbortSignal.timeout(20_000)]) : AbortSignal.timeout(20_000);
+      let cached = thumbnailNames.get(storedPath);
+      if (!cached || cached.expires <= Date.now()) {
+        const metadata = await (await api(endpoint(libraryId, videoId), { signal: requestSignal })).json();
+        const filename = metadata.thumbnailFileName;
+        if (!filename) throw storageError('התמונה המקדימה עדיין אינה זמינה.', 404);
+        // Bunny returns a basename, never a URL or arbitrary file path.
+        if (!/^[a-z0-9_-]+\.(?:jpe?g|png|webp|avif)$/i.test(filename)) throw storageError('שם תמונה מקדימה אינו תקין.');
+        cached = { filename, expires: Date.now() + 5 * 60_000 };
+        if (thumbnailNames.size >= 500) thumbnailNames.delete(thumbnailNames.keys().next().value);
+        thumbnailNames.set(storedPath, cached);
+      }
+      let response;
+      try {
+        response = await fetchImpl(cdnUrl(videoId, cached.filename), { method, redirect: 'error', signal: requestSignal,
+          headers: { Referer: env.BUNNY_STREAM_REFERER || 'https://player.mediadelivery.net/', 'Accept-Encoding': 'identity' } });
+      } catch { throw storageError('טעינת התמונה המקדימה נכשלה.'); }
+      if (!response.ok) {
+        await response.body?.cancel();
+        thumbnailNames.delete(storedPath);
+        throw storageError('התמונה המקדימה אינה זמינה.', response.status === 404 ? 404 : 502);
       }
       return response;
     },

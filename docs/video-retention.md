@@ -1,5 +1,19 @@
 # Media limits and retention
 
+## Thumbnails
+
+Video list responses include a nullable `thumbnail_url` for Bunny-backed videos,
+using a separate signed `thumbnail` grant. The image endpoint verifies ownership
+without touching project activity or renewing retention. It reads Bunny's
+`thumbnailFileName` and proxies that image with the library's CDN access settings;
+API credentials and stored source references are not exposed in list responses.
+Metadata is cached for five minutes and browser images use private caching.
+Cards load images lazily and retain a placeholder for audio, legacy local media,
+or thumbnails that Bunny has not generated yet. See
+[Bunny's thumbnail URL documentation](https://bunny.net/blog/native-video-playback-with-bunny-stream-and-expo/).
+
+## Media policy
+
 - Uploads are limited to 500,000,000 bytes (500 MB), inclusive, on all three multipart media endpoints. The browser checks selected/dropped files before upload. No duration limit is added.
 - New video uploads on both transcription endpoints are stored in Bunny Stream before transcription. Configure `BUNNY_STREAM_LIBRARY_ID`, `BUNNY_STREAM_API_KEY`, and `BUNNY_STREAM_CDN_HOSTNAME` on each server. Keep original files must be enabled in the Bunny library. Upload/configuration failures fail the request; videos never fall back to permanent local storage. Audio keeps its existing local storage policy.
 - `videos.stored_path` holds `bunny://<library-id>/<video-guid>` for new videos. Existing local files remain readable. The authenticated media/file routes stream the original from Bunny with byte-range and HEAD support, preserving editing, seeking and subtitle exports. API credentials never go to the browser. Optional `BUNNY_STREAM_TOKEN_KEY` signs CDN requests if CDN token authentication is enabled; `BUNNY_STREAM_REFERER` can supply an allowed referer if the library restricts domains.

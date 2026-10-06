@@ -16,8 +16,14 @@ globalThis.fetch = async (url, options = {}) => {
       remote.set(id, bytes); return Response.json({ success: true });
     }
     if (options.method === 'DELETE') { remote.delete(id); return new Response(null, { status: 204 }); }
+    if (remote.has(id)) return Response.json({ thumbnailFileName: 'thumbnail.jpg' });
+    return new Response(null, { status: 404 });
   }
   if (parsed.hostname === 'fixture.b-cdn.net') {
+    if (parsed.pathname.endsWith('/thumbnail.jpg') && remote.has(parsed.pathname.split('/')[1])) {
+      const image = Buffer.from([255, 216, 255, 217]);
+      return new Response(options.method === 'HEAD' ? null : image, { headers: { 'Content-Type': 'image/jpeg', 'Content-Length': String(image.length) } });
+    }
     const bytes = remote.get(parsed.pathname.split('/')[1]);
     if (!bytes) return new Response(null, { status: 404 });
     const match = options.headers?.Range?.match(/^bytes=(\d+)-(\d*)$/);
