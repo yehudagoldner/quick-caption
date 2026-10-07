@@ -89,7 +89,7 @@ export function MobileWordTimeline({ segment, words, fps, currentTime, activeWor
     const next = placeMobileWord(words, selected, segment, delta, mode, fps);
     if (next !== words) onChange(next);
   };
-  const step = [.1, .25, .5, 1, 2, 5, 10].find(value => value * pps >= 50) ?? 10;
+  const step = [.1, .25, .5, 1, 2, 5, 10].find(value => value * pps >= 80) ?? 10;
   const ticks = Array.from({ length: Math.floor(duration / step) + 1 }, (_, index) => index * step);
   const pointerProps = { onPointerMove: move, onPointerUp: end, onPointerCancel: end, onLostPointerCapture: end };
 
@@ -113,7 +113,7 @@ export function MobileWordTimeline({ segment, words, fps, currentTime, activeWor
         onSeek(Math.min(segment.end, Math.max(segment.start, segment.start + x / pps)));
       }}>
         {ticks.map(tick => <Box key={tick} sx={{ position: "absolute", left: 12 + tick * pps, top: 0, bottom: 0, borderLeft: "1px solid #dce3ec", pointerEvents: "none" }}>
-          <Typography sx={{ fontSize: 10, color: "text.secondary", pl: .5 }}>{Number(tick.toFixed(2))}s</Typography>
+          <Typography dir="ltr" sx={{ fontSize: 10, color: "text.secondary", fontVariantNumeric: "tabular-nums", pl: .5 }}>{formatTimecode(segment.start + tick, fps)}</Typography>
         </Box>)}
         <Box sx={{ position: "absolute", right: 12, top: 0, bottom: 0, borderLeft: "2px solid #90a4ae", pointerEvents: "none" }} />
         {view.map((word, index) => {

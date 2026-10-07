@@ -134,7 +134,7 @@ export function WordTimeline({ enabled, segment, words, selection, onSelectionCh
           }
           update(next);
         }}
-        getScaleRender={value => <span>{formatTimecode(value, fps)}</span>}
+        getScaleRender={value => <span>{formatTimecode(segment.start + value, fps)}</span>}
         getActionRender={action => <Box className="word-timeline-action" data-testid="word-clip" role="button" tabIndex={0}
           aria-label={`עריכת מילה: ${words[Number(action.id)]?.word}`} aria-pressed={selection.includes(Number(action.id))}
           title={`${words[Number(action.id)]?.word} · ${formatTimecode(segment.start + action.start, fps)} – ${formatTimecode(segment.start + action.end, fps)}`}
