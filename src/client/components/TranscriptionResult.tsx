@@ -19,7 +19,7 @@ import { CaptionStylePicker } from "./CaptionStylePicker";
 import { popPeakScale } from "../../captionMotion.js";
 import { serializeSubtitles } from "../utils/subtitleExport";
 import { useEditorPreferences } from "../contexts/EditorPreferences";
-import { cleanSegmentText, findSegment } from "../utils/transcriptionUtils";
+import { cleanSegmentText, fixSegmentOverlaps, findSegment } from "../utils/transcriptionUtils";
 import { synchronizeWords } from "../../wordAlignment.js";
 import { EditorNavigationContext } from "../contexts/EditorNavigationContext";
 import { DownloadContext } from "../contexts/DownloadContext";
@@ -71,7 +71,8 @@ export function TranscriptionResult({
   useEffect(() => { setExportFormat(response.subtitle?.format || ".srt"); }, [mediaUrl, videoId, response.subtitle?.format]);
   const videoPlayer = useVideoPlayer();
   const responseSegments = response.segments ?? [];
-  const savedSegments = useMemo(() => responseSegments.map(segment => ({ ...segment, text: cleanSegmentText(segment.text) })), [responseSegments]);
+  const savedSegments = useMemo(() => fixSegmentOverlaps(responseSegments.map(segment => ({ ...segment, text: cleanSegmentText(segment.text) })))
+    .filter(segment => segment.end > segment.start), [responseSegments]);
   const savedWords = useMemo(() => synchronizeWords(savedSegments, response.words), [savedSegments, response.words]);
 
   const {

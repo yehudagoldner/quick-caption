@@ -56,7 +56,7 @@ async function dragBy(page: Page, control: Locator, pixels: number) {
   await page.mouse.up();
 }
 
-test('mobile caption extension overlaps the next caption without trimming it and survives reload', async ({ page }) => {
+test('mobile caption extension trims the next caption, previews one caption and survives reload', async ({ page }) => {
   await openEditor(page);
   const saves: any[] = [];
   await page.route('**/api/videos/update-subtitles', route => {
@@ -69,11 +69,19 @@ test('mobile caption extension overlaps the next caption without trimming it and
   await expect.poll(() => saves.length).toBe(1);
   const saved = saves[0];
   expect(saved.segments[0].end).toBeGreaterThan(2);
-  expect(saved.segments[1]).toEqual(segments[1]);
-  expect(saved.words.map(({ word, start, end, segmentId }: any) => ({ word, start, end, segmentId }))).toEqual(words);
+  expect(saved.segments[1]).toEqual({ ...segments[1], start: saved.segments[0].end });
+  expect(saved.words.filter((word: any) => word.segmentId === 1).map(({ word, start, end, segmentId }: any) => ({ word, start, end, segmentId }))).toEqual(words.slice(0, 2));
+  for (const word of saved.words.filter((word: any) => word.segmentId === 2)) {
+    expect(word.start).toBeGreaterThanOrEqual(saved.segments[1].start);
+    expect(word.end).toBeLessThanOrEqual(saved.segments[1].end);
+  }
   const seekOverlap = async () => {
     await page.locator('video').evaluate((video: HTMLVideoElement, time) => { video.pause(); video.currentTime = time; video.dispatchEvent(new Event('timeupdate')); }, (2 + saved.segments[0].end) / 2);
-    await expect(page.getByTestId('subtitle-overlay')).toHaveCount(2);
+    await expect(page.getByTestId('subtitle-overlay')).toHaveCount(1);
+    await expect(page.getByTestId('subtitle-overlay')).toHaveText(segments[0].text);
+    await page.locator('video').evaluate((video: HTMLVideoElement, time) => { video.currentTime = time; video.dispatchEvent(new Event('timeupdate')); }, saved.segments[0].end + .02);
+    await expect(page.getByTestId('subtitle-overlay')).toHaveCount(1);
+    await expect(page.getByTestId('subtitle-overlay')).toHaveText(segments[1].text);
   };
   await seekOverlap();
   await page.route('**/api/videos/load?**', route => route.fulfill({ json: { video: { id: 42, subtitle_json: saved.segments, words_json: saved.words, format: '.srt', stored_path: 'portrait.mp4' } } }));

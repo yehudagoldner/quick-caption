@@ -54,9 +54,9 @@ export function VideoPlayer({ compact, size, fill, hideMeta, mediaUrl, activeSeg
   const [dimensions, setDimensions] = useState({ width: 16, height: 9 });
   const [isAudio, setIsAudio] = useState(false);
   const [error, setError] = useState(false);
-  const activeCaptions = useMemo(() => segments
-    ? segments.filter(segment => segment.text && currentTime >= segment.start && currentTime < segment.end)
-    : activeSegmentText ? [{ id: activeSegmentId, text: activeSegmentText }] : [], [segments, currentTime, activeSegmentText, activeSegmentId]);
+  const activeCaption = useMemo(() => segments
+    ? segments.find(segment => segment.text && currentTime >= segment.start && currentTime < segment.end)
+    : activeSegmentText ? { id: activeSegmentId, text: activeSegmentText } : null, [segments, currentTime, activeSegmentText, activeSegmentId]);
   const timeUpdateRef = useRef(onTimeUpdate);
   useEffect(() => { timeUpdateRef.current = onTimeUpdate; }, [onTimeUpdate]);
 
@@ -147,10 +147,10 @@ export function VideoPlayer({ compact, size, fill, hideMeta, mediaUrl, activeSeg
           onSeeking={e => onTimeUpdate?.(e.currentTarget.currentTime)}
           onTimeUpdate={e => onTimeUpdate?.(e.currentTarget.currentTime)} onError={() => setError(true)}
           sx={{ width: "100%", height: isAudio ? 54 : "100%", display: "block", objectFit: "contain", ...(isAudio ? { position: "absolute", bottom: 0 } : {}) }} />
-        {!!activeCaptions.length && <Box sx={{ ...previewStyle, display: "flex", flexDirection: "column", gap: ".15em", ...(isAudio ? { fontSize: 24, bottom: 75, width: "90%" } : {}) }}>
-          {activeCaptions.map(caption => <CaptionPreview key={caption.id} activeSegmentId={caption.id} activeSegmentText={caption.text}
+        {activeCaption && <Box sx={{ ...previewStyle, ...(isAudio ? { fontSize: 24, bottom: 75, width: "90%" } : {}) }}>
+          <CaptionPreview key={activeCaption.id} activeSegmentId={activeCaption.id} activeSegmentText={activeCaption.text}
             words={words} currentTime={currentTime} activeWordEnabled={activeWordEnabled} activeWordColor={activeWordColor}
-            captionMotion={captionMotion} popIntensity={popIntensity} />)}
+            captionMotion={captionMotion} popIntensity={popIntensity} />
         </Box>}
       </> : <Typography sx={{ p: 3 }}>אין תצוגה זמינה לקובץ הנוכחי.</Typography>}
     </Box>

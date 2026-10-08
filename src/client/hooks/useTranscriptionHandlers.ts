@@ -7,7 +7,7 @@ import type { CaptionMotion, PopIntensity } from "../../captionMotion.js";
 import { findSegment } from "../utils/transcriptionUtils";
 import { serializeSubtitles } from "../utils/subtitleExport";
 import { useEditorPreferences } from "../contexts/EditorPreferences";
-import { retimeCaption, validateCaptionEdit } from "../../timelineEditing.js";
+import { retimeCaptionChanges, validateCaptionRange } from "../../timelineEditing.js";
 import { AUTO_CAPTION_FONT_SIZE, sanitizeCaptionFontSize, type CaptionFontSizeSetting } from "../../captionStyle.js";
 import { startFileDownload, type DownloadFile } from "../contexts/DownloadContext";
 
@@ -153,17 +153,11 @@ export function useTranscriptionHandlers({
   const handleTimelineSegmentsChange = useCallback(
     async (nextSegments: Segment[], options?: { fitWords?: boolean }) => {
       const newSegments = nextSegments.map((segment) => ({ ...segment }));
-      let words = editableWords;
       for (const target of newSegments) {
-        const source = editableSegments.find(s => s.id === target.id);
-        if (!source || (source.start === target.start && source.end === target.end)) continue;
-        const error = validateCaptionEdit(source, target, newSegments, videoPlayer?.duration || Infinity);
+        const error = validateCaptionRange(target, newSegments, videoPlayer?.duration || Infinity);
         if (error) throw new Error(error);
-        // Always resolve ownership against the original times: adjacent captions
-        // can both change in one mobile drag, including legacy words without IDs.
-        const retimed = retimeCaption(source, target, editableWords, options?.fitWords);
-        words = words.map((word, index) => retimed[index] !== editableWords[index] ? retimed[index] : word);
       }
+      const words = retimeCaptionChanges(editableSegments, newSegments, editableWords, options?.fitWords);
       await persistSegments(newSegments, words, { throwOnError: true });
     },
     [persistSegments, editableSegments, editableWords, videoPlayer],

@@ -7,7 +7,7 @@ import { Timeline, type TimelineRow, type TimelineState } from "@xzdarcy/react-t
 import type { Segment, Word } from "../types";
 import { useEditorPreferences } from "../contexts/EditorPreferences";
 import { formatTimecode, snapToFrame } from "../utils/timecode";
-import { retimeCaption, validateCaptionEdit, wordsForSegment, timelineZoomForWindow, timelineScrollForTime } from "../../timelineEditing.js";
+import { retimeCaption, overwriteCaptionRange, validateCaptionRange, wordsForSegment, timelineZoomForWindow, timelineScrollForTime } from "../../timelineEditing.js";
 import { synchronizeWords } from "../../wordAlignment.js";
 import { WordTimeline } from "./WordTimeline";
 import { CaptionSelectionToolbar } from "./CaptionSelectionToolbar";
@@ -27,7 +27,7 @@ export type SubtitleTimelineProps = {
   onSegmentSelect: (id: Segment["id"] | null) => void;
   onRequestTimeChange: (time: number) => void;
   onCaptionBatch: (ids: Segment["id"][], action: CaptionBatchAction, splitTime?: number) => Promise<void>;
-  onSegmentsChange: (segments: Segment[]) => void | Promise<void>;
+  onSegmentsChange: (segments: Segment[], options?: { fitWords?: boolean }) => void | Promise<void>;
   onAddSubtitle: (text: string, startTime: number, endTime: number) => void | Promise<void>;
   onSaveSegment: (segment: Segment, words: Word[]) => Promise<void>;
   isPlaying?: boolean; onPlayPause?: () => void; onPlayFrom: (time: number) => void;
@@ -241,10 +241,10 @@ export function SubtitleTimeline({ activeWordEnabled, segments, words = [], disa
     } catch (e) { setError((e as Error).message || "שמירת הפעולה נכשלה. הבחירה נשמרה; נסו שוב."); }
     finally { flight.current = false; setSaving(false); }
   };
-  const commitMove = async (next: Segment[]) => {
+  const commitMove = async (next: Segment[], options?: { fitWords?: boolean }) => {
     if (flight.current || next === segments || next.every((s, i) => s.start === segments[i]?.start && s.end === segments[i]?.end)) return;
     flight.current = true; setSaving(true); setError(null);
-    try { await onSegmentsChange(next); }
+    try { await onSegmentsChange(next, options); }
     catch (e) { setError((e as Error).message || "שמירת ההזזה נכשלה. נסו שוב."); }
     finally { flight.current = false; setSaving(false); }
   };
@@ -321,7 +321,7 @@ export function SubtitleTimeline({ activeWordEnabled, segments, words = [], disa
   return <Stack ref={root} tabIndex={-1} onPointerDownCapture={event => { if (!(event.target as HTMLElement).closest('input,textarea,button,[role="slider"],[data-testid="segment-inspector"]')) root.current?.focus({ preventScroll: true }); }} spacing={compactTiming || compactDesktop ? .75 : 1.5} className="subtitle-timeline" sx={{ width: "100%", minWidth: 0, flexShrink: 0, outline: "none" }}>
     {!compactTiming && !compactDesktop && <>
     <Typography variant="subtitle1" fontWeight={700}>ציר הזמן הראשי — כל ההקלטה</Typography>
-    <Typography variant="caption">גררו גוף מקטע להזזה וקצה לשינוי משך. הארכת כתובית יכולה לחפוף לכתוביות אחרות. Ctrl לבחירה מרובה, Shift לבחירת טווח.</Typography>
+    <Typography variant="caption">גררו גוף מקטע להזזה וקצה לשינוי משך. הארכה לתוך כתובית אחרת מקצרת אותה. Ctrl לבחירה מרובה, Shift לבחירת טווח.</Typography>
     <Stack direction="row" useFlexGap flexWrap="wrap" gap={1} alignItems="center">
       <Button startIcon={<UndoRounded />} onClick={onUndo} disabled={!canUndo || locked || dirty}>ביטול פעולה</Button>
       <Button startIcon={<RedoRounded />} onClick={onRedo} disabled={!canRedo || locked || dirty}>ביצוע חוזר</Button>
@@ -361,7 +361,7 @@ export function SubtitleTimeline({ activeWordEnabled, segments, words = [], disa
         onCursorDrag={seek} onCursorDragEnd={seek} onClickTimeArea={seek}
         onScroll={p => { scrollLeft.current = p.scrollLeft; }}
         onChange={nextRows => {
-          const next = nextRows[0].actions.map(action => {
+          let next = nextRows[0].actions.map(action => {
             const original = segments.find(s => String(s.id) === action.id)!;
             // Do not quantize untouched boundaries or words.
             if (action.start === original.start && action.end === original.end) return original;
@@ -370,19 +370,28 @@ export function SubtitleTimeline({ activeWordEnabled, segments, words = [], disa
             return { ...original, start, end: moving ? start + original.end - original.start : action.end === original.end ? original.end : Math.min(total, snapToFrame(action.end, fps)) };
           });
           try {
-            for (const item of next) {
+            const edits = next.filter(item => {
               const original = segments.find(s => s.id === item.id)!;
-              if (original.start === item.start && original.end === item.end) continue;
-              const problem = validateCaptionEdit(original, item, next, total);
+              return original.start !== item.start || original.end !== item.end;
+            });
+            for (const item of edits) {
+              const original = segments.find(s => s.id === item.id)!;
+              const resizing = original.start === item.start || original.end === item.end;
+              const problem = validateCaptionRange(item, next, total, { allowOverlap: resizing });
               if (problem) throw new Error(problem);
               try { retimeCaption(original, item, words); }
               catch (e) {
                 const hint = activeWordEnabled ? "" : ' הפעילו ״מילה אקטיבית״ כדי להציג את ציר המילים.';
                 throw new Error((e as Error).message + hint);
               }
+              if (resizing) next = overwriteCaptionRange(item, next);
+            }
+            for (const item of next) {
+              const problem = validateCaptionRange(item, next, total);
+              if (problem) throw new Error(problem);
             }
             setError(null);
-            void commitMove(next);
+            void commitMove(next, { fitWords: true });
           } catch (e) {
             setError((e as Error).message);
             // The library mutates its row before calling onChange. Rebuild the

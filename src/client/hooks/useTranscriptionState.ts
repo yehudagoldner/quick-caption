@@ -76,8 +76,9 @@ export function useTranscriptionState({
       ownsRevision.current = false;
     }
     if (ownsRevision.current || pendingSaves.current) return;
-    // Saved overlaps may be intentional edge edits; loading must not trim them.
-    const cleaned = responseSegments.map(segment => ({ ...segment, text: cleanSegmentText(segment.text) }));
+    // Normalize legacy overlaps from the previous QA behavior on load.
+    const cleaned = fixSegmentOverlaps(responseSegments.map(segment => ({ ...segment, text: cleanSegmentText(segment.text) })))
+      .filter(segment => segment.end > segment.start);
     const words = synchronizeWords(cleaned, responseWords);
     setEditableSegments(cleaned);
     setEditableWords(words);
@@ -180,7 +181,7 @@ export function useTranscriptionState({
   const handleUndo = () => restoreHistory("undo");
   const handleRedo = () => restoreHistory("redo");
   const handleSaveSegment = async (segment: Segment, words: Word[]) => {
-    const error = validateCaptionRange(segment, editableSegments, videoDuration ?? Infinity, { allowOverlap: true });
+    const error = validateCaptionRange(segment, editableSegments, videoDuration ?? Infinity);
     if (error) throw new Error(error);
     const previous = editableSegments.find(s => s.id === segment.id);
     if (!previous) throw new Error("המקטע אינו זמין עוד.");
@@ -384,7 +385,7 @@ export function useTranscriptionState({
       const index = editableSegments.findIndex(s => s.id === segmentId);
       if (index < 0) return;
       const segment = draft?.segment ?? editableSegments[index];
-      const error = validateCaptionRange(segment, editableSegments, videoDuration ?? Infinity, { allowOverlap: true });
+      const error = validateCaptionRange(segment, editableSegments, videoDuration ?? Infinity);
       if (error) throw new Error(error);
       const tokens = segment.text.trim().split(/\s+/).filter(Boolean);
       if (tokens.length < 2 || splitTime <= segment.start || splitTime >= segment.end) return;

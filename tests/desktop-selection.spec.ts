@@ -50,7 +50,7 @@ async function resizeCaption(page: Page, index: number, edge: 'left' | 'right', 
 }
 
 for (const edge of ['left', 'right'] as const) {
-  test(`dragging a caption ${edge} edge saves overlap, previews both captions and survives reload`, async ({ page }) => {
+  test(`dragging a caption ${edge} edge trims its neighbour, previews only one caption and survives reload`, async ({ page }) => {
     const saves = await open(page);
     const index = edge === 'right' ? 0 : 1;
     await resizeCaption(page, index, edge, edge === 'right' ? .8 : -.8);
@@ -61,13 +61,23 @@ for (const edge of ['left', 'right'] as const) {
     // pointer's requested range. Reload must preserve the actual saved frame.
     expect(saved.segments[index][boundary]).toBeCloseTo(edge === 'right' ? 2 : .8, 1);
     expect(saved.segments[index]).toEqual({ ...segments[index], [boundary]: saved.segments[index][boundary] });
-    expect(saved.segments.filter((_, i) => i !== index)).toEqual(segments.filter((_, i) => i !== index));
-    expect(saved.words.map(({ word, start, end, segmentId }) => ({ word, start, end, segmentId }))).toEqual(words);
+    const neighbour = edge === 'right' ? 1 : 0;
+    const neighbourBoundary = edge === 'right' ? 'start' : 'end';
+    expect(saved.segments[neighbour]).toEqual({ ...segments[neighbour], [neighbourBoundary]: saved.segments[index][boundary] });
+    expect(saved.segments[2]).toEqual(segments[2]);
+    expect(saved.words.filter(word => word.segmentId === segments[index].id).map(({ word, start, end, segmentId }) => ({ word, start, end, segmentId }))).toEqual(words.filter(word => word.segmentId === segments[index].id));
+    for (const word of saved.words) {
+      const owner = saved.segments.find(segment => segment.id === word.segmentId)!;
+      expect(word.start).toBeGreaterThanOrEqual(owner.start - .000001);
+      expect(word.end).toBeLessThanOrEqual(owner.end + .000001);
+    }
     const seekOverlap = async () => {
       await page.locator('video').evaluate((video: HTMLVideoElement, time) => { video.pause(); video.currentTime = time; video.dispatchEvent(new Event('timeupdate')); }, edge === 'right' ? 1.8 : 1);
-      await expect(page.getByTestId('subtitle-overlay')).toHaveCount(2);
-      await expect(page.locator('[data-testid="subtitle-overlay"][data-segment-id="1"]')).toHaveText(segments[0].text);
-      await expect(page.locator('[data-testid="subtitle-overlay"][data-segment-id="2"]')).toHaveText(segments[1].text);
+      await expect(page.getByTestId('subtitle-overlay')).toHaveCount(1);
+      await expect(page.getByTestId('subtitle-overlay')).toHaveText(segments[index].text);
+      await page.locator('video').evaluate((video: HTMLVideoElement, time) => { video.currentTime = time; video.dispatchEvent(new Event('timeupdate')); }, edge === 'right' ? saved.segments[0].end : saved.segments[1].start - .01);
+      await expect(page.getByTestId('subtitle-overlay')).toHaveCount(1);
+      await expect(page.getByTestId('subtitle-overlay')).toHaveText(segments[neighbour].text);
     };
     await seekOverlap();
     await page.route('**/api/videos/load?**', route => route.fulfill({ json: { video: { id: 42, subtitle_json: saved.segments, words_json: saved.words, format: '.srt', stored_path: 'portrait.mp4' } } }));
@@ -78,20 +88,62 @@ for (const edge of ['left', 'right'] as const) {
   });
 }
 
-test('overlapping extension supports further text edits and Undo/Redo with intact word timing', async ({ page }) => {
+test('neighbour-trimming extension saves text and Undo/Redo restores both captions and word timing', async ({ page }) => {
   const saves = await open(page);
   await resizeCaption(page, 0, 'right', .8);
   await expect.poll(() => saves.length).toBe(1);
   const extendedEnd = saves[0].segments[0].end;
+  const resized = structuredClone(saves[0]);
   await page.getByRole('button', { name: 'ביטול פעולה', exact: true }).click();
   await expect(page.getByTestId('subtitle-clip').first()).toHaveAttribute('data-end', '1.2');
+  expect(saves.at(-1)!.segments).toEqual(segments);
+  expect(saves.at(-1)!.words.map(({ word, start, end, segmentId }) => ({ word, start, end, segmentId }))).toEqual(words);
   await page.getByRole('button', { name: 'ביצוע חוזר', exact: true }).click();
   await expect.poll(async () => Number(await page.getByTestId('subtitle-clip').first().getAttribute('data-end'))).toBeCloseTo(extendedEnd, 6);
+  expect(saves.at(-1)).toEqual(resized);
   await page.getByTestId('subtitle-clip').first().click();
   await page.getByRole('textbox', { name: 'טקסט המקטע', exact: true }).fill('שלום עולם!');
   await expect.poll(() => saves.at(-1)?.segments[0].text, { timeout: 7000 }).toBe('שלום עולם!');
   expect(saves.at(-1)!.segments[0].end).toBe(extendedEnd);
-  expect(saves.at(-1)!.segments[1]).toEqual(segments[1]);
+  expect(saves.at(-1)!.segments[1]).toEqual({ ...segments[1], start: extendedEnd });
+});
+
+test('extending across multiple captions removes fully covered captions and Undo restores them', async ({ page }) => {
+  const saves = await open(page);
+  await resizeCaption(page, 0, 'right', 2.1);
+  await expect.poll(() => saves.length).toBe(1);
+  const saved = saves[0];
+  expect(saved.segments.map(segment => segment.id)).toEqual([1, 3]);
+  expect(saved.segments[0].end).toBeGreaterThan(3);
+  expect(saved.segments[1]).toEqual({ ...segments[2], start: saved.segments[0].end });
+  expect(saved.words.some(word => word.segmentId === 2)).toBe(false);
+  expect(saved.segments[0].text).toBe(segments[0].text);
+  await expect(page.getByTestId('subtitle-clip')).toHaveCount(2);
+  await page.locator('video').evaluate((video: HTMLVideoElement) => { video.pause(); video.currentTime = 3.1; video.dispatchEvent(new Event('timeupdate')); });
+  await expect(page.getByTestId('subtitle-overlay')).toHaveCount(1);
+  await expect(page.getByTestId('subtitle-overlay')).toHaveText(segments[0].text);
+  await page.getByRole('button', { name: 'ביטול פעולה', exact: true }).click();
+  await expect(page.getByTestId('subtitle-clip')).toHaveCount(3);
+  expect(saves.at(-1)!.segments).toEqual(segments);
+  expect(saves.at(-1)!.words.map(({ word, start, end, segmentId }) => ({ word, start, end, segmentId }))).toEqual(words);
+});
+
+test('failed neighbour trim restores both drawn captions and their word timing before retry', async ({ page }) => {
+  const saves = await open(page);
+  let fail = true;
+  await page.route('**/api/videos/update-subtitles', async route => {
+    if (fail) return route.fulfill({ status: 500, json: { error: 'Controlled timing save failure' } });
+    await route.fallback();
+  });
+  await resizeCaption(page, 0, 'right', .8);
+    await expect(page.getByText('שמירת השינויים נכשלה. נסו שוב.').first()).toBeVisible();
+  await expect(page.getByTestId('subtitle-clip').first()).toHaveAttribute('data-end', '1.2');
+  await expect(page.getByTestId('subtitle-clip').nth(1)).toHaveAttribute('data-start', '1.6');
+  expect(saves).toHaveLength(0);
+  fail = false;
+  await resizeCaption(page, 0, 'right', .8);
+  await expect.poll(() => saves.length).toBe(1);
+  expect(saves[0].segments[1].start).toBe(saves[0].segments[0].end);
 });
 
 test('rejected word-crossing trim restores the drawn boundary and leaves saved data intact', async ({ page }) => {

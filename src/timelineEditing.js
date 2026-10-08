@@ -33,12 +33,11 @@ export function placeMobileCaption(segment, segments, duration, deltaSeconds, mo
   const upper = Math.min(duration, next ? next.end - minimum(next) : duration);
   const clamp = (value, low, high) => Math.min(high, Math.max(low, value));
   let { start, end } = segment;
-  // Extending a caption is an explicit user choice: keep neighbours intact,
-  // even when the new range overlaps them.
+  // The dragged edge wins its chosen range; trim any captions it reaches.
   if (mode !== "move") {
     if (mode === "start") start = clamp(snapFrame(start + deltaSeconds, rate), 0, end - minimum(segment));
     else end = clamp(snapFrame(end + deltaSeconds, rate), start + minimum(segment), duration);
-    return segments.map(item => item.id === segment.id ? { ...item, start, end } : item);
+    return overwriteCaptionRange({ ...segment, start, end }, segments);
   }
   const length = end - start;
   if (upper - lower < length - 1e-6) return segments;
@@ -108,10 +107,16 @@ export function validateCaptionRange(segment, segments, duration, { allowOverlap
   return null;
 }
 
-// Edge drags can overlap captions. Whole-caption moves retain their own policy.
-export function validateCaptionEdit(original, next, segments, duration) {
-  return validateCaptionRange(next, segments, duration, {
-    allowOverlap: original.start === next.start || original.end === next.end,
+// Give the edited caption priority over the covered time. Fully covered
+// captions have no remaining interval; the shared history restores them on Undo.
+export function overwriteCaptionRange(edited, segments) {
+  return segments.flatMap(segment => {
+    if (String(segment.id) === String(edited.id)) return [edited];
+    if (segment.end <= edited.start || segment.start >= edited.end) return [segment];
+    if (segment.start >= edited.start && segment.end <= edited.end) return [];
+    return [segment.start < edited.start
+      ? { ...segment, end: edited.start }
+      : { ...segment, start: edited.end }];
   });
 }
 
@@ -138,6 +143,22 @@ export function retimeCaption(original, next, words, fitWords = false) {
   const owned = new Set(ownWords);
   let i = 0;
   return words.map(w => owned.has(w) ? shifted[i++] : w);
+}
+
+// Resolve all ownership against the original ranges, including legacy words
+// without IDs. Never let words from a covered caption migrate to its neighbour.
+export function retimeCaptionChanges(originalSegments, nextSegments, words, fitWords = false) {
+  let result = words;
+  const kept = new Set(nextSegments.map(segment => String(segment.id)));
+  const removedWords = new Set(originalSegments.filter(segment => !kept.has(String(segment.id)))
+    .flatMap(segment => wordsForSegment(words, segment)));
+  for (const next of nextSegments) {
+    const original = originalSegments.find(segment => String(segment.id) === String(next.id));
+    if (!original || original.start === next.start && original.end === next.end) continue;
+    const retimed = retimeCaption(original, next, words, fitWords);
+    result = result.map((word, index) => retimed[index] !== words[index] ? retimed[index] : word);
+  }
+  return result.filter((_, index) => !removedWords.has(words[index]));
 }
 
 export function validateWordRange(word, segment, others = []) {
