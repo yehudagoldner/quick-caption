@@ -33,16 +33,17 @@ export function placeMobileCaption(segment, segments, duration, deltaSeconds, mo
   const upper = Math.min(duration, next ? next.end - minimum(next) : duration);
   const clamp = (value, low, high) => Math.min(high, Math.max(low, value));
   let { start, end } = segment;
-  if (mode === "move") {
-    const length = end - start;
-    if (upper - lower < length - 1e-6) return segments;
-    start = clamp(snapFrame(start + deltaSeconds, rate), lower, upper - length);
-    end = start + length;
-  } else if (mode === "start") {
-    start = clamp(snapFrame(start + deltaSeconds, rate), lower, end - minimum(segment));
-  } else {
-    end = clamp(snapFrame(end + deltaSeconds, rate), start + minimum(segment), upper);
+  // Extending a caption is an explicit user choice: keep neighbours intact,
+  // even when the new range overlaps them.
+  if (mode !== "move") {
+    if (mode === "start") start = clamp(snapFrame(start + deltaSeconds, rate), 0, end - minimum(segment));
+    else end = clamp(snapFrame(end + deltaSeconds, rate), start + minimum(segment), duration);
+    return segments.map(item => item.id === segment.id ? { ...item, start, end } : item);
   }
+  const length = end - start;
+  if (upper - lower < length - 1e-6) return segments;
+  start = clamp(snapFrame(start + deltaSeconds, rate), lower, upper - length);
+  end = start + length;
   return segments.map(item => {
     if (item.id === segment.id) return { ...item, start, end };
     if (item.id === previous?.id && item.end > start) return { ...item, end: start };
@@ -52,6 +53,7 @@ export function placeMobileCaption(segment, segments, duration, deltaSeconds, mo
 }
 
 // Shift or trim one caption without touching a neighbour or a timed word.
+// Edge edits may overlap neighbours; whole-caption moves stay bounded.
 export function placeCaption(segment, segments, words, duration, deltaSeconds, mode, fps = 30) {
   const ordered = [...segments].sort((a, b) => a.start - b.start || a.end - b.end);
   const index = ordered.findIndex(item => item.id === segment.id);
@@ -75,17 +77,17 @@ export function placeCaption(segment, segments, words, duration, deltaSeconds, m
   }
   if (mode === "start") {
     let start = snapFrame(segment.start + deltaSeconds, fps);
-    start = Math.max(prevEnd, start);
+    start = Math.max(0, start);
     start = Math.min(start, segment.end - minDur);
     if (wordStart != null) start = Math.min(start, wordStart);
     if (!(start < segment.end)) return { start: segment.start, end: segment.end };
     return { start, end: segment.end };
   }
   let end = snapFrame(segment.end + deltaSeconds, fps);
-  end = Math.min(limit, end);
+  end = Math.min(duration, end);
   end = Math.max(end, segment.start + minDur);
   if (wordEnd != null) end = Math.max(end, wordEnd);
-  if (!(end > segment.start) || end > limit + .000001) return { start: segment.start, end: segment.end };
+  if (!(end > segment.start) || end > duration + .000001) return { start: segment.start, end: segment.end };
   return { start: segment.start, end };
 }
 
@@ -96,14 +98,21 @@ export function timelineScrollForTime(time, pixelsPerSecond, width, scrollLeft) 
     ? Math.max(0, pixel - width / 2) : scrollLeft;
 }
 
-export function validateCaptionRange(segment, segments, duration) {
+export function validateCaptionRange(segment, segments, duration, { allowOverlap = false } = {}) {
   if (!Number.isFinite(segment.start) || !Number.isFinite(segment.end) || segment.start < 0 || segment.end <= segment.start || segment.end > duration + .001) {
     return "יש לבחור טווח זמן תקין בתוך ההקלטה.";
   }
-  if (segments.some(s => s.id !== segment.id && segment.start < s.end - .000001 && segment.end > s.start + .000001)) {
+  if (!allowOverlap && segments.some(s => s.id !== segment.id && segment.start < s.end - .000001 && segment.end > s.start + .000001)) {
     return "השינוי חופף לכתובית אחרת. הזיזו או קצרו אותה במפורש; הכתובית השכנה לא שונתה.";
   }
   return null;
+}
+
+// Edge drags can overlap captions. Whole-caption moves retain their own policy.
+export function validateCaptionEdit(original, next, segments, duration) {
+  return validateCaptionRange(next, segments, duration, {
+    allowOverlap: original.start === next.start || original.end === next.end,
+  });
 }
 
 export function wordsForSegment(words, segment) {

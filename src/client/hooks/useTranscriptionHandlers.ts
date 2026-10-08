@@ -7,7 +7,7 @@ import type { CaptionMotion, PopIntensity } from "../../captionMotion.js";
 import { findSegment } from "../utils/transcriptionUtils";
 import { serializeSubtitles } from "../utils/subtitleExport";
 import { useEditorPreferences } from "../contexts/EditorPreferences";
-import { retimeCaption, validateCaptionRange } from "../../timelineEditing.js";
+import { retimeCaption, validateCaptionEdit } from "../../timelineEditing.js";
 import { AUTO_CAPTION_FONT_SIZE, sanitizeCaptionFontSize, type CaptionFontSizeSetting } from "../../captionStyle.js";
 import { startFileDownload, type DownloadFile } from "../contexts/DownloadContext";
 
@@ -157,7 +157,7 @@ export function useTranscriptionHandlers({
       for (const target of newSegments) {
         const source = editableSegments.find(s => s.id === target.id);
         if (!source || (source.start === target.start && source.end === target.end)) continue;
-        const error = validateCaptionRange(target, newSegments, videoPlayer?.duration || Infinity);
+        const error = validateCaptionEdit(source, target, newSegments, videoPlayer?.duration || Infinity);
         if (error) throw new Error(error);
         // Always resolve ownership against the original times: adjacent captions
         // can both change in one mobile drag, including legacy words without IDs.

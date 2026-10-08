@@ -29,6 +29,11 @@
   cursor: ew-resize;
 }
 
+/* Keep the selected caption's resize handles reachable during an overlap. */
+.subtitle-timeline .timeline-editor-action:has(.subtitle-timeline-action[aria-pressed="true"]) {
+  z-index: 1;
+}
+
 .subtitle-timeline .action {
   background: transparent !important;
   box-shadow: none !important;

@@ -489,6 +489,7 @@ export function MobileCaptionEditor({
       mediaUrl={mediaUrl}
       activeSegmentText={showSubtitles ? activeSegmentText : null}
       activeSegmentId={activeSegmentId}
+      segments={showSubtitles ? editableSegments : []}
       previewStyle={previewStyle}
       words={words}
       currentTime={currentTime}

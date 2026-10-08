@@ -6,7 +6,8 @@ export function placeMobileCaption(segment: Segment, segments: Segment[], durati
 export function placeCaption(segment: Segment, segments: Segment[], words: Word[], duration: number, deltaSeconds: number, mode: "move" | "start" | "end", fps?: number): { start: number; end: number };
 export function timelineScrollForTime(time: number, pixelsPerSecond: number, width: number, scrollLeft: number): number;
 export type EditSnapshot = { segments: Segment[]; words: Word[] };
-export function validateCaptionRange(segment: Segment, segments: Segment[], duration: number): string | null;
+export function validateCaptionRange(segment: Segment, segments: Segment[], duration: number, options?: { allowOverlap?: boolean }): string | null;
+export function validateCaptionEdit(original: Segment, next: Segment, segments: Segment[], duration: number): string | null;
 export function wordsForSegment(words: Word[], segment: Segment): Word[];
 export function retimeCaption(original: Segment, next: Segment, words: Word[], fitWords?: boolean): Word[];
 export function validateWordRange(word: Word, segment: Segment, others?: Word[]): string | null;

@@ -56,6 +56,34 @@ async function dragBy(page: Page, control: Locator, pixels: number) {
   await page.mouse.up();
 }
 
+test('mobile caption extension overlaps the next caption without trimming it and survives reload', async ({ page }) => {
+  await openEditor(page);
+  const saves: any[] = [];
+  await page.route('**/api/videos/update-subtitles', route => {
+    const body = route.request().postDataJSON();
+    saves.push({ segments: JSON.parse(body.subtitleJson), words: JSON.parse(body.wordsJson) });
+    return route.fulfill({ json: { success: true } });
+  });
+  await page.getByRole('button', { name: 'תזמון', exact: true }).click();
+  await dragBy(page, page.getByRole('slider', { name: 'הזזת סיום', exact: true }), 50);
+  await expect.poll(() => saves.length).toBe(1);
+  const saved = saves[0];
+  expect(saved.segments[0].end).toBeGreaterThan(2);
+  expect(saved.segments[1]).toEqual(segments[1]);
+  expect(saved.words.map(({ word, start, end, segmentId }: any) => ({ word, start, end, segmentId }))).toEqual(words);
+  const seekOverlap = async () => {
+    await page.locator('video').evaluate((video: HTMLVideoElement, time) => { video.pause(); video.currentTime = time; video.dispatchEvent(new Event('timeupdate')); }, (2 + saved.segments[0].end) / 2);
+    await expect(page.getByTestId('subtitle-overlay')).toHaveCount(2);
+  };
+  await seekOverlap();
+  await page.route('**/api/videos/load?**', route => route.fulfill({ json: { video: { id: 42, subtitle_json: saved.segments, words_json: saved.words, format: '.srt', stored_path: 'portrait.mp4' } } }));
+  await page.reload();
+  await expect.poll(() => page.locator('video').evaluate((v: HTMLVideoElement) => v.readyState)).toBeGreaterThan(0);
+  await seekOverlap();
+  await page.getByRole('button', { name: 'תזמון', exact: true }).click();
+  await expect(page.getByTestId('mobile-timing-clip').first()).toHaveAttribute('data-end', String(saved.segments[0].end));
+});
+
 test('inline word timeline drags, retains failed changes, saves and undoes without a popup', async ({ page }) => {
   await openEditor(page);
   let failSave = true;

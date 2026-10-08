@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { EditHistory, snapshot, retimeCaption, validateCaptionRange, validateWordRange, timelineZoomForWindow, timelineScrollForTime, mobileTimelineWindowSeconds, placeCaption, placeMobileCaption } from '../src/timelineEditing.js';
+import { EditHistory, snapshot, retimeCaption, validateCaptionRange, validateCaptionEdit, validateWordRange, timelineZoomForWindow, timelineScrollForTime, mobileTimelineWindowSeconds, placeCaption, placeMobileCaption } from '../src/timelineEditing.js';
 import { placeMobileWord } from '../src/timelineEditing.js';
 
 test('mobile word dragging clamps to the caption and neighbours without moving other words', () => {
@@ -72,6 +72,18 @@ test('overlap is rejected without changing the neighbour', () => {
   assert.equal(a.end, 2);
   assert.equal(validateCaptionRange({ ...b, start: 2, end: 4 }, [a, b], 6), null);
 });
+test('edge extensions can overlap neighbours without changing their captions or word timing', () => {
+  const clips = [a, b];
+  for (const [original, delta, mode] of [[a, 2, 'end'], [b, -2, 'start']]) {
+    const range = placeCaption(original, clips, words, 6, delta, mode);
+    const next = { ...original, ...range };
+    assert.equal(validateCaptionEdit(original, next, clips, 6), null);
+    assert.ok(validateCaptionRange(next, clips, 6));
+    assert.deepEqual(retimeCaption(original, next, words), words);
+  }
+  assert.ok(validateCaptionEdit(a, { ...a, start: 3, end: 5 }, clips, 6));
+  assert.ok(validateCaptionEdit(a, { ...a, end: 7 }, clips, 6));
+});
 test('caption moves translate but never stretch word intervals', () => {
   const moved = retimeCaption(a, { ...a, start: 1, end: 3 }, words);
   assert.equal(moved[0].start, 1.3);
@@ -104,19 +116,19 @@ test('history snapshots do not retain mutable references and are bounded', () =>
 });
 
 
-test('mobile trims timed speech down to half a second and protects both neighbours', () => {
+test('mobile trims to half a second and extends across neighbours without changing them', () => {
   const clips = [{ id: 1, start: 0, end: 2, text: 'a' }, { id: 2, start: 2, end: 4, text: 'b' }, { id: 3, start: 4, end: 6, text: 'c' }];
   for (const fps of [24, 25, 30, 60]) {
     const minimum = Math.ceil(.5 * fps) / fps;
     const trim = placeMobileCaption(clips[1], clips, 6, 100, 'start', fps);
     assert.ok(Math.abs(trim[1].end - trim[1].start - minimum) < 1e-6);
     const right = placeMobileCaption(clips[1], clips, 6, 100, 'end', fps);
-    assert.equal(right[1].end, right[2].start);
-    assert.ok(Math.abs(right[2].end - right[2].start - minimum) < 1e-6);
+    assert.equal(right[1].end, 6);
+    assert.deepEqual(right[2], clips[2]);
     assert.deepEqual(right[0], clips[0]);
     const left = placeMobileCaption(clips[1], clips, 6, -100, 'start', fps);
-    assert.equal(left[0].end, left[1].start);
-    assert.ok(Math.abs(left[0].end - left[0].start - minimum) < 1e-6);
+    assert.equal(left[1].start, 0);
+    assert.deepEqual(left[0], clips[0]);
     assert.deepEqual(left[2], clips[2]);
     for (const delta of [-100, -.4, .4, 100]) {
       const moved = placeMobileCaption(clips[1], clips, 6, delta, 'move', fps);
@@ -130,7 +142,7 @@ test('mobile trims timed speech down to half a second and protects both neighbou
 
 test('mobile protects existing short captions and the recording edges', () => {
   const clips = [{ id: 1, start: 0, end: 1, text: 'a' }, { id: 2, start: 1, end: 1.2, text: 'b' }];
-  assert.deepEqual(placeMobileCaption(clips[0], clips, 1.2, 5, 'end'), clips);
+  assert.deepEqual(placeMobileCaption(clips[0], clips, 1.2, 5, 'end'), [{ ...clips[0], end: 1.2 }, clips[1]]);
   assert.deepEqual(placeMobileCaption(clips[1], clips, 1.2, -5, 'end'), clips);
   assert.deepEqual(placeMobileCaption(clips[0], clips, 1.2, -5, 'move'), clips);
   const last = placeMobileCaption(clips[1], clips, 2, 5, 'end');
@@ -141,10 +153,12 @@ test('mobile fits words without losing text and undo restores the whole boundary
   const clips = [{ id: 1, start: 0, end: 2, text: 'a b' }, { id: 2, start: 2, end: 4, text: 'c d' }];
   const originalWords = [{ word: 'a', start: 0, end: 1, segmentId: 1 }, { word: 'b', start: 1, end: 2, segmentId: 1 }, { word: 'c', start: 2, end: 3, segmentId: 2 }, { word: 'd', start: 3, end: 4, segmentId: 2 }];
   const next = placeMobileCaption(clips[0], clips, 4, 10, 'end');
-  const fitted = retimeCaption(clips[1], next[1], originalWords, true);
+  const fitted = retimeCaption(clips[0], next[0], originalWords, true);
   assert.deepEqual(fitted.slice(0, 2), originalWords.slice(0, 2));
   assert.deepEqual(fitted.map(w => w.word), ['a', 'b', 'c', 'd']);
-  assert.equal(fitted[2].start, 3.5);
+  assert.equal(next[0].end, 4);
+  assert.deepEqual(next[1], clips[1]);
+  assert.equal(fitted[2].start, 2);
   assert.equal(fitted[3].end, 4);
   assert.ok(fitted[2].end <= fitted[3].start);
   const history = new EditHistory();

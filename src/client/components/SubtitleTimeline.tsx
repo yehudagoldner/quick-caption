@@ -7,7 +7,7 @@ import { Timeline, type TimelineRow, type TimelineState } from "@xzdarcy/react-t
 import type { Segment, Word } from "../types";
 import { useEditorPreferences } from "../contexts/EditorPreferences";
 import { formatTimecode, snapToFrame } from "../utils/timecode";
-import { retimeCaption, validateCaptionRange, wordsForSegment, timelineZoomForWindow, timelineScrollForTime } from "../../timelineEditing.js";
+import { retimeCaption, validateCaptionEdit, wordsForSegment, timelineZoomForWindow, timelineScrollForTime } from "../../timelineEditing.js";
 import { synchronizeWords } from "../../wordAlignment.js";
 import { WordTimeline } from "./WordTimeline";
 import { CaptionSelectionToolbar } from "./CaptionSelectionToolbar";
@@ -65,6 +65,7 @@ export function SubtitleTimeline({ activeWordEnabled, segments, words = [], disa
   const [zoom, setZoom] = useState<number | null>(null);
   useEffect(() => { setZoom(null); scrollLeft.current = 0; timeline.current?.setScrollLeft(0); }, [mediaUrl]);
   const [error, setError] = useState<string | null>(null);
+  const [trackVersion, setTrackVersion] = useState(0);
   const [saving, setSaving] = useState(false);
   const [drafts, setDrafts] = useState<Record<string, CaptionDraft>>({});
   const [expandedSegmentId, setExpandedSegmentId] = useState<Segment["id"] | null>(null);
@@ -137,8 +138,8 @@ export function SubtitleTimeline({ activeWordEnabled, segments, words = [], disa
   const displaySegments = movePreview ?? segments;
   const trackStructure = displaySegments.map(segment => `${segment.id}:${segment.start}:${segment.end}`).join("|");
   const rows = useMemo<TimelineRow[]>(() => [{ id: "captions", actions: displaySegments.map(s => ({
-    id: String(s.id), effectId: String(s.id), start: s.start, end: s.end, movable: false, flexible: !locked && !dirty && selection.length <= 1,
-  })) }], [trackStructure, locked, dirty, selection.length]);
+    id: String(s.id), effectId: String(s.id), start: s.start, end: s.end, minStart: 0, maxEnd: total, movable: false, flexible: !locked && !dirty && selection.length <= 1,
+  })) }], [trackStructure, trackVersion, total, locked, dirty, selection.length]);
   const effects = useMemo(() => Object.fromEntries(segments.map(s => [String(s.id), { id: String(s.id), name: String(s.id) }])), [trackStructure]);
   const selected = segments.find(s => s.id === selectedSegmentId);
   // Playback changes time each frame, not the track data. Keep the word array stable
@@ -320,7 +321,7 @@ export function SubtitleTimeline({ activeWordEnabled, segments, words = [], disa
   return <Stack ref={root} tabIndex={-1} onPointerDownCapture={event => { if (!(event.target as HTMLElement).closest('input,textarea,button,[role="slider"],[data-testid="segment-inspector"]')) root.current?.focus({ preventScroll: true }); }} spacing={compactTiming || compactDesktop ? .75 : 1.5} className="subtitle-timeline" sx={{ width: "100%", minWidth: 0, flexShrink: 0, outline: "none" }}>
     {!compactTiming && !compactDesktop && <>
     <Typography variant="subtitle1" fontWeight={700}>ציר הזמן הראשי — כל ההקלטה</Typography>
-    <Typography variant="caption">גררו גוף מקטע להזזה וקצה לשינוי משך. Ctrl לבחירה מרובה, Shift לבחירת טווח. חפיפות נחסמות.</Typography>
+    <Typography variant="caption">גררו גוף מקטע להזזה וקצה לשינוי משך. הארכת כתובית יכולה לחפוף לכתוביות אחרות. Ctrl לבחירה מרובה, Shift לבחירת טווח.</Typography>
     <Stack direction="row" useFlexGap flexWrap="wrap" gap={1} alignItems="center">
       <Button startIcon={<UndoRounded />} onClick={onUndo} disabled={!canUndo || locked || dirty}>ביטול פעולה</Button>
       <Button startIcon={<RedoRounded />} onClick={onRedo} disabled={!canRedo || locked || dirty}>ביצוע חוזר</Button>
@@ -366,13 +367,13 @@ export function SubtitleTimeline({ activeWordEnabled, segments, words = [], disa
             if (action.start === original.start && action.end === original.end) return original;
             const moving = Math.abs(action.end - action.start - (original.end - original.start)) < .000001;
             const start = action.start === original.start ? original.start : snapToFrame(action.start, fps);
-            return { ...original, start, end: moving ? start + original.end - original.start : snapToFrame(action.end, fps) };
+            return { ...original, start, end: moving ? start + original.end - original.start : action.end === original.end ? original.end : Math.min(total, snapToFrame(action.end, fps)) };
           });
           try {
             for (const item of next) {
               const original = segments.find(s => s.id === item.id)!;
               if (original.start === item.start && original.end === item.end) continue;
-              const problem = validateCaptionRange(item, next, total);
+              const problem = validateCaptionEdit(original, item, next, total);
               if (problem) throw new Error(problem);
               try { retimeCaption(original, item, words); }
               catch (e) {
@@ -382,7 +383,13 @@ export function SubtitleTimeline({ activeWordEnabled, segments, words = [], disa
             }
             setError(null);
             void commitMove(next);
-          } catch (e) { setError((e as Error).message); return false; }
+          } catch (e) {
+            setError((e as Error).message);
+            // The library mutates its row before calling onChange. Rebuild the
+            // controlled data so a rejected trim cannot remain drawn as saved.
+            setTrackVersion(version => version + 1);
+            return false;
+          }
         }}
         getActionRender={action => {
           // The timeline library retains the previous row for one render after split/undo.
