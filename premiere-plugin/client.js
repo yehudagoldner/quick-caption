@@ -55,6 +55,14 @@ class PluginClient {
     return data;
   }
   json(path, body) { return this.request(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }); }
+  async settlePreviousJob(previous) {
+    if (!previous || previous.finished || previous.uid !== this.session?.user.uid) return previous;
+    let state;
+    try { state = await this.request(`/api/transcribe/jobs/${previous.id}`); }
+    catch { throw new Error('מצב ההעלאה הקודמת עדיין אינו ידוע. בדקו את התמלול האחרון לפני שליחה חדשה.'); }
+    if (!['completed', 'failed'].includes(state.status)) throw new Error('התמלול הקודם עדיין מתבצע. בדקו את התמלול האחרון לפני שליחה חדשה.');
+    return { ...previous, finished: true };
+  }
   async clear() {
     this.epoch++; this.session = null;
     try { await this.storage.removeItem('account'); } catch { /* Already empty. */ }

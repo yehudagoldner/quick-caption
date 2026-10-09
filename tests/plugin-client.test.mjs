@@ -59,3 +59,14 @@ test('network failure preserves login for retry without fabricating a balance', 
   await assert.rejects(client.request('/api/plugin/account'), /offline/);
   assert.equal(client.session.user.uid, 'owner');
 });
+test('an unresolved earlier upload blocks a second paid job until its outcome is known', async () => {
+  let state = response(404, { error: 'not yet accepted' });
+  const client = new PluginClient({ baseUrl: 'https://qa.invalid', storage: storage(), now: () => 1000, fetcher: async () => state });
+  await client.accept(session);
+  const job = { id: 'fixture', uid: 'owner' };
+  await assert.rejects(client.settlePreviousJob(job), /עדיין אינו ידוע/);
+  state = response(200, { status: 'processing' });
+  await assert.rejects(client.settlePreviousJob(job), /עדיין מתבצע/);
+  state = response(200, { status: 'completed' });
+  assert.deepEqual(await client.settlePreviousJob(job), { ...job, finished: true });
+});

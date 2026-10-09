@@ -23,6 +23,8 @@ Developer Tool 2.2 or newer. It has not been submitted to Adobe Marketplace.
 - Every plugin upload has a saved job ID. Completion replay and repeated submission
   of that ID cannot bill twice. After a network interruption, check/resume that job;
   never automatically submit a second paid POST.
+  An unresolved earlier upload also blocks a new transcription until its outcome is
+  known, preventing a user retry from inadvertently creating a second billed job.
 - Balance is fetched immediately on connection, refresh, return to the panel/window,
   and job completion, plus every 30 seconds while the window/panel is visible.
   An unavailable balance is displayed as unknown, not as a current cached number.

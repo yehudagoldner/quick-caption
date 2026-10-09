@@ -7,17 +7,20 @@ const client = new PluginClient({ baseUrl, version, storage: uxp.storage.secureS
 const $ = id => document.getElementById(id);
 let account = null, file = null, quote = null, busy = false, linkEpoch = 0, offset = 0, timer = null, shown = true;
 let accountPending = null;
+let uploading = false;
+let hasPending = false;
 const message = text => { $('status').textContent = text; };
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 function invalidateQuote() { quote = null; $('send').disabled = true; $('price').textContent = 'יש לבדוק מחיר לפני השליחה. החיוב הסופי לפי עלות העיבוד בפועל.'; }
 function controls() {
   $('connect').disabled = busy || !!client.session;
-  $('logout').disabled = busy || !client.session;
+  $('logout').disabled = busy || uploading || !client.session;
   $('refresh').disabled = busy || !client.session;
-  $('quote').disabled = busy || !account || !file;
+  $('quote').disabled = busy || uploading || !account || !file;
   $('send').disabled = busy || !quote?.canStart || !account;
   $('choose').disabled = busy; $('export').disabled = busy;
   $('duration').disabled = busy; $('language').disabled = busy;
+  $('resume').disabled = busy || !hasPending || !client.session;
 }
 function compatible(policy) {
   const parts = value => value.split('.').map(Number);
@@ -34,6 +37,7 @@ async function updateAccount() {
       if (!compatible(next.policy)) throw new Error('נדרש עדכון לתוסף לפני תמלול');
       if (account?.policy.version !== next.policy.version) invalidateQuote();
       account = next;
+      hasPending = !!(await pendingJob());
       $('account').textContent = next.user.displayName || next.user.email || 'חשבון מחובר';
       $('balance').textContent = `${next.credits} קרדיטים · עודכן ${new Date().toLocaleTimeString()}`;
       const language = $('language').value;
@@ -129,6 +133,8 @@ async function chooseFile() {
 async function getQuote() {
   await updateAccount();
   if (!account) throw new Error('לא ניתן לבדוק מחיר ללא חיבור עדכני');
+  const previous = await client.settlePreviousJob(await pendingJob());
+  if (previous) await saveJob(previous);
   const metadata = await file.getMetadata();
   if (metadata.size > account.policy.maxMediaBytes) throw new Error('הקובץ חורג מהגודל המותר לפי הכללים העדכניים');
   const next = await client.json('/api/plugin/quote', { durationSeconds: Number($('duration').value) });
@@ -137,9 +143,11 @@ async function getQuote() {
   controls();
 }
 async function pendingJob() {
-  try { return JSON.parse(new TextDecoder().decode(await uxp.storage.secureStorage.getItem('pending-job'))); }
+  if (!client.session) return null;
+  try { return JSON.parse(new TextDecoder().decode(await uxp.storage.secureStorage.getItem(`pending-job:${client.session.user.uid}`))); }
   catch { return null; }
 }
+async function saveJob(job) { await uxp.storage.secureStorage.setItem(`pending-job:${job.uid}`, JSON.stringify(job)); }
 async function watchJob(job, allowMissing = false) {
   if (job.uid !== client.session?.user.uid) throw new Error('יש להתחבר לחשבון שבו נשלח התמלול הזה');
   const deadline = Date.now() + 20 * 60000;
@@ -152,8 +160,12 @@ async function watchJob(job, allowMissing = false) {
       throw error;
     }
     $('progress').textContent = state.stages?.map(stage => stage.detail || stage.message || stage.stage).filter(Boolean).join(' · ') || 'התמלול מתבצע…';
-    if (state.status === 'failed') { await updateAccount(); throw new Error(state.error || 'התמלול נכשל'); }
+    if (state.status === 'failed') {
+      await saveJob({ ...job, finished: true });
+      await updateAccount(); throw new Error(state.error || 'התמלול נכשל');
+    }
     if (state.status === 'completed') {
+      await saveJob({ ...job, finished: true });
       $('progress').textContent = `התמלול הסתיים. חויבו ${state.result.creditsUsed ?? 0} קרדיטים.`;
       await updateAccount(); await loadVideos();
       if (state.result.videoId) await importVideo(state.result.videoId);
@@ -179,17 +191,25 @@ async function send() {
   form.append('maxWordsPerSubtitle', String(defaults.maxWordsPerSubtitle));
   if (defaults.maxCharactersPerSubtitle !== null) form.append('maxCharactersPerSubtitle', String(defaults.maxCharactersPerSubtitle));
   const job = { id: approved.jobId, uid: account.user.uid };
-  await uxp.storage.secureStorage.setItem('pending-job', JSON.stringify(job));
-  $('resume').disabled = false; invalidateQuote();
+  await saveJob(job);
+  hasPending = true; invalidateQuote();
   $('progress').textContent = 'מעלה קובץ ומתחיל תמלול…';
   // Never repeat a paid POST automatically, including after a timeout or a 401.
   let submissionError = null;
-  const submission = client.request('/api/transcribe', { method: 'POST', body: form }, false).catch(error => { submissionError = error; });
+  uploading = true;
+  const submission = client.request('/api/transcribe', { method: 'POST', body: form }, false).catch(async error => {
+    submissionError = error;
+    // A definite admission rejection can be retried after a new quote. A lost
+    // response or server error stays unresolved until this job is recovered.
+    if ([400, 401, 403, 409, 413, 415, 426].includes(error.status)) {
+      await saveJob({ ...job, finished: true });
+    }
+  }).finally(() => { uploading = false; controls(); });
   await sleep(3000);
   try { await watchJob(job, true); }
   catch (error) { message(submissionError?.message || `${error.message}. בדקו את אותה משימה שוב לפני שליחה חדשה.`); }
   // Attach a handler now; do not wait indefinitely for the upload response to close.
-  void submission;
+  void submission.catch(error => message(error.message));
 }
 async function run(action) {
   if (busy) return;
