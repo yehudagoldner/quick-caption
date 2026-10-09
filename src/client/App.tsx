@@ -15,6 +15,7 @@ import { useNarrowViewport } from "./hooks/useNarrowViewport";
 import { EditorNavigationContext, type EditorNavigationGuard } from "./contexts/EditorNavigationContext";
 import { EditorHeaderContext, type EditorHeaderActions } from "./contexts/EditorHeaderContext";
 import "./App.css";
+import { useLiveCredits } from './hooks/useLiveCredits';
 
 const theme = createTheme({
   direction: "rtl",
@@ -74,7 +75,7 @@ function App() {
   const [projectError, setProjectError] = useState<string | null>(null);
   const openingProject = useRef(false);
   const historyIndex = useRef(Number(window.history.state?.editorIndex ?? 0));
-  const [credits, setCredits] = useState<number | null>(null);
+  const { credits, refresh: fetchCredits } = useLiveCredits(workflow.user?.uid);
   const [adminUid, setAdminUid] = useState<string | null>(null);
   useEffect(() => {
     if (!workflow.user || currentScreen !== 'home') return;
@@ -107,35 +108,12 @@ function App() {
     window.history.replaceState({ ...window.history.state, editorIndex: historyIndex.current }, '', window.location.href);
   }, []);
 
-  // Fetch user credits when user is authenticated
-  useEffect(() => {
-    if (workflow.user?.uid) {
-      fetchCredits();
-    } else {
-      setCredits(null);
-    }
-  }, [workflow.user?.uid]);
-
-  const fetchCredits = async () => {
-    if (!workflow.user?.uid) return;
-
-    try {
-      const response = await apiFetch(`${API_BASE_URL || ""}/api/users/credits?userUid=${encodeURIComponent(workflow.user.uid)}`);
-      if (response.ok) {
-        const data = await response.json();
-        setCredits(data.credits);
-      }
-    } catch (error) {
-      console.error("Failed to fetch credits:", error);
-    }
-  };
-
   // Refresh credits when transcription completes (activePage changes to preview)
   useEffect(() => {
     if (workflow.activePage === "preview" && workflow.user?.uid) {
       fetchCredits();
     }
-  }, [workflow.activePage, workflow.user?.uid]);
+  }, [workflow.activePage, workflow.user?.uid, fetchCredits]);
 
   useEffect(() => {
     let pendingTarget: number | null = null;

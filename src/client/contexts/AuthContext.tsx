@@ -17,7 +17,7 @@ const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 async function syncUser(user: User) {
   try {
     const idToken = await user.getIdToken();
-    await fetch("/api/users/sync", {
+    await fetch(`${(import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '')}/api/users/sync`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` },
       body: JSON.stringify({

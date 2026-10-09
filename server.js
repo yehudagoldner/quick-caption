@@ -29,6 +29,9 @@ import { ensureSchema, upsertUser, saveVideo, updateVideoSubtitles, getUserVideo
 import { trackTranscriptionProgress } from "./src/transcriptionJobs.js";
 import { estimateTranscriptionCredits, creditsToDollars, transcriptionCredits, workflowCost } from "./src/creditCalculator.js";
 import { getDevAuthUid, isDevAuthBypassEnabled } from "./src/devAuth.js";
+import { createPluginSessions, ensurePluginSchema, isPluginToken, pluginRouteAllowed } from './src/pluginSessions.js';
+import { createPluginPublicRouter, createPluginPrivateRouter } from './routes/plugin.js';
+import { currentTranscriptionModels, pluginPolicy, pluginVersionSupported } from './src/pluginPolicy.js';
 
 const app = express();
 const port = Number(process.env.PORT ?? 3000);
@@ -53,8 +56,11 @@ const mediaStorage = createMediaStorage({ bunny: bunnyStorage, localDir: videosS
 await fsp.mkdir(uploadDir, { recursive: true });
 await fsp.mkdir(videosStorageDir, { recursive: true });
 await ensureSchema();
+await ensurePluginSchema(pool);
+const pluginSessions = createPluginSessions(pool);
 const verifyIdentity = createFirebaseVerifier({ projectId: process.env.FIREBASE_PROJECT_ID || process.env.VITE_FIREBASE_PROJECT_ID });
 const authenticate = createIdentityMiddleware(verifyIdentity);
+app.use('/api/plugin/link', createPluginPublicRouter({ sessions: pluginSessions, authenticate, upsertUser, getUserCredits }));
 configureUsageRecorder(row => adminStore.recordUsage(row));
 app.use(usageContext);
 app.use('/api/admin', createAdminRouter({ authenticate, store: adminStore, downloadStore }));
@@ -68,7 +74,17 @@ if (isDevAuthBypassEnabled()) {
 }
 
 const videoTokens = createVideoTokens(await loadVideoSigningKey({ configuredKey: process.env.VIDEO_TOKEN_SECRET }));
-const privateAuthenticate = (req, res, next) => {
+const privateAuthenticate = async (req, res, next) => {
+  const token = req.headers.authorization?.match(/^Bearer (\S+)$/)?.[1];
+  if (isPluginToken(token)) {
+    try {
+      const identity = await pluginSessions.verify(token);
+      if (!identity) return res.status(401).json({ error: 'נדרשת התחברות מחדש' });
+      if (!pluginRouteAllowed(req.method, req.path)) return res.status(403).json({ error: 'הפעולה אינה זמינה לתוסף' });
+      req.identity = identity;
+      return next();
+    } catch { return res.status(503).json({ error: 'החיבור לחשבון אינו זמין כרגע' }); }
+  }
   if (isDevAuthBypassEnabled() && req.headers.authorization === 'Bearer local-development') {
     req.identity = { uid: getDevAuthUid() };
     return next();
@@ -96,6 +112,7 @@ app.use('/api', (req, res, next) => {
   });
 });
 const upload = createMediaUpload(uploadDir);
+app.use('/api/plugin', createPluginPrivateRouter({ sessions: pluginSessions, getUserCredits, getVideoById }));
 app.post('/api/client-errors', createClientErrorHandler(errorRecorder));
 app.use('/api/downloads', createDownloadsRouter({ store: downloadStore }));
 app.use("/api/burn-subtitles", createBurnSubtitlesRouter(upload, {
@@ -167,6 +184,7 @@ app.get("/api/users/credits", async (req, res) => {
     if (credits === null) {
       return res.status(404).json({ error: 'User not found' });
     }
+    res.set('Cache-Control', 'private, no-store');
     res.json({ credits });
   } catch (error) {
     console.error('Failed to fetch user credits:', error);
@@ -416,6 +434,7 @@ app.get("/api/transcribe/jobs/:jobId", async (req, res) => {
     res.set('Cache-Control', 'no-store');
     res.json({
       status: job.status,
+      creditsRemaining: await getUserCredits(userUid),
       result: job.status === "completed" ? (() => {
         const result = JSON.parse(job.result_json);
         return { ...result, mediaToken: result.videoId ? videoTokens.issue(result.videoId, userUid, 'media') : undefined };
@@ -433,6 +452,14 @@ app.post("/api/transcribe", upload.single("media"), async (req, res) => {
   const socketId = req.body?.socketId;
   const userUid = req.identity.uid;
   const jobId = req.body?.jobId;
+  if (req.identity.pluginSessionId && !pluginVersionSupported(req.headers['x-quick-caption-version'])) {
+    if (req.file) await safeUnlink(req.file.path);
+    return res.status(426).json({ code: 'PLUGIN_UPDATE_REQUIRED', error: 'נדרש עדכון לתוסף לפני תמלול' });
+  }
+  if (req.identity.pluginSessionId && (!jobId || req.body?.billingPolicyVersion !== pluginPolicy().version)) {
+    if (req.file) await safeUnlink(req.file.path);
+    return res.status(409).json({ code: 'POLICY_CHANGED', error: 'יש לרענן את המחיר ולאשר שוב לפני תמלול' });
+  }
   let settings;
   try { settings = parseTranscriptionSettings(req.body); }
   catch (error) {
@@ -461,6 +488,11 @@ app.post("/api/transcribe", upload.single("media"), async (req, res) => {
       await createTranscriptionJob({ jobId, userUid });
     } catch (error) {
       await safeUnlink(req.file.path);
+      if (error.code === 'ER_DUP_ENTRY') {
+        const existing = await getTranscriptionJob({ jobId, userUid });
+        if (existing) return res.status(202).json({ jobId, status: existing.status, replayed: true });
+        return res.status(409).json({ error: 'מזהה המשימה אינו זמין' });
+      }
       console.error("Failed to create transcription job:", error);
       return res.status(500).json({ error: "Failed to start transcription job" });
     }
@@ -539,16 +571,7 @@ app.post("/api/transcribe", upload.single("media"), async (req, res) => {
     const durationMinutes = durationSeconds / 60;
 
     // Get transcription options to estimate cost
-    const timedModel = process.env.OPENAI_TIMED_MODEL ?? "whisper-1";
-    const highAccuracyModel = process.env.OPENAI_HIGH_ACCURACY_MODEL ?? "gpt-4o-transcribe";
-    const correctionModel = process.env.OPENAI_CORRECTION_MODEL ?? "gpt-5";
-
-    estimatedCredits = estimateTranscriptionCredits(durationMinutes, {
-      timedModel,
-      highAccuracyModel,
-      correctionModel,
-      serviceTier: process.env.OPENAI_TEXT_SERVICE_TIER,
-    });
+    estimatedCredits = estimateTranscriptionCredits(durationMinutes, currentTranscriptionModels());
 
     console.log(`Estimated credits for ${durationMinutes.toFixed(2)} minutes: ${estimatedCredits} credits (${creditsToDollars(estimatedCredits)})`);
 
