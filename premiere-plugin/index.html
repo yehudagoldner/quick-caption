@@ -1,28 +1,28 @@
 <!DOCTYPE html>
 <html><head><meta charset="utf-8"><link rel="stylesheet" href="panel.css"></head>
 <body>
-  <main dir="rtl">
+  <main id="plugin-main" dir="rtl">
     <h2>Quick Caption</h2><p class="muted">סביבת בדיקות QA</p>
-    <section><p id="account">החשבון אינו מחובר</p><p id="balance">יתרה: —</p>
-      <button id="connect">חיבור לחשבון דרך הדפדפן</button><button id="logout" disabled>ניתוק</button>
-      <p id="link-code"></p><button id="cancel-link" hidden>ביטול החיבור</button>
-      <button id="refresh" disabled>רענון החשבון והסרטונים</button>
-      <button id="buy">רכישת קרדיטים באתר</button>
-    </section>
-    <section><h3>תמלול חדש</h3>
-      <button id="export">ייצוא הסיקוונס הפעיל</button>
-      <p class="muted">לייצוא בוחרים preset מסוג EPR ותיקייה. לאחר סיום הייצוא בוחרים את קובץ המדיה שנוצר.</p>
-      <button id="choose">בחירת קובץ מדיה לתמלול</button><p id="file">לא נבחר קובץ</p>
-      <label>משך משוער בשניות <input id="duration" type="number" min="1" value="60"></label>
+    <p id="account">החשבון אינו מחובר</p><p id="balance">יתרה: —</p>
+    <section><button id="selected">קבלת כתוביות לקטעים שנבחרו</button>
+      <p id="selection-summary" class="muted">סמנו קטע אחד או כמה קטעים בטיימליין, יחד עם האודיו שלהם. האודיו יילקח מהבחירה אוטומטית. אם צריך, תיפתח התחברות והפעולה תמשיך לאחר אישור החשבון.</p>
+      <p id="status" role="status"></p></section>
+    <section><h3>תמלול הבחירה בטיימליין</h3>
+      <p id="file">האודיו יוכן מהקטעים שתבחרו בטיימליין.</p>
       <label>שפת הדיבור <select id="language"><option value="he">עברית</option></select></label>
       <button id="quote" disabled>בדיקת מחיר לפי הכללים העדכניים</button>
       <p id="price">החיוב הסופי נקבע לפי עלות העיבוד בפועל. ההערכה תלויה במשך המדיה.</p>
       <button id="send" disabled>אישור ושליחה לתמלול</button>
       <p id="progress"></p><button id="resume" disabled>בדיקת התמלול האחרון</button>
     </section>
+    <section><h3>החשבון</h3>
+      <button id="connect">חיבור לחשבון דרך הדפדפן</button><button id="logout" disabled>ניתוק</button>
+      <p id="link-code"></p><button id="cancel-link" hidden>ביטול החיבור</button>
+      <button id="refresh" disabled>רענון החשבון והסרטונים</button>
+      <button id="buy">רכישת קרדיטים באתר</button>
+    </section>
     <section><h3>הסרטונים בחשבון</h3><div id="videos"></div><button id="more" hidden>עוד סרטונים</button></section>
     <section><button id="local-srt">ייבוא SRT מקומי לפרויקט</button>
       <p class="muted">הכתוביות יופיעו בחלון הפרויקט. גררו אותן לטיימליין ליצירת מסלול כתוביות.</p></section>
-    <p id="status" role="status"></p>
   </main><script src="panel.js"></script>
 </body></html>

@@ -1,6 +1,8 @@
 const uxp = require('uxp');
 const ppro = require('premierepro');
 const { PluginClient } = require('./client.js');
+const { readStoredJson } = require('./storage-json.js');
+const { captureSelection, validateSelection, isolatedSelection, restoreTimelineSrt } = require('./selection.js');
 const { baseUrl, version } = require('./config.js');
 const fs = uxp.storage.localFileSystem;
 const client = new PluginClient({ baseUrl, version, storage: uxp.storage.secureStorage });
@@ -9,17 +11,19 @@ let account = null, file = null, quote = null, busy = false, linkEpoch = 0, offs
 let accountPending = null;
 let uploading = false;
 let hasPending = false;
+let selectionContext = null;
+let ready = null;
 const message = text => { $('status').textContent = text; };
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 function invalidateQuote() { quote = null; $('send').disabled = true; $('price').textContent = 'יש לבדוק מחיר לפני השליחה. החיוב הסופי לפי עלות העיבוד בפועל.'; }
 function controls() {
+  $('selected').disabled = busy || uploading;
   $('connect').disabled = busy || !!client.session;
   $('logout').disabled = busy || uploading || !client.session;
   $('refresh').disabled = busy || !client.session;
   $('quote').disabled = busy || uploading || !account || !file;
-  $('send').disabled = busy || !quote?.canStart || !account;
-  $('choose').disabled = busy; $('export').disabled = busy;
-  $('duration').disabled = busy; $('language').disabled = busy;
+  $('send').disabled = busy || uploading || !quote?.canStart || !account || account.credits < quote.estimatedCredits;
+  $('language').disabled = busy;
   $('resume').disabled = busy || !hasPending || !client.session;
 }
 function compatible(policy) {
@@ -89,9 +93,19 @@ async function importFile(entry) {
 }
 async function importVideo(id) {
   const data = await client.request(`/api/plugin/videos/${id}/subtitles`);
+  let mapping = null;
+  try { mapping = readStoredJson(await uxp.storage.secureStorage.getItem(`timeline:${client.session.user.uid}:${id}`)); } catch { /* Regular website video. */ }
+  if (mapping) {
+    const project = await ppro.Project.getActiveProject();
+    const sequence = project && await project.getActiveSequence();
+    if (!sequence || project.guid.toString() !== mapping.projectId || sequence.guid.toString() !== mapping.sequenceId) {
+      throw new Error(`חזרו לסיקוונס ${mapping.sequenceName} בפרויקט המקורי כדי לייבא את הכתוביות בתזמון הנכון`);
+    }
+    await validateSelection(ppro, mapping);
+  }
   const entry = await fs.getFileForSaving(data.filename, { types: ['srt'] });
   if (!entry) return;
-  await entry.write(data.srt);
+  await entry.write(mapping ? restoreTimelineSrt(data.srt, mapping.ranges) : data.srt);
   await importFile(entry);
 }
 async function loadVideos(more = false) {
@@ -109,42 +123,98 @@ async function loadVideos(more = false) {
   offset += data.videos.length; $('more').hidden = !data.hasMore;
   if (!offset) $('videos').textContent = 'עדיין אין סרטונים בחשבון.';
 }
-async function exportSequence() {
-  const project = await ppro.Project.getActiveProject();
-  const sequence = project && await project.getActiveSequence();
-  if (!sequence) throw new Error('פתחו סיקוונס פעיל בפרימייר');
-  const preset = await fs.getFileForOpening({ types: ['epr'] }); if (!preset) return;
-  const folder = await fs.getFolder(); if (!folder) return;
-  const extension = (await ppro.EncoderManager.getExportFileExtension(sequence, preset.nativePath)).replace(/^\./, '');
-  if (!/^[a-z0-9]+$/i.test(extension)) throw new Error('לא ניתן לזהות את סוג הקובץ של ה-preset');
-  const output = await folder.createFile(`quick-caption-${Date.now()}.${extension}`, { overwrite: false });
-  $('duration').value = String(Math.ceil((await sequence.getEndTime()).seconds));
-  invalidateQuote();
-  message('מייצא את כל הסיקוונס. המתינו לסיום הייצוא בפרימייר.');
-  const success = await ppro.EncoderManager.getManager().exportSequence(sequence, ppro.Constants.ExportType.IMMEDIATELY, output.nativePath, preset.nativePath, true);
-  if (!success) throw new Error('הייצוא לא הושלם');
-  message(`לאחר סיום הייצוא בחרו את ${output.name} בכפתור בחירת קובץ מדיה.`);
+async function audioPreset(sequence) {
+  let preset = null;
+  try { preset = await fs.getEntryForPersistentToken(readStoredJson(await uxp.storage.secureStorage.getItem('audio-preset'))); } catch { /* First use or revoked file permission. */ }
+  if (!preset) {
+    message('בהפעלה הראשונה בחרו preset של Waveform Audio מסוג EPR. הבחירה תישמר לפעמים הבאות.');
+    preset = await fs.getFileForOpening({ types: ['epr'] });
+  }
+  if (!preset) return null;
+  const extension = (await ppro.EncoderManager.getExportFileExtension(sequence, preset.nativePath)).replace(/^\./, '').toLowerCase();
+  if (extension !== 'wav') throw new Error('בחרו preset מסוג Waveform Audio (WAV) לייצוא האודיו של הקטעים שנבחרו');
+  await uxp.storage.secureStorage.setItem('audio-preset', JSON.stringify(await fs.createPersistentToken(preset)));
+  return preset;
 }
-async function chooseFile() {
-  const selected = await fs.getFileForOpening({ types: ['wav', 'mp3', 'm4a', 'aac', 'mp4', 'mov', 'webm', 'mpg'] });
-  if (!selected) return;
-  file = selected; $('file').textContent = file.name; invalidateQuote(); controls();
+
+async function waitForWave(entry, maxMediaBytes) {
+  const deadline = Date.now() + 20 * 60000;
+  let previous = 0, stable = 0;
+  while (Date.now() < deadline) {
+    await sleep(1000);
+    const { size } = await entry.getMetadata();
+    if (size > maxMediaBytes) throw new Error('האודיו המיוצא חורג מהגודל המותר');
+    stable = size > 44 && size === previous ? stable + 1 : 0; previous = size;
+    if (stable < 2) continue;
+    const bytes = new Uint8Array(await entry.read({ format: uxp.storage.formats.binary }));
+    const tag = offset => String.fromCharCode(...bytes.slice(offset, offset + 4));
+    // WAV's declared complete size must match the file before any upload.
+    if (tag(0) === 'RIFF' && tag(8) === 'WAVE' && new DataView(bytes.buffer).getUint32(4, true) + 8 === size) return;
+    if (stable > 10) throw new Error('הייצוא אינו קובץ WAV שלם. בדקו את הגדרות הייצוא ונסו שוב');
+  }
+  throw new Error('הייצוא טרם הושלם. לא נשלח קובץ ולא בוצע חיוב');
+}
+
+async function captionSelection() {
+  if (ready) await ready;
+  if (busy || uploading) return;
+  await run(async () => {
+    // Freeze the selected clips before leaving Premiere to authenticate.
+    const snapshot = await captureSelection(ppro);
+    if (file) await file.delete();
+    file = null; selectionContext = null; invalidateQuote();
+    $('file').textContent = 'מכין אודיו מהבחירה בטיימליין…';
+    $('selection-summary').textContent = `הבחירה ב־${snapshot.sequenceName} · ${Math.ceil(snapshot.duration)} שניות. הרווחים בין הבחירות לא יתומללו.`;
+    $('plugin-main').scrollTop = 0;
+    await updateAccount();
+    if (!client.session) {
+      await connect();
+      busy = true; controls();
+      if (!client.session) throw new Error('החיבור לא הושלם. הקטעים לא נשלחו לתמלול');
+    }
+    await updateAccount();
+    if (!account) throw new Error('נדרש חיבור עדכני לחשבון לפני התמלול');
+    await client.settlePreviousJob(await pendingJob());
+    const project = await ppro.Project.getActiveProject();
+    const original = project && (await project.getSequences()).find(sequence => sequence.guid.toString() === snapshot.sequenceId);
+    if (!original || project.guid.toString() !== snapshot.projectId) throw new Error('הפרויקט השתנה. בחרו שוב את הקטעים');
+    const preset = await audioPreset(original); if (!preset) return;
+    const folder = await fs.getTemporaryFolder();
+    const output = await folder.createFile(`quick-caption-selection-${Date.now()}.wav`, { overwrite: false });
+    let isolated = null;
+    try {
+      isolated = await isolatedSelection(ppro, snapshot);
+      message('מייצא רק את הקטעים שנבחרו. התמלול יתחיל לאחר הצגת מחיר ואישור.');
+      const accepted = await ppro.EncoderManager.getManager().exportSequence(isolated.sequence, ppro.Constants.ExportType.IMMEDIATELY, output.nativePath, preset.nativePath, true);
+      if (!accepted) throw new Error('פרימייר לא התחיל את הייצוא. לא בוצע חיוב');
+      await waitForWave(output, account.policy.maxMediaBytes);
+      file = output; selectionContext = snapshot;
+      $('file').textContent = `האודיו מהקטעים שנבחרו ב־${snapshot.sequenceName}`;
+      invalidateQuote(); await getQuote();
+      message(quote.canStart ? 'הקטעים מוכנים. בדקו את המחיר ולחצו אישור ושליחה לתמלול.' : 'הקטעים מוכנים, אך היתרה נמוכה מההערכה. אפשר לבחור קטעים קצרים יותר או לרכוש קרדיטים.');
+      $('plugin-main').scrollTop = 0;
+    } finally {
+      if (isolated) await isolated.cleanup();
+      if (file !== output) await output.delete();
+    }
+  });
 }
 async function getQuote() {
+  if (!file || !selectionContext) throw new Error('בחרו קטעים בטיימליין והפעילו קבלת כתוביות');
   await updateAccount();
   if (!account) throw new Error('לא ניתן לבדוק מחיר ללא חיבור עדכני');
   const previous = await client.settlePreviousJob(await pendingJob());
   if (previous) await saveJob(previous);
   const metadata = await file.getMetadata();
   if (metadata.size > account.policy.maxMediaBytes) throw new Error('הקובץ חורג מהגודל המותר לפי הכללים העדכניים');
-  const next = await client.json('/api/plugin/quote', { durationSeconds: Number($('duration').value) });
+  const next = await client.json('/api/plugin/quote', { durationSeconds: Math.ceil(selectionContext.duration) });
   quote = next;
   $('price').textContent = `הערכה: ${next.estimatedCredits} קרדיטים. יתרה: ${next.credits}. החיוב הסופי לפי עלות העיבוד בפועל.${next.canStart ? '' : ' אין מספיק קרדיטים להערכה הזאת.'}`;
   controls();
 }
 async function pendingJob() {
   if (!client.session) return null;
-  try { return JSON.parse(new TextDecoder().decode(await uxp.storage.secureStorage.getItem(`pending-job:${client.session.user.uid}`))); }
+  try { return readStoredJson(await uxp.storage.secureStorage.getItem(`pending-job:${client.session.user.uid}`)); }
   catch { return null; }
 }
 async function saveJob(job) { await uxp.storage.secureStorage.setItem(`pending-job:${job.uid}`, JSON.stringify(job)); }
@@ -166,6 +236,7 @@ async function watchJob(job, allowMissing = false) {
     }
     if (state.status === 'completed') {
       await saveJob({ ...job, finished: true });
+      if (job.selection && state.result.videoId) await uxp.storage.secureStorage.setItem(`timeline:${job.uid}:${state.result.videoId}`, JSON.stringify(job.selection));
       $('progress').textContent = `התמלול הסתיים. חויבו ${state.result.creditsUsed ?? 0} קרדיטים.`;
       await updateAccount(); await loadVideos();
       if (state.result.videoId) await importVideo(state.result.videoId);
@@ -181,6 +252,8 @@ async function send() {
   if (!account || !approved || approved.policyVersion !== account.policy.version || Date.parse(approved.expiresAt) <= Date.now()) {
     invalidateQuote(); throw new Error('המחיר או החיבור השתנו. בדקו מחיר ואשרו שוב.');
   }
+  if (!approved.canStart || account.credits < approved.estimatedCredits) throw new Error('היתרה נמוכה מההערכה. בחרו קטעים קצרים יותר או רכשו קרדיטים');
+  await validateSelection(ppro, selectionContext);
   const defaults = account.policy.defaults;
   const form = new FormData();
   form.append('media', file, file.name);
@@ -190,7 +263,7 @@ async function send() {
   form.append('secondaryLanguageMode', defaults.secondaryLanguageMode);
   form.append('maxWordsPerSubtitle', String(defaults.maxWordsPerSubtitle));
   if (defaults.maxCharactersPerSubtitle !== null) form.append('maxCharactersPerSubtitle', String(defaults.maxCharactersPerSubtitle));
-  const job = { id: approved.jobId, uid: account.user.uid };
+  const job = { id: approved.jobId, uid: account.user.uid, selection: selectionContext };
   await saveJob(job);
   hasPending = true; invalidateQuote();
   $('progress').textContent = 'מעלה קובץ ומתחיל תמלול…';
@@ -218,6 +291,7 @@ async function run(action) {
   finally { busy = false; controls(); }
 }
 $('connect').addEventListener('click', () => { if (!busy) void connect().catch(error => message(error.message)); });
+$('selected').addEventListener('click', () => void captionSelection());
 $('cancel-link').addEventListener('click', () => { linkEpoch++; message('החיבור בוטל.'); });
 $('logout').addEventListener('click', () => run(async () => {
   // Keep credentials if server revocation fails so the user can retry safely.
@@ -226,17 +300,18 @@ $('logout').addEventListener('click', () => run(async () => {
 }));
 $('refresh').addEventListener('click', () => run(async () => { await updateAccount(); await loadVideos(); }));
 $('buy').addEventListener('click', () => run(() => uxp.shell.openExternal(`${baseUrl}/?screen=buy-credits`, 'רכישת קרדיטים בחשבון Quick Caption')));
-$('export').addEventListener('click', () => run(exportSequence));
-$('choose').addEventListener('click', () => run(chooseFile));
 $('quote').addEventListener('click', () => run(getQuote));
 $('send').addEventListener('click', () => run(send));
-$('duration').addEventListener('input', invalidateQuote);
 $('language').addEventListener('change', invalidateQuote);
 $('more').addEventListener('click', () => run(() => loadVideos(true)));
 $('resume').addEventListener('click', () => run(async () => { const job = await pendingJob(); if (job) await watchJob(job); }));
 $('local-srt').addEventListener('click', () => run(async () => { const entry = await fs.getFileForOpening({ types: ['srt'] }); if (entry) await importFile(entry); }));
-uxp.entrypoints.setup({ panels: { quickCaption: {
+uxp.entrypoints.setup({ commands: { captionSelection() {
+  const plugin = Array.from(uxp.pluginManager.plugins).find(item => item.id === 'com.quickcaption.premiere.qa');
+  if (plugin) plugin.showPanel('quickCaption');
+  void captionSelection();
+} }, panels: { quickCaption: {
   show() { shown = true; void updateAccount(); }, hide() { shown = false; },
   destroy() { shown = false; linkEpoch++; clearInterval(timer); },
 } } });
-void (async () => { await client.restore(); await updateAccount(); if (client.session) await loadVideos(); $('resume').disabled = !(await pendingJob()); })().catch(error => message(error.message));
+ready = (async () => { await client.restore(); await updateAccount(); if (client.session) await loadVideos(); $('resume').disabled = !(await pendingJob()); })().catch(error => message(error.message));

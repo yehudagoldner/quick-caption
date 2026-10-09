@@ -1,5 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import vm from 'node:vm';
 import clientModule from '../premiere-plugin/client.js';
 const { PluginClient } = clientModule;
 const storage = () => {
@@ -9,6 +11,20 @@ const storage = () => {
 };
 const session = { accessToken: 'old', refreshToken: 'refresh', expiresIn: 900, user: { uid: 'owner' } };
 const response = (status, body) => ({ status, ok: status < 400, json: async () => body });
+
+test('Premiere restores stored UTF-8 account and jobs without TextDecoder', async () => {
+  const context = { module: { exports: {} } };
+  vm.runInNewContext(readFileSync(new URL('../premiere-plugin/storage-json.js', import.meta.url), 'utf8'), context);
+  const saved = { ...session, user: { uid: 'owner', displayName: 'יהודה 😀 العربية' } };
+  const bytes = new TextEncoder().encode(JSON.stringify(saved));
+  assert.deepEqual(JSON.parse(JSON.stringify(context.module.exports.readStoredJson(bytes))), saved);
+  const persistent = storage();
+  await new PluginClient({ baseUrl: 'https://qa.invalid', storage: persistent, now: () => 1000 }).accept(saved);
+  const reloaded = new PluginClient({ baseUrl: 'https://qa.invalid', storage: persistent, now: () => 1000 });
+  await reloaded.restore();
+  assert.equal(reloaded.session.user.displayName, saved.user.displayName);
+  assert.equal(reloaded.session.refreshToken, saved.refreshToken);
+});
 
 test('concurrent balance and library refresh rotate a session only once', async () => {
   let refreshes = 0;

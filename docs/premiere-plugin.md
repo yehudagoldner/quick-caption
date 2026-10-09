@@ -46,23 +46,43 @@ Developer Tool 2.2 or newer. It has not been submitted to Adobe Marketplace.
 1. Install Adobe UXP Developer Tool from Creative Cloud.
 2. Enable developer mode in UDT and Premiere Settings > Plugins, then restart Premiere.
 3. Add `premiere-plugin/manifest.json` to UDT and choose Load & Watch.
-4. Open Window > UXP Plugins > Quick Caption QA.
-5. Connect your account, confirm the matching code in the browser, then return to Premiere.
-6. Export the active sequence using an existing `.epr` preset (prefer an audio preset).
-   The full sequence is exported; wait for Premiere's export to finish and choose the
-   generated media file. Alternatively choose an existing media file.
-7. Set the estimated duration in seconds, select the spoken language and fetch a quote.
+4. Select one or more existing timeline clips, including their audible audio items.
+   Invoke Window > UXP Plugins > Quick Caption QA > קבלת כתוביות לקטעים שנבחרו,
+   or press the same button in the plugin panel. The documented UXP command entrypoint
+   appears in this menu; this build does not insert a command in Premiere's native
+   timeline right-click menu.
+5. If the account is disconnected, the plugin opens browser pairing and resumes the
+   captured selection after the user confirms the matching code and account.
+6. First use asks for an existing Waveform Audio `.epr` preset. Its persistent file
+   permission is saved; this is export configuration, not another media file. On this
+   Windows installation the Adobe preset is at `C:\Program Files\Adobe\Adobe Premiere Pro 2025\MediaIO\systempresets\3F3F3F3F_57415645\Waveform Audio 48kHz 16-bit.epr`.
+   The plugin automatically prepares a temporary WAV from the selected timeline items.
+   No extra clip import, media picker, output folder or manual duration entry is needed.
+   Only a positively identified temporary sequence clone is edited. Unselected clips
+   are removed from it, gaps are compacted and the original sequence is preserved.
+   The source items, timing and playback settings are checked before export and upload.
+   Complete WAV size/header validation must pass before any upload is possible.
+7. The duration is derived from the union of selected ranges, counting linked audio/video
+   once and omitting gaps. Select the spoken language and review the server quote.
    The server probes the actual media duration on upload and performs its authoritative
    credit check again. The quote is an estimate, not a maximum-price guarantee.
 8. Confirm transcription. On completion choose a permanent SRT destination and import it.
-   Drag the imported SRT from the Project panel into the timeline to create captions.
+   Captions are mapped back to the original timeline positions, splitting cues at omitted
+   gaps. Return to the original sequence; changed selected clips block automatic mapping.
+   Drag the imported SRT from the Project panel into the timeline at sequence time zero
+   to create captions with their mapped offsets.
    Existing saved videos and local guest SRT files can also be imported.
 
 Premiere 25.6's documented UXP API supports SRT project import but does not expose a
 documented API for creating and filling caption tracks. This beta therefore requires the
 final drag into the timeline. Export presets are chosen by the user; no fabricated preset
-or undocumented host method is bundled. Live Premiere export/import still needs host
-verification before distributing a `.ccx` built using UDT.
+or undocumented host method is bundled. On Premiere 25.6.6, plugin loading, the native
+command, account pairing/restoration, the library, selected linked audio/video capture,
+WAV export and a live QA quote have been verified. The current full `amit` selection
+received an estimate of 66 credits with a 64-credit balance; upload was correctly disabled.
+No paid transcription was submitted. Multiple disjoint selections have automated host
+fixture coverage; actual disjoint export, paid transcription and SRT import still need
+host verification before distributing a `.ccx` built using UDT.
 
 ## Verification and rollout
 
@@ -70,7 +90,7 @@ Local fixture checks:
 
 ```
 npm run build
-node --test tests/plugin-policy.test.mjs tests/plugin-client.test.mjs tests/model-credit-calculator.test.mjs tests/transcription-jobs.test.mjs tests/video-security.test.mjs
+node --test tests/plugin-policy.test.mjs tests/plugin-client.test.mjs tests/plugin-selection.test.mjs tests/model-credit-calculator.test.mjs tests/transcription-jobs.test.mjs tests/video-security.test.mjs
 npx playwright test tests/live-credits.spec.ts --project=chromium --workers=1
 ```
 

@@ -1,3 +1,4 @@
+const { readStoredJson } = require('./storage-json.js');
 class PluginClient {
   constructor({ baseUrl, storage, fetcher = fetch, now = Date.now, version = '1.0.0' }) {
     this.baseUrl = baseUrl.replace(/\/$/, '');
@@ -6,7 +7,7 @@ class PluginClient {
     this.session = null; this.refreshing = null; this.epoch = 0;
   }
   async restore() {
-    try { this.session = JSON.parse(new TextDecoder().decode(await this.storage.getItem('account'))); }
+    try { this.session = readStoredJson(await this.storage.getItem('account')); }
     catch { this.session = null; }
   }
   async accept(data) {
