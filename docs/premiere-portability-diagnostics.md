@@ -92,3 +92,22 @@ can centrally report `bridge_unavailable`; the more specific startup event is
 local until the authenticated bridge becomes reachable. Native Adobe/UDT loading
 logs may still be needed for failures before our code runs. The server marks
 device clock skew and uses its own clock for expiry.
+
+## Verification recorded on 2026-10-10
+
+* Full Premiere/accounting/simulation suite: **164 passed**, no skipped tests,
+  both locally on Windows and in the existing Linux QA checkout. QA frontend
+  build, public HTML/asset hashes, health and Socket.IO passed; other PM2 apps
+  were unchanged. No model/transcription calls were made.
+* QA server commit: `a0a26f1485afbf65f09f110f94f5d9b4545a6f5e`.
+  Active checkout remained `/home/quick-caption-qa/release-5b0b112-BxZQD2bs`.
+* The running Premiere 25.6.6 UXP panel loaded the new logger and sent two
+  explicitly synthetic reports: Windows x64 and Mac arm64. They were read
+  through the account API and independently through SSH from this workspace.
+  The synthetic Mac report validates transport/reading, not Mac-native loading.
+* The server held one private file of **1,222 bytes**, directory mode 0700,
+  file mode 0600; expiry was 2026-10-17. Cron source matched its installed
+  QA-only configuration and cron was active. Account balance stayed 74 credits.
+* The local bridge source was installed with its existing pairing key preserved.
+  Restart Premiere once after saving the project to activate the updated CEP
+  bootstrap/logger; the UXP panel logger is already active after its reload.
