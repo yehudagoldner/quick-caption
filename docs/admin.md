@@ -1,5 +1,18 @@
 # Admin dashboard
 
+Verified administrators can use **התחברות כמשתמש** in the users table to open
+the selected account's video library, credits and editor. The original Firebase
+login remains with the administrator. A visible banner identifies the target and
+offers **חזרה לניהול**; edits and ordinary media actions affect that account.
+Payment, plugin linking, profile synchronization and connection revocation are
+blocked during impersonation. Admin actions require returning to management.
+
+Sessions last one hour, survive a page refresh in the same tab, and end on server
+restart. Each request rechecks the administrator's verified email, permissions,
+login connection and target existence. Media URLs are bound to that session and
+administrator connection, and stop working when the session ends. Entry and
+explicit exit are recorded in `admin_audit`; no schema migration is required.
+
 Open `/admin` and sign in with the verified Google account `goldnery@gmail.com`.
 The owner is seeded on server startup. Additional administrators can be added by
 email, including before registration. Every administrator has full dashboard,

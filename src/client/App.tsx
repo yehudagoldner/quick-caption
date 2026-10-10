@@ -1,6 +1,6 @@
 import { apiFetch } from "./api";
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Alert, Box, CircularProgress, Container, CssBaseline, Stack, ThemeProvider, createTheme, useMediaQuery } from "@mui/material";
+import { Alert, Box, Button, CircularProgress, Container, CssBaseline, Stack, ThemeProvider, createTheme, useMediaQuery } from "@mui/material";
 import { AppHeader } from "./components/AppHeader";
 import { PromotionalHome } from "./components/PromotionalHome";
 import { TranscriptionPage } from "./components/TranscriptionPage";
@@ -67,7 +67,7 @@ function updateUrl(screen: AppScreen, videoToken?: string) {
 }
 
 function App() {
-  const { connectionNotice } = useAuth();
+  const { connectionNotice, impersonation, stopImpersonation } = useAuth();
   const workflow = useTranscriptionWorkflow();
   const desktopHome = useMediaQuery(theme.breakpoints.up("md"));
   const narrowViewport = useNarrowViewport();
@@ -80,6 +80,16 @@ function App() {
   const historyIndex = useRef(Number(window.history.state?.editorIndex ?? 0));
   const { credits, refresh: fetchCredits } = useLiveCredits(workflow.user?.uid);
   const [adminUid, setAdminUid] = useState<string | null>(null);
+  const wasImpersonating = useRef(Boolean(impersonation));
+  useEffect(() => {
+    if (wasImpersonating.current && !impersonation) {
+      setCurrentScreen('admin'); setVideoToken(undefined); setProjectError(null); updateUrl('admin');
+      historyIndex.current = Number(window.history.state.editorIndex);
+    } else if (impersonation && currentScreen === 'admin') {
+      setCurrentScreen('videos'); updateUrl('videos'); historyIndex.current = Number(window.history.state.editorIndex);
+    }
+    wasImpersonating.current = Boolean(impersonation);
+  }, [impersonation, currentScreen]);
   useEffect(() => {
     if (!workflow.user || currentScreen !== 'home') return;
     const uid = workflow.user.uid;
@@ -239,6 +249,7 @@ function App() {
                   workflow.onBackToUpload();
                   setProjectError(null);
                   navigateToScreen("home");
+                  if (impersonation) navigateToScreen('admin');
                 }
               } finally {
                 setSigningOut(false);
@@ -281,6 +292,13 @@ function App() {
               <CircularProgress />
             </Stack>
           ) : <>
+          {impersonation && <Alert severity="warning" dir="rtl" sx={{ mb: 2, mx: marketingHome ? 2 : 0 }}
+            action={<Button color="inherit" disabled={navigationBlocked} onClick={() => {
+              const leave = () => { void stopImpersonation(); };
+              if (editorNavigation.current) void editorNavigation.current(leave); else leave();
+            }}>חזרה לניהול</Button>}>
+            מחוברים כמשתמש: {impersonation.user.displayName || impersonation.user.email} ({impersonation.user.email}). שינויים נשמרים בחשבון המשתמש.
+          </Alert>}
           {projectError && <Alert severity="error" onClose={() => setProjectError(null)} sx={{ mb: 2 }}>{projectError}</Alert>}
           {connectionNotice && <Alert severity="info" sx={{ mb: 2 }}>{connectionNotice}</Alert>}
           {currentScreen === "home" && workflow.error && (
@@ -327,11 +345,12 @@ function App() {
             />
           )}
 
-          {currentScreen === 'admin' && <AdminPage key={workflow.user?.uid ?? 'guest'} />}
+          {currentScreen === 'admin' && <AdminPage key={workflow.user?.uid ?? 'guest'} onImpersonationStarted={() => navigateToScreen('videos')} />}
           {currentScreen === 'connections' && <ConnectionsPage key={workflow.user?.uid ?? 'guest'} />}
 
           {currentScreen === "edit" && videoToken && (
             <VideoEditPage
+              key={workflow.user?.uid ?? 'guest'}
               user={workflow.user}
               videoToken={videoToken}
               onSaveSegments={handleSaveSegments}

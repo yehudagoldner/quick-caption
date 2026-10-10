@@ -20,6 +20,7 @@ import paypalRouter from "./routes/paypal.js";
 import pool from "./db.js";
 import { createAdminStore } from "./src/adminStore.js";
 import { createAdminRouter } from "./routes/admin.js";
+import { createImpersonationSessions } from './src/impersonation.js';
 import { createDownloadStore } from "./src/downloadStore.js";
 import { createDownloadsRouter } from "./routes/downloads.js";
 import { captureApiErrors, createClientErrorHandler, createErrorRecorder } from "./src/errorMonitoring.js";
@@ -44,6 +45,7 @@ const allowedOrigins = process.env.CORS_ORIGIN
   : undefined;
 
 const adminStore = createAdminStore(pool);
+const impersonations = createImpersonationSessions(adminStore);
 const downloadStore = createDownloadStore(pool);
 const errorRecorder = createErrorRecorder(adminStore);
 app.use(captureApiErrors(errorRecorder));
@@ -68,10 +70,13 @@ startDiagnosticCleanup(pluginDiagnostics);
 const verifyIdentity = createFirebaseVerifier({ projectId: process.env.FIREBASE_PROJECT_ID || process.env.VITE_FIREBASE_PROJECT_ID });
 const connectionStore = createConnectionStore(pool);
 const authenticate = createIdentityMiddleware(createConnectionIdentityVerifier(verifyIdentity, connectionStore));
-app.use('/api/plugin/link', createPluginPublicRouter({ sessions: pluginSessions, authenticate, upsertUser, getUserCredits }));
+app.use('/api/plugin/link', (req, res, next) => {
+  if (req.headers['x-quick-caption-impersonation']) return res.status(403).json({ error: 'קישור תוסף אינו זמין בזמן התחזות.' });
+  next();
+}, createPluginPublicRouter({ sessions: pluginSessions, authenticate, upsertUser, getUserCredits }));
 configureUsageRecorder(row => adminStore.recordUsage(row));
 app.use(usageContext);
-app.use('/api/admin', createAdminRouter({ authenticate, store: adminStore, downloadStore }));
+app.use('/api/admin', createAdminRouter({ authenticate, store: adminStore, downloadStore, impersonations }));
 if (isDevAuthBypassEnabled()) {
   await ensureDevDummyUser({
     uid: getDevAuthUid(),
@@ -103,20 +108,22 @@ app.use('/api', async (req, res, next) => {
   if (req.method === 'GET' && req.path === '/payments/config') return next();
   const media = ['GET', 'HEAD'].includes(req.method) && req.path.match(/^\/videos\/(\d+)\/media$/);
   const grant = media && videoTokens.verify(req.query.mediaToken, 'media');
-  if (grant && grant.videoId === Number(media[1]) && await connectionStore.grantActive(grant)) {
+  if (grant && grant.videoId === Number(media[1]) && await impersonations.grantActive(grant, connectionStore)) {
     req.identity = { uid: grant.userUid };
     return next();
   }
   const thumbnail = ['GET', 'HEAD'].includes(req.method) && req.path.match(/^\/videos\/(\d+)\/thumbnail$/);
   const thumbnailGrant = thumbnail && videoTokens.verify(req.query.thumbnailToken, 'thumbnail');
-  if (thumbnailGrant && thumbnailGrant.videoId === Number(thumbnail[1]) && await connectionStore.grantActive(thumbnailGrant)) {
+  if (thumbnailGrant && thumbnailGrant.videoId === Number(thumbnail[1]) && await impersonations.grantActive(thumbnailGrant, connectionStore)) {
     req.identity = { uid: thumbnailGrant.userUid };
     return next();
   }
   privateAuthenticate(req, res, () => {
-    // Checkout handlers also derive ownership from this verified identity.
-    if (req.body && typeof req.body === 'object') req.body.userUid = req.identity.uid;
-    next();
+    impersonations.apply(req, res, () => {
+      // Checkout handlers also derive ownership from this verified identity.
+      if (req.body && typeof req.body === 'object') req.body.userUid = req.identity.uid;
+      next();
+    });
   });
 });
 const upload = createMediaUpload(uploadDir);
