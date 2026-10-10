@@ -259,7 +259,7 @@ test('a new quote cannot replace a completed job that is still awaiting caption 
 test('an unavailable placement component leaves an actionable retry, no stale audio preparation or paid request', async () => {
   const panel = await openPanel({ selectionSnapshot: { sequenceName: 'Selected clips', duration: 24 } });
   await vm.runInContext('captionSelection()', panel.context);
-  assert.match(panel.node('status').textContent, /קובץ הגדרת הפיתוח/);
+  assert.match(panel.node('status').textContent, /חבילת Quick Caption/);
   assert.equal(panel.node('selection-state').textContent, 'נדרשת הפעלה');
   assert.equal(panel.node('selected').disabled, false);
   assert.match(panel.node('selected').textContent, /קרדיטים/);
@@ -403,4 +403,14 @@ test('a long export renews an expired admission quote within the original approv
   await vm.runInContext('getQuote(quote).then(value=>{value.expiresAt=new Date(0).toISOString();return send(value);})',panel.context);
   assert.equal(panel.calls.filter(url=>url.endsWith('/api/plugin/quote')).length,2);
   assert.equal(panel.calls.filter(url=>url.endsWith('/api/transcribe')).length,1);
+});
+
+test('a new installation discovers an Adobe WAV preset without a file picker or transcription',async()=>{
+  const fixture=audioExportFixture();let picked=0;
+  fixture.fs.getFileForOpening=async()=>{picked++;throw Error('must not open picker');};
+  fixture.fs.getEntryWithUrl=async url=>{assert.equal(url,'file:/Applications/Premiere.app/Waveform 48kHz 16-bit.epr');return {nativePath:'/Applications/Premiere.app/Waveform 48kHz 16-bit.epr'};};
+  const panel=await openPanel({exportFixture:fixture});
+  vm.runInContext("bridge.request=async()=>({audioPresets:['/Applications/Premiere.app/Waveform 48kHz 16-bit.epr']});",panel.context);
+  const preset=await vm.runInContext('audioPreset({})',panel.context);
+  assert.match(preset.nativePath,/Waveform/);assert.equal(picked,0);assert.equal(panel.calls.some(url=>url.endsWith('/api/transcribe')),false);
 });

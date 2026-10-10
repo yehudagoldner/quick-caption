@@ -279,7 +279,19 @@
       inspectNativeGraphics: function (input) { return json(inspectNativeGraphics, input); },
       buildGraphics: function (input) { return json(buildGraphics, input); },
       lookupGraphics: function (input) { return json(function (data) { return { ok: true, result: completed['graphics:' + data.id] || null }; }, input); },
-      health: function (input) { return json(function () { return { ok: true, protocolVersion: 1, version: '1.2.0', nativeGraphics: true, referenceAudio: true, hostVersion: app.version }; }, input); },
+      health: function (input) { return json(function () { return { ok: true, protocolVersion: 1, version: '1.3.0', nativeGraphics: true, referenceAudio: true, hostVersion: app.version }; }, input); },
+      setupInfo: function (input) { return json(function () {
+        var roots = [Folder.startup.fsName];
+        try { roots.push(Folder.appPackage.fsName + '/Contents', Folder.appPackage.fsName + '/Contents/Resources'); } catch (ignored) {}
+        var presets = [];
+        for (var r = 0; r < roots.length; r++) {
+          var directory = new Folder(roots[r] + '/MediaIO/systempresets/3F3F3F3F_57415645');
+          if (!directory.exists) continue;
+          var files = directory.getFiles('*.epr');
+          for (var f = 0; f < files.length && presets.length < 32; f++) if (files[f] instanceof File) presets.push(files[f].fsName);
+        }
+        return {ok:true, audioPresets:presets};
+      }, input); },
       prepare: function (input) { return json(function (data) {
         if (data.target && data.target.operation === 'attach-reference-audio') return attachReferenceAudio(data.target);
         if (data.target && data.target.operation) fail('פעולת הכנה לא מוכרת', 'invalid_request');

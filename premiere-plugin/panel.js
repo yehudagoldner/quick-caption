@@ -320,6 +320,19 @@ async function audioPreset(sequence) {
   try { preset = await fs.getEntryForPersistentToken(readStoredJson(await uxp.storage.secureStorage.getItem('audio-preset'))); } catch { /* First use or revoked file permission. */ }
   diagnostics.environment.presetSaved = !!preset;
   if (!preset) {
+    // Use Adobe's installed WAV presets; never redistribute Adobe preset files.
+    try {
+      const info = await bridge.request('/setup-info');
+      const candidates = (info.audioPresets || []).slice(0, 32).sort((a,b) => Number(/48.*16/.test(b)) - Number(/48.*16/.test(a)));
+      for (const candidate of candidates) {
+        try {
+          const entry = await fs.getEntryWithUrl('file:' + (/^[a-z]:/i.test(candidate) ? '/' : '') + candidate.replace(/\\/g, '/'));
+          if ((await ppro.EncoderManager.getExportFileExtension(sequence, entry.nativePath)).replace(/^\./, '').toLowerCase() === 'wav') { preset = entry; break; }
+        } catch { /* Try the next Adobe preset. */ }
+      }
+    } catch { /* Older companion: retain the explicit fallback. */ }
+  }
+  if (!preset) {
     message('בהפעלה הראשונה בחרו preset של Waveform Audio מסוג EPR. הבחירה תישמר לפעמים הבאות.');
     preset = await fs.getFileForOpening({ types: ['epr'] });
   }

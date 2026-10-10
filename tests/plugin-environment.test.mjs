@@ -80,6 +80,7 @@ for(const scenario of scenarios)test(`${scenario.name}: CEP bootstrap logs a por
     if(name.endsWith('environment.js'))return environment;
     if(name.endsWith('diagnostics.js'))return {createBridgeDiagnostics:()=>diagnostics};
     if(name.endsWith('bridge-config.json'))return {token:'f'.repeat(64),port:37289};
+    if(name.endsWith('pairing.js'))return {loadPairing:({development})=>development};
     if(name.endsWith('server.js'))return {startBridge:()=>{throw Object.assign(new Error('secret path and bearer token'),{code:'EADDRINUSE'});}};
     throw Error('Unexpected require');
   }}}});

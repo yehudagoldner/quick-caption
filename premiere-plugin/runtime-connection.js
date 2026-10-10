@@ -1,0 +1,20 @@
+// Private, per-user rendezvous; no account credentials or diagnostics.
+function connectionPath(home) {
+  if (typeof home !== 'string' || !home || /[\0\r\n]/.test(home)) throw new Error('Missing user home');
+  return home.replace(/\\/g, '/').replace(/\/$/, '') + '/.quick-caption/premiere-qa/connection.json';
+}
+function validConnection(value) {
+  return !!value && /^[a-f0-9]{64}$/.test(value.token || '') && value.port === 37289;
+}
+function nativeFileUrl(value) {
+  const normalized = value.replace(/\\/g, '/');
+  return 'file:' + (/^[a-z]:/i.test(normalized) ? '/' : '') + normalized;
+}
+async function readConnection() {
+  const file = require('fs');
+  const os = require('os');
+  const value = JSON.parse(await file.readFile(connectionPath(os.homedir()), {encoding:'utf-8'}));
+  if (!validConnection(value)) throw new Error('Invalid local pairing');
+  return value;
+}
+module.exports = { connectionPath, validConnection, nativeFileUrl, readConnection };

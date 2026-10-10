@@ -13,8 +13,8 @@
       "preferredFloatingSize": { "width": 110, "height": 150 } },
     { "type": "command", "id": "captionSelection", "label": { "default": "קבלת כתוביות לקטעים שנבחרו" } }],
   "requiredPermissions": {
-    "localFileSystem": "request",
-    "network": { "domains": ["https://quick-caption.com", "http://localhost:37289"] },
+    "localFileSystem": "fullAccess",
+    "network": { "domains": ["https://quick-caption.com", "http://localhost:37289", "http://127.0.0.1:37289"] },
     "ipc": { "enablePluginCommunication": true },
     "launchProcess": { "schemes": ["https"], "extensions": [] }
   }

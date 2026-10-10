@@ -1,16 +1,20 @@
 const { validateSelection } = require('./selection.js');
 const { normalizeCaptionTiming } = require('./caption-timing.js');
-const UNAVAILABLE = 'רכיב ההצבה האוטומטית לא נטען בפרימייר. הפעילו את קובץ הגדרת הפיתוח שקיבלתם, הפעילו מחדש את פרימייר ואז נסו שוב. אין צורך בתמלול נוסף.';
+const UNAVAILABLE = 'רכיב ההצבה האוטומטית לא נטען בפרימייר. התקינו את חבילת Quick Caption המלאה, הפעילו מחדש את פרימייר ואז נסו שוב. אין צורך בתמלול נוסף.';
 const unavailable = () => Object.assign(new Error(UNAVAILABLE), { code: 'bridge_unavailable' });
 
 class TimelineBridge {
-  constructor({ configuration, fetcher = fetch, diagnostics }) { this.configuration = configuration; this.fetcher = fetcher; this.diagnostics = diagnostics; }
+  constructor({ configuration, fetcher = fetch, diagnostics, configurationProvider = () => require('./runtime-connection.js').readConnection() }) { this.configuration = configuration; this.fetcher = fetcher; this.diagnostics = diagnostics; this.configurationProvider = configurationProvider; }
   async request(route, body) {
+    if (!this.configuration?.token) {
+      try { this.configuration = await this.configurationProvider(); } catch { throw unavailable(); }
+    }
     if (!this.configuration?.token) throw unavailable();
+    if (this.diagnostics) this.diagnostics.environment.paired = true;
     let response;
     let timer;
     try {
-      const request = this.fetcher(`http://localhost:${this.configuration.port}${route}`, {
+      const request = this.fetcher(`http://127.0.0.1:${this.configuration.port}${route}`, {
         method: body ? 'POST' : 'GET', headers: { 'X-Quick-Caption-Bridge': this.configuration.token, ...(body ? { 'Content-Type': 'application/json' } : {}) },
         ...(body ? { body: JSON.stringify(body) } : {}),
       });
@@ -18,7 +22,7 @@ class TimelineBridge {
       response = await Promise.race([request, new Promise((_, reject) => { timer = setTimeout(() => reject(Object.assign(new Error('ההצבה בפרימייר נמשכת מעבר לזמן ההמתנה. התמלול נשמר; נסיון חוזר לא יתמלל או יחייב שוב.'), {code:'bridge_timeout'})), timeout); })]);
     } catch (error) {
       if (error.code === 'bridge_timeout') throw error;
-      if (/Permission denied|Manifest entry not found/i.test(error.message || '')) throw Object.assign(new Error('פרימייר לא טען את הרשאות החיבור המעודכנות. טענו מחדש את התוסף בכלי הפיתוח ונסו שוב.'), { code: 'bridge_permissions' });
+      if (/Permission denied|Manifest entry not found/i.test(error.message || '')) throw Object.assign(new Error('פרימייר לא טען את הרשאות החיבור המעודכנות. סגרו ופתחו מחדש את פרימייר ונסו שוב.'), { code: 'bridge_permissions' });
       throw unavailable();
     } finally { clearTimeout(timer); }
     let result;

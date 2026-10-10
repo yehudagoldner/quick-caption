@@ -47,6 +47,7 @@ function createDeliveryService({ root, evalHost, loadTemplate = () => installedT
   };
   return {
     health: () => serialized(() => evalHost('health', {})),
+    setupInfo: () => serialized(() => evalHost('setupInfo', {})),
     inspectNativeGraphics: () => serialized(() => probeGraphics(true)),
     prepare: target => serialized(() => { validateTarget(target); return evalHost('prepare', { target }); }),
     prepareGraphics: target => serialized(async () => {
@@ -132,6 +133,7 @@ function startBridge({ root, token, evalHost, port = 37289, diagnostics }) {
     if (!expectedHosts.includes(request.headers.host) || request.headers.origin || request.headers['x-quick-caption-bridge'] !== token) { reply(403, { error: 'Forbidden', code: 'forbidden' }); return; }
     try {
       if (request.method === 'GET' && request.url === '/health') { reply(200, { ...await service.health(), environment: { os: process.platform, arch: process.arch, runtimeVersion: process.versions.node }, diagnostics: diagnostics?.read() || [] }); return; }
+      if (request.method === 'GET' && request.url === '/setup-info') { reply(200, await service.setupInfo()); return; }
       if (request.method !== 'POST' || !['/prepare', '/deliver', '/native-graphics-probe','/prepare-graphics','/build-graphics'].includes(request.url)) { reply(404, { error: 'Not found' }); return; }
       if (!/^application\/json(?:;|$)/i.test(request.headers['content-type'] || '')) throw failure('JSON required', 'invalid_request', 415);
       let size = 0; const chunks = [];
