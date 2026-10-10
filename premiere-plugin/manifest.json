@@ -8,10 +8,13 @@
   "entrypoints": [{ "type": "panel", "id": "quickCaption", "label": { "default": "Quick Caption QA" },
     "minimumSize": { "width": 300, "height": 420 }, "preferredDockedSize": { "width": 360, "height": 650 },
     "preferredFloatingSize": { "width": 380, "height": 700 } },
+    { "type": "panel", "id": "quickCaptionToolbar", "label": { "default": "CC · כתוביות" },
+      "minimumSize": { "width": 64, "height": 80 }, "preferredDockedSize": { "width": 80, "height": 120 },
+      "preferredFloatingSize": { "width": 110, "height": 150 } },
     { "type": "command", "id": "captionSelection", "label": { "default": "קבלת כתוביות לקטעים שנבחרו" } }],
   "requiredPermissions": {
     "localFileSystem": "request",
-    "network": { "domains": ["https://quick-caption.com"] },
+    "network": { "domains": ["https://quick-caption.com", "http://localhost:37289"] },
     "ipc": { "enablePluginCommunication": true },
     "launchProcess": { "schemes": ["https"], "extensions": [] }
   }

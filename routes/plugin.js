@@ -41,9 +41,28 @@ export function createPluginPublicRouter({ sessions, authenticate, upsertUser, g
   return router;
 }
 
-export function createPluginPrivateRouter({ sessions, getUserCredits, getVideoById }) {
+export function createPluginPrivateRouter({ sessions, getUserCredits, getVideoById, diagnostics }) {
   const router = Router();
   router.use((req, res, next) => { res.set('Cache-Control', 'private, no-store'); next(); });
+  const diagnosticLimits = new Map();
+  router.use('/diagnostics', (req, res, next) => {
+    if (!diagnostics) return res.sendStatus(404);
+    const now = Date.now(), uid = req.identity.uid;
+    for (const [key, bucket] of diagnosticLimits) if (bucket.until <= now) diagnosticLimits.delete(key);
+    if (!diagnosticLimits.has(uid) && diagnosticLimits.size >= 1000) return res.sendStatus(429);
+    const bucket = diagnosticLimits.get(uid) || { count: 0, until: now + 60000 };
+    diagnosticLimits.set(uid, bucket);
+    if (++bucket.count > 20) return res.status(429).json({ error: 'Too many diagnostic requests' });
+    next();
+  });
+  router.post('/diagnostics', async (req, res) => {
+    try { res.status(202).json(await diagnostics.accept(req.identity.uid, req.body)); }
+    catch (error) { res.status(error.status || 503).json({ error: 'Diagnostic unavailable' }); }
+  });
+  router.get('/diagnostics', async (req, res) => {
+    try { res.json({ reports: await diagnostics.list(req.identity.uid) }); }
+    catch { res.status(503).json({ error: 'Diagnostic unavailable' }); }
+  });
   router.get('/account', async (req, res) => {
     const credits = await getUserCredits(req.identity.uid);
     if (credits === null) return res.status(404).json({ error: 'חשבון לא נמצא' });

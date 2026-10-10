@@ -71,6 +71,15 @@ test('editing a captured clip during sign-in aborts before cloning or exporting'
   await assert.rejects(isolatedSelection(host.ppro, snapshot), /השתנה/);
   assert.equal(host.sequences.length, 1);
 });
+test('numeric reverse flags from Premiere are normalized while reversal changes remain detectable', async () => {
+  const host = hostFixture();
+  for (const row of host.original.rows) row.isSpeedReversed = async () => 0;
+  const snapshot = await captureSelection(host.ppro);
+  assert.ok(snapshot.rows.every(row => row.reversed === false));
+  await validateSelection(host.ppro, snapshot);
+  host.original.rows[0].isSpeedReversed = async () => 1;
+  await assert.rejects(validateSelection(host.ppro, snapshot), /השתנה/);
+});
 test('video-only selections request audio before any export', async () => {
   const host = hostFixture(); host.original.rows.forEach(row => { row.selected = row.kind === 'Video'; });
   await assert.rejects(captureSelection(host.ppro), /אודיו/);
