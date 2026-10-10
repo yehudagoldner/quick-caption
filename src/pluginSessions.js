@@ -65,6 +65,8 @@ export function createPluginSessions(pool) {
         if (rows[0].user_uid) throw failure(409, 'בקשת החיבור כבר אושרה');
         const cutoff = await lockConnectionState(connection, identity.uid);
         if (cutoff && (!identity.authTime || identity.authTime <= cutoff)) throw connectionRevoked();
+        const [browser] = await connection.execute('SELECT revoked_at FROM browser_connections WHERE user_uid = ? AND auth_time = ?', [identity.uid, identity.authTime ?? 0]);
+        if (browser[0]?.revoked_at) throw connectionRevoked();
         const profile = { uid: identity.uid, email: identity.email, displayName: identity.displayName, authTime: identity.authTime };
         await connection.execute('UPDATE plugin_links SET user_uid = ?, identity_json = ? WHERE id = ?', [identity.uid, JSON.stringify(profile), id]);
         return { status: 'approved' };
@@ -80,6 +82,8 @@ export function createPluginSessions(pool) {
         const cutoff = await lockConnectionState(connection, row.user_uid);
         const profile = parse(row.identity_json);
         if (cutoff && (!profile.authTime || profile.authTime <= cutoff)) throw connectionRevoked();
+        const [browser] = await connection.execute('SELECT revoked_at FROM browser_connections WHERE user_uid = ? AND auth_time = ?', [row.user_uid, profile.authTime ?? 0]);
+        if (browser[0]?.revoked_at) throw connectionRevoked();
         const issued = tokens();
         const sessionId = randomUUID();
         await connection.execute(`INSERT INTO plugin_sessions (id, user_uid, identity_json, access_hash, refresh_hash, access_expires_at, refresh_expires_at)

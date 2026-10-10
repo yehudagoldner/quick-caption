@@ -41,7 +41,10 @@ test('QA: browser and plugin isolation, revocation, refreshed token replay, unkn
   const browserGrant = { userUid: uid, ...connectionBinding(second) };
   const pluginGrant = { userUid: uid, ...connectionBinding(plugin) };
   assert.equal(await store.grantActive(browserGrant), true);
+  const deniedPairing = await plugins.start(); links.push(deniedPairing.id);
+  await plugins.approve(deniedPairing.id, deniedPairing.userCode, { ...identity, authTime: now - 90 });
   await store.revoke(uid, second.browserConnectionId);
+  await assert.rejects(plugins.poll(deniedPairing.id, deniedPairing.deviceSecret), { code: 'CONNECTION_REVOKED' }, 'A revoked browser cannot complete an earlier pending pairing');
   await assert.rejects(store.browser({ ...identity, authTime: now - 90 }, 'new user-agent'), { code: 'CONNECTION_REVOKED' });
   assert.equal(await store.grantActive(browserGrant), false);
   assert.equal((await store.browser(identity)).browserConnectionId, current.browserConnectionId);
