@@ -1,5 +1,6 @@
-import { setApiUser, apiFetch, apiAuthEpoch } from "../api";
-import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { setApiUser, apiFetch, apiAuthEpoch, apiUserUid } from "../api";
+import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { adminRequest } from '../adminApi';
 import { GoogleAuthProvider, onAuthStateChanged, signInWithPopup, signOut } from "firebase/auth";
 import type { User } from "firebase/auth";
 import { createDevAuthUser, isDevAuthBypass } from "../devAuth";
@@ -11,7 +12,16 @@ type AuthContextValue = {
   connectionNotice: string | null;
   signIn: () => Promise<void>;
   signOut: () => Promise<void>;
+  impersonation: Impersonation | null;
+  startImpersonation: (uid: string) => Promise<void>;
+  stopImpersonation: () => Promise<void>;
 };
+
+type Impersonation = { token: string; expiresAt: number; user: { uid: string; email: string | null; displayName: string | null;
+  photoURL: string | null; phoneNumber: string | null; emailVerified: boolean; providerId: string | null } };
+const impersonationKey = `${import.meta.env.BASE_URL}quickcaption:impersonation`;
+const savedToken = () => { try { return sessionStorage.getItem(impersonationKey); } catch { return null; } };
+const saveToken = (token: string | null) => { try { if (token) sessionStorage.setItem(impersonationKey, token); else sessionStorage.removeItem(impersonationKey); } catch { /* Storage may be disabled. */ } };
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
@@ -45,6 +55,47 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const setUser = (next: User | null) => { setApiUser(next); setUserState(next); };
   const [loading, setLoading] = useState(!isDevAuthBypass);
   const [connectionNotice, setConnectionNotice] = useState<string | null>(null);
+  const administrator = useRef<User | null>(null);
+  const session = useRef<Impersonation | null>(null);
+  const [impersonation, setImpersonation] = useState<Impersonation | null>(null);
+  const applyImpersonation = (actor: User, next: Impersonation | null) => {
+    session.current = next;
+    setImpersonation(next);
+    saveToken(next?.token ?? null);
+    // Keep the real credential on the administrator; only the application profile changes.
+    const effective = next ? { ...actor, ...next.user, getIdToken: actor.getIdToken.bind(actor) } as User : actor;
+    setApiUser(effective, next?.token ?? null);
+    setUserState(effective);
+  };
+  const handleStartImpersonation = async (uid: string) => {
+    const actor = administrator.current;
+    if (!actor || session.current) throw new Error('יש לחזור לניהול לפני כניסה למשתמש.');
+    const next = await adminRequest<Impersonation>(actor, '/impersonation/start', { userUid: uid }, { administrator: true });
+    if (administrator.current !== actor) return;
+    setConnectionNotice(null);
+    applyImpersonation(actor, next);
+  };
+  const handleStopImpersonation = async () => {
+    const actor = administrator.current;
+    const previous = session.current;
+    if (!actor || !previous) return;
+    // Always allow a local return, even when the server session already expired.
+    applyImpersonation(actor, null);
+    try { await adminRequest(actor, '/impersonation/stop', { token: previous.token }, { administrator: true }); }
+    catch { setConnectionNotice('חזרתם לחשבון הניהול. לא התקבל אישור לסיום החיבור הזמני בשרת; תוקפו מוגבל לשעה.'); }
+  };
+
+  useEffect(() => {
+    const expired = () => {
+      if (administrator.current && session.current) {
+        applyImpersonation(administrator.current, null);
+        setConnectionNotice('ההתחזות הסתיימה. חזרתם לחשבון הניהול.');
+      }
+    };
+    window.addEventListener('qc-impersonation-expired', expired);
+    const timer = impersonation ? window.setTimeout(expired, Math.max(0, impersonation.expiresAt - Date.now())) : undefined;
+    return () => { window.removeEventListener('qc-impersonation-expired', expired); window.clearTimeout(timer); };
+  }, [impersonation]);
 
   useEffect(() => {
     const revoked = async (event: Event) => {
@@ -52,7 +103,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const uid = (event as CustomEvent).detail?.uid;
       const epoch = (event as CustomEvent).detail?.epoch ?? apiAuthEpoch();
       const { auth } = await import('../firebase');
-      if (auth.currentUser?.uid !== uid || epoch !== apiAuthEpoch()) return;
+      if (apiUserUid() !== uid || epoch !== apiAuthEpoch()) return;
       setConnectionNotice('החיבור במכשיר הזה נותק. יש להתחבר מחדש כדי להמשיך.');
       setUser(null);
       await signOut(auth);
@@ -75,11 +126,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     void import("../firebase").then(({ auth }) => {
       if (cancelled) return;
       unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
+        administrator.current = firebaseUser;
+        session.current = null;
+        setImpersonation(null);
         setUser(firebaseUser);
-        setLoading(false);
-        if (firebaseUser) {
-          void syncUser(firebaseUser);
+        const token = savedToken();
+        if (!firebaseUser || !token) {
+          saveToken(null); setLoading(false);
+          if (firebaseUser) void syncUser(firebaseUser);
+          return;
         }
+        setLoading(true);
+        void adminRequest<Impersonation>(firebaseUser, '/impersonation/session', { token }, { administrator: true }).then(next => {
+          if (!cancelled && administrator.current === firebaseUser) applyImpersonation(firebaseUser, next);
+        }).catch(() => {
+          if (!cancelled && administrator.current === firebaseUser) {
+            saveToken(null); setConnectionNotice('ההתחזות הסתיימה. חזרתם לחשבון הניהול.');
+          }
+        }).finally(() => { if (!cancelled && administrator.current === firebaseUser) setLoading(false); });
       });
     });
 
@@ -110,6 +174,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const handleSignOut = async () => {
+    if (session.current) { await handleStopImpersonation(); return; }
     if (isDevAuthBypass) {
       setUser(null);
       return;
@@ -121,8 +186,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const value = useMemo<AuthContextValue>(
-    () => ({ user, loading, isDevBypass: isDevAuthBypass, connectionNotice, signIn: handleSignIn, signOut: handleSignOut }),
-    [user, loading, connectionNotice],
+    () => ({ user, loading, isDevBypass: isDevAuthBypass, connectionNotice, signIn: handleSignIn, signOut: handleSignOut,
+      impersonation, startImpersonation: handleStartImpersonation, stopImpersonation: handleStopImpersonation }),
+    [user, loading, connectionNotice, impersonation],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

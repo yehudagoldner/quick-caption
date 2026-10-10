@@ -94,7 +94,7 @@ export function createConnectionStore(pool) {
 }
 
 export function connectionBinding(identity) {
-  return identity.browserConnectionId ? { connectionId: identity.browserConnectionId, connectionKind: 'browser' }
+  return identity.browserConnectionId ? { connectionId: identity.browserConnectionId, connectionKind: 'browser', ...(identity.impersonationId ? { impersonationId: identity.impersonationId } : {}) }
     : identity.pluginSessionId ? { connectionId: identity.pluginSessionId, connectionKind: 'premiere' } : {};
 }
 

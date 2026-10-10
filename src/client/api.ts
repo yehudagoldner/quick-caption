@@ -3,17 +3,23 @@ import { clearVideoLibrary } from './videoLibrary';
 
 let currentUser: User | null = null;
 let authEpoch = 0;
-export function setApiUser(user: User | null) {
+let impersonationToken: string | null = null;
+export function apiImpersonationToken() { return impersonationToken; }
+export function setApiUser(user: User | null, token: string | null = null) {
   if (currentUser !== user) authEpoch++;
   if (currentUser?.uid !== user?.uid) clearVideoLibrary();
   currentUser = user;
+  impersonationToken = token;
   if (user) void import('./errorReporting').then(module => module.flushErrorReports()).catch(() => {});
 }
 export function apiUserUid() { return currentUser?.uid ?? 'guest'; }
 export function apiAuthEpoch() { return authEpoch; }
 export async function handleConnectionResponse(response: Response, requestUid: string, requestEpoch = authEpoch) {
-  if (response.status !== 401) return;
+  if (response.status !== 401 && response.status !== 403) return;
   const data = await response.clone().json().catch(() => null);
+  if (data?.code === 'IMPERSONATION_EXPIRED' && apiUserUid() === requestUid && requestEpoch === authEpoch) {
+    window.dispatchEvent(new CustomEvent('qc-impersonation-expired'));
+  }
   if (data?.code === 'CONNECTION_REVOKED' && apiUserUid() === requestUid && requestEpoch === authEpoch) {
     window.dispatchEvent(new CustomEvent('qc-connection-revoked', { detail: { uid: requestUid, epoch: requestEpoch } }));
   }
@@ -25,6 +31,7 @@ export async function apiHeaders(initial?: HeadersInit): Promise<Headers> {
     const token = await user.getIdToken();
     if (currentUser !== user) throw new Error('The signed-in account changed during the request');
     headers.set('Authorization', `Bearer ${token}`);
+    if (impersonationToken) headers.set('X-Quick-Caption-Impersonation', impersonationToken);
   }
   return headers;
 }

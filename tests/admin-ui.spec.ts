@@ -73,3 +73,43 @@ test('guest admin route asks for login', async ({ page }) => {
   await setup(page, 'guest'); await page.goto('/admin');
   await expect(page.getByRole('button', { name: 'התחברות לניהול' })).toBeVisible();
 });
+
+test('admin enters target account, keeps it on refresh and returns to management', async ({ page }) => {
+  await setup(page);
+  await page.unroute('**/src/client/contexts/AuthContext.tsx*');
+  await page.route('**/src/client/firebase.ts*', route => route.fulfill({ contentType: 'application/javascript', body: `
+    const user = { uid: 'owner-id', email: 'goldnery@gmail.com', displayName: 'Owner', getIdToken: async () => 'ui-test-token', metadata: {} };
+    export const auth = { currentUser: user, onAuthStateChanged(callback) { queueMicrotask(() => callback(user)); return () => {}; } };
+  ` }));
+  const target = { uid: 'member-id', email: 'member@example.com', displayName: 'משתמש לבדיקה', photoURL: null, emailVerified: true };
+  const session = { token: 'test-impersonation-token', expiresAt: Date.now() + 3600000, user: target };
+  let stopped = false;
+  await page.route('**/api/admin/impersonation/*', async route => {
+    expect(route.request().headers().authorization).toBe('Bearer ui-test-token');
+    expect(route.request().headers()['x-quick-caption-impersonation']).toBeUndefined();
+    if (route.request().url().endsWith('/stop')) { stopped = true; return route.fulfill({ json: { success: true } }); }
+    return route.fulfill({ json: session });
+  });
+  await page.route('**/api/users/credits*', route => {
+    const impersonating = route.request().headers()['x-quick-caption-impersonation'] === session.token;
+    return route.fulfill({ json: { credits: impersonating ? 1234 : 50 } });
+  });
+  await page.route('**/api/videos?*', route => {
+    if (new URL(route.request().url()).searchParams.get('userUid') === target.uid) {
+      expect(route.request().headers()['x-quick-caption-impersonation']).toBe(session.token);
+    } else expect(route.request().headers()['x-quick-caption-impersonation']).toBeUndefined();
+    return route.fulfill({ json: { videos: [], hasMore: false } });
+  });
+  await page.goto('/admin');
+  await page.getByRole('button', { name: 'התחברות כמשתמש', exact: true }).click();
+  await expect(page).toHaveURL(/screen=videos/);
+  await expect(page.getByText(/מחוברים כמשתמש:/)).toBeVisible();
+  await expect(page.getByText('1234 קרדיטים', { exact: true })).toBeVisible();
+  await page.reload();
+  await expect(page.getByRole('button', { name: 'חזרה לניהול' })).toBeVisible();
+  await page.getByRole('button', { name: 'חזרה לניהול' }).click();
+  await expect(page.getByRole('heading', { name: 'ניהול QuickCaption' })).toBeVisible();
+  await expect(page.getByText(/מחוברים כמשתמש:/)).toHaveCount(0);
+  await expect.poll(() => stopped).toBe(true);
+  await expect(page.getByText('50 קרדיטים', { exact: true })).toBeVisible();
+});

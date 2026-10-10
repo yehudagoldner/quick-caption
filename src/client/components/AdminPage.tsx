@@ -27,8 +27,8 @@ const number = (value: Numeric) => Number(value).toLocaleString('he-IL');
 const money = (value: Numeric) => Number(value).toLocaleString('he-IL', { style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 4 });
 const date = (value: string | null) => value ? new Date(value).toLocaleString('he-IL', { timeZone: 'Asia/Jerusalem' }) : 'טרם נרשם שימוש';
 
-export function AdminPage() {
-  const { user, loading: authLoading, signIn } = useAuth();
+export function AdminPage({ onImpersonationStarted }: { onImpersonationStarted?: () => void }) {
+  const { user, loading: authLoading, signIn, startImpersonation } = useAuth();
   const [overview, setOverview] = useState<Overview | null>(null);
   const [accounts, setAccounts] = useState<UserPage>({ users: [], total: 0, page: 0 });
   const [search, setSearch] = useState('');
@@ -89,6 +89,12 @@ export function AdminPage() {
   };
   // Editing details starts a new operation. A retry of unchanged details keeps the original ID.
   const change = (setter: (value: string) => void, value: string) => { pendingGrant.current = null; setter(value); };
+  const impersonate = async (account: Account) => {
+    setBusy(true); setError('');
+    try { await startImpersonation(account.uid); onImpersonationStarted?.(); }
+    catch (err) { setError((err as Error).message); }
+    finally { setBusy(false); }
+  };
 
   if (authLoading) return <Stack alignItems="center" py={8}><CircularProgress /></Stack>;
   if (!user) return <Stack dir="rtl" spacing={2} alignItems="center" py={8}>
@@ -154,7 +160,7 @@ export function AdminPage() {
             <TableCell align="right">{number(account.videoDownloads ?? 0)}<Typography variant="caption" display="block" color="text.secondary">{number(account.downloadedVideos ?? 0)} סרטונים שונים</Typography></TableCell>
             <TableCell align="right">{number(account.subtitleDownloads ?? 0)}</TableCell>
             <TableCell align="right">{account.averageRating == null ? '—' : `${Number(account.averageRating).toFixed(1)}/5`}</TableCell>
-            <TableCell align="right"><Stack direction="row" gap={1}><Button size="small" onClick={() => openDialog('credits', account)}>הוספת קרדיטים</Button>{!account.admin && <Button size="small" onClick={() => openDialog('admin', account)}>הוספה לניהול</Button>}</Stack></TableCell>
+            <TableCell align="right"><Stack direction="row" gap={1}><Button size="small" disabled={busy || account.uid === user.uid} onClick={() => void impersonate(account)}>התחברות כמשתמש</Button><Button size="small" onClick={() => openDialog('credits', account)}>הוספת קרדיטים</Button>{!account.admin && <Button size="small" onClick={() => openDialog('admin', account)}>הוספה לניהול</Button>}</Stack></TableCell>
           </TableRow>)}
           {!accounts.users.length && <TableRow><TableCell colSpan={9} align="center">לא נמצאו משתמשים.</TableCell></TableRow>}
         </TableBody></Table></TableContainer>
@@ -175,7 +181,7 @@ export function AdminPage() {
       </Paper>
       <Paper variant="outlined" sx={{ p: 3 }}><Typography variant="h6" fontWeight={700} mb={2}>פעולות ניהול אחרונות</Typography>
         <TableContainer><Table size="small"><TableHead><TableRow>{['מועד', 'מנהל', 'פעולה', 'יעד', 'סיבה'].map(label => <TableCell key={label} align="right">{label}</TableCell>)}</TableRow></TableHead><TableBody>
-          {overview.audit.map((entry, index) => <TableRow key={index}><TableCell align="right">{date(entry.createdAt)}</TableCell><TableCell align="right"><span dir="ltr">{entry.actor}</span></TableCell><TableCell align="right">{entry.action === 'grant-credits' ? `זיכוי ${entry.credits} קרדיטים` : 'הוספת מנהל'}</TableCell><TableCell align="right"><span dir="ltr">{entry.target}</span></TableCell><TableCell align="right">{entry.reason ?? '—'}</TableCell></TableRow>)}
+          {overview.audit.map((entry, index) => <TableRow key={index}><TableCell align="right">{date(entry.createdAt)}</TableCell><TableCell align="right"><span dir="ltr">{entry.actor}</span></TableCell><TableCell align="right">{entry.action === 'grant-credits' ? `זיכוי ${entry.credits} קרדיטים` : entry.action === 'impersonation-start' ? 'התחברות כמשתמש' : entry.action === 'impersonation-stop' ? 'חזרה לניהול' : 'הוספת מנהל'}</TableCell><TableCell align="right"><span dir="ltr">{entry.target}</span></TableCell><TableCell align="right">{entry.reason ?? '—'}</TableCell></TableRow>)}
           {!overview.audit.length && <TableRow><TableCell colSpan={5} align="center">טרם בוצעו פעולות ניהול.</TableCell></TableRow>}
         </TableBody></Table></TableContainer>
       </Paper>

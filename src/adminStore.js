@@ -79,6 +79,16 @@ export function createAdminStore(pool) {
       const [rows] = await pool.execute('SELECT email FROM admin_access WHERE email = ?', [email]);
       return rows.length > 0;
     },
+    async impersonationUser(uid) {
+      const [[user]] = await pool.execute(`SELECT uid, email, display_name AS displayName,
+        photo_url AS photoURL, phone_number AS phoneNumber, is_email_verified AS emailVerified,
+        provider_id AS providerId FROM users WHERE uid = ?`, [uid]);
+      return user ? { ...user, emailVerified: Boolean(user.emailVerified) } : null;
+    },
+    async auditImpersonation(actor, action, target, requestId) {
+      await pool.execute('INSERT INTO admin_audit (request_id, actor_email, action, target) VALUES (?, ?, ?, ?)',
+        [requestId, actor, action, target]);
+    },
     async overview() {
       const [payments, users, videos, usage, models, admins, audit, uploads, downloads, feedback] = await Promise.all([
         pool.query('SELECT COALESCE(SUM(amount_usd), 0) AS revenueUSD, COUNT(*) AS payments FROM credit_payments'),
@@ -95,7 +105,7 @@ export function createAdminStore(pool) {
         pool.query('SELECT email, granted_by AS grantedBy, created_at AS createdAt FROM admin_access ORDER BY created_at'),
         pool.query(`SELECT a.actor_email AS actor, a.action, COALESCE(u.email, a.target) AS target,
           a.credits, a.reason, a.created_at AS createdAt FROM admin_audit a
-          LEFT JOIN users u ON a.action = 'grant-credits' AND u.uid = a.target
+          LEFT JOIN users u ON a.action IN ('grant-credits', 'impersonation-start', 'impersonation-stop') AND u.uid = a.target
           ORDER BY a.created_at DESC LIMIT 30`),
         pool.query(`SELECT COUNT(*) AS total, COALESCE(SUM(media_type = 'video'), 0) AS videos,
           COALESCE(SUM(media_type = 'audio'), 0) AS audio FROM media_upload_activity`),

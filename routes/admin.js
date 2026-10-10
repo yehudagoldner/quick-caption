@@ -1,11 +1,15 @@
 import express from 'express';
 import { normalizeEmail } from '../src/adminStore.js';
 
-export function createAdminRouter({ authenticate, store, downloadStore }) {
+export function createAdminRouter({ authenticate, store, downloadStore, impersonations }) {
   const router = express.Router();
   router.use(authenticate);
   router.use(async (req, res, next) => {
     res.set('Cache-Control', 'no-store');
+    if (req.headers['x-quick-caption-impersonation']) {
+      if (req.path === '/session') return res.json({ isAdmin: false });
+      return res.status(403).json({ error: 'יש לחזור לחשבון הניהול לפני פעולות ניהול.' });
+    }
     const { email, emailVerified } = req.identity;
     if (!email || !emailVerified) return res.status(403).json({ error: 'נדרש חשבון עם אימייל מאומת.' });
     try {
@@ -21,6 +25,13 @@ export function createAdminRouter({ authenticate, store, downloadStore }) {
     catch (error) { res.status(error.status ?? 503).json({ error: error.status ? error.message : 'לא ניתן להשלים את הפעולה כרגע. אפשר לנסות שוב.' }); }
   };
   const uuid = value => typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
+  router.post('/impersonation/start', handle(req => {
+    const uid = req.body?.userUid;
+    if (typeof uid !== 'string' || !uid || uid.length > 128) throw Object.assign(new Error('מזהה משתמש לא תקין.'), { status: 400 });
+    return impersonations.start(req.identity, uid);
+  }));
+  router.post('/impersonation/session', handle(req => impersonations.profile(req.body?.token, req.identity)));
+  router.post('/impersonation/stop', handle(req => impersonations.stop(req.body?.token, req.identity)));
   router.get('/overview', handle(() => store.overview()));
   router.get('/feedback', handle(req => {
     const page = Number(req.query.page ?? 0);
