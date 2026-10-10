@@ -1,5 +1,6 @@
 // Recover provider decoding loops, not ordinary pauses. Keep the policy bounded
 // and independent of correction, which must never invent missing timestamps.
+import { synchronizeWords } from './wordAlignment.js';
 export const MAX_RECOVERY_CALLS = 4;
 export const RECOVERY_SECONDS = 24;
 const CONTEXT_SECONDS = 2;
@@ -7,6 +8,29 @@ const CONTEXT_SECONDS = 2;
 export function hasDecodingLoop(segment) {
   return /(\p{L})\1{19,}/u.test(String(segment.text || '').normalize('NFC')) ||
     (Number.isFinite(segment.compression_ratio) && segment.compression_ratio >= 10);
+}
+
+// This conservative recovery guard detects long audible omissions. It is not
+// speech recognition/VAD and never triggers a retry for an ordinary pause.
+export function hasUncoveredAudio(wav, words, start, end) {
+  let pcm;
+  for (let offset = 12; offset + 8 <= wav.length;) {
+    const size = wav.readUInt32LE(offset + 4);
+    if (wav.toString('ascii', offset, offset + 4) === 'data') { pcm = wav.subarray(offset + 8, offset + 8 + size); break; }
+    offset += 8 + size + (size % 2);
+  }
+  if (!pcm) throw new Error('Recovery PCM data is missing');
+  let uncovered = 0;
+  for (let time = start; time + 0.5 <= end; time += 0.5) {
+    if (words.some(word => word.start < time + 1.5 && word.end > time - 1)) continue;
+    let energy = 0, count = 0;
+    for (let sample = Math.floor(time * 16000); sample < Math.min(pcm.length / 2, (time + 0.5) * 16000); sample += 16) {
+      const value = pcm.readInt16LE(sample * 2) / 32768;
+      energy += value * value; count++;
+    }
+    if (count && energy / count > 10 ** (-35 / 10)) uncovered += 0.5;
+  }
+  return uncovered >= Math.min(8, (end - start) / 2);
 }
 
 export function recoveryPlan(segments, duration) {
@@ -61,17 +85,21 @@ export function mergeRecoveredTranscript(base, plan, recovered) {
     if (result.segments.some(cue => !Number.isFinite(cue.start) || !Number.isFinite(cue.end) || cue.start < -0.05 || cue.end > length + 0.05 || cue.end <= cue.start)) {
       throw new Error('Invalid recovered cue timestamps');
     }
-    const shifted = (result.words || []).map(word => {
-      if (!Number.isFinite(word.start) || !Number.isFinite(word.end) || word.start < -0.05 || word.end > length + 0.05 || word.end <= word.start) {
+    for (const word of result.words || []) {
+      if (!Number.isFinite(word.start) || !Number.isFinite(word.end) || word.start < -0.05 || word.end > length + 0.05 || word.end < word.start) {
         throw new Error('Invalid recovered word timestamps');
       }
+    }
+    if (result.segments.some(segment => segment.text?.trim()) && !result.words?.length) throw new Error('Audio recovery returned text without word timestamps');
+    // Whisper also emits zero-duration words. Reuse our existing bounded word
+    // alignment instead of rejecting them or silently dropping their text.
+    const shifted = synchronizeWords(result.segments, result.words).map(word => {
       return { ...word, start: word.start + chunk.cropStart, end: word.end + chunk.cropStart };
     });
     const owned = shifted.filter(word => {
       const middle = (word.start + word.end) / 2;
       return middle >= chunk.start && middle < chunk.end;
     }).map(word => ({ ...word, start: Math.max(chunk.start, word.start), end: Math.min(chunk.end, word.end) }));
-    if (result.segments.some(segment => segment.text?.trim()) && !shifted.length) throw new Error('Audio recovery returned text without word timestamps');
     for (const segment of result.segments) {
       const cueWords = owned.filter(word => {
         const middle = (word.start + word.end) / 2;

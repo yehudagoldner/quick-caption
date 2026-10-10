@@ -4,7 +4,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { Transcriptions } from 'openai/resources/audio/transcriptions';
-import { recoveryPlan, mergeRecoveredTranscript } from '../src/transcriptionRecovery.js';
+import { recoveryPlan, mergeRecoveredTranscript, hasUncoveredAudio } from '../src/transcriptionRecovery.js';
 import { pcmFixture } from './fixtures/audio.mjs';
 
 globalThis.__appEnvLoaded = true;
@@ -44,13 +44,29 @@ test('persistent loops, missing speech times and invalid crop times cannot becom
   assert.throws(() => mergeRecoveredTranscript(base, plan, [chunkResult([{ word: 'דיבור', start: 50, end: 51 }]), recovered[1]]), /timestamps/);
 });
 
+test('zero-duration provider words retain their text and receive bounded estimated intervals', () => {
+  const samples = structuredClone(recovered);
+  samples[1].words[1].end = samples[1].words[1].start;
+  const result = mergeRecoveredTranscript(base, recoveryPlan(base.segments, 40), samples);
+  const word = result.words.find(word => word.word === 'המשך');
+  assert.ok(word.end > word.start && word.start >= 24 && word.end <= 30);
+  assert.equal(word.timingSource, 'estimated');
+});
+
+test('an audible omitted interval fails recovery while actual silence remains acceptable', () => {
+  const words = [{ start: 2, end: 4 }];
+  assert.equal(hasUncoveredAudio(pcmFixture(26), words, 0, 24), true);
+  assert.equal(hasUncoveredAudio(pcmFixture(26, [[2, 4]]), words, 0, 24), false);
+  assert.equal(hasUncoveredAudio(pcmFixture(10), [], 2, 8), true);
+});
+
 async function fixture(t, responses) {
   const saved = { ...process.env };
   Object.assign(process.env, { OPENAI_API_KEY: 'no-network', OPENAI_TIMED_MODEL: 'whisper-1', OPENAI_LANGUAGE: 'he',
     OPENAI_HIGH_ACCURACY_MODEL: 'gpt-transcribe', OPENAI_CORRECTION_MODEL: '' });
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'caption-recovery-'));
   const inputPath = path.join(directory, 'selection.wav');
-  await fs.writeFile(inputPath, pcmFixture(40));
+  await fs.writeFile(inputPath, pcmFixture(40, [[3, 4], [23.4, 23.8], [25, 26], [28, 29], [31, 31.5]]));
   const requests = [];
   t.mock.method(Transcriptions.prototype, 'create', async request => {
     requests.push({ model: request.model, file: request.file.path, language: request.language });

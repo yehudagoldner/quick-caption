@@ -2,7 +2,7 @@ import fs from "fs";
 import { promises as fsp } from "fs";
 import { spawn } from "child_process";
 import path from "path";
-import { recoveryPlan, mergeRecoveredTranscript, hasDecodingLoop } from "./transcriptionRecovery.js";
+import { recoveryPlan, mergeRecoveredTranscript, hasDecodingLoop, hasUncoveredAudio } from "./transcriptionRecovery.js";
 import OpenAI from "openai";
 import { instrumentOpenAI } from "./aiUsage.js";
 import "./loadAppEnv.js";
@@ -475,6 +475,7 @@ export async function transcribeMedia({
       audioPreparation.audioPath,
       options,
       logger,
+      resolvedInput,
     );
     if (timedResult.usage) {
       usage.timedTranscription = timedResult.usage;
@@ -686,7 +687,7 @@ function getTranscriptionOptions() {
   };
 }
 
-async function transcribeWithTimedModel(client, audioPath, options, logger) {
+async function transcribeWithTimedModel(client, audioPath, options, logger, recoveryInputPath = audioPath) {
   const duration = await getMediaDuration(audioPath);
   const initial = await requestTimedTranscript(client, audioPath, options, logger);
   const plan = recoveryPlan(initial.rawSegments, duration);
@@ -697,12 +698,17 @@ async function transcribeWithTimedModel(client, audioPath, options, logger) {
   let recoveryDuration = 0;
   try {
     for (const [index, chunk] of plan.chunks.entries()) {
-      const file = path.join(directory, `${index}.mp3`);
-      await runCommand("ffmpeg", ["-nostdin", "-v", "error", "-y", "-i", audioPath,
+      const file = path.join(directory, `${index}.wav`);
+      // Cut the source directly. Re-encoding an already lossy MP3 can change
+      // decoding behavior even on a short window. Mono PCM keeps exact bounds.
+      await runCommand("ffmpeg", ["-nostdin", "-v", "error", "-y", "-i", recoveryInputPath,
         "-ss", String(chunk.cropStart), "-t", String(chunk.cropEnd - chunk.cropStart),
-        "-vn", "-af", "aformat=sample_fmts=fltp", "-ac", "1", "-ar", "16000", "-b:a", "128k", file], { logger, stdio: ["ignore", "ignore", "pipe"] });
+        "-vn", "-ac", "1", "-ar", "16000", "-c:a", "pcm_s16le", file], { logger, stdio: ["ignore", "ignore", "pipe"] });
       const result = await requestTimedTranscript(client, file, options, logger, true);
       if (result.rawSegments.some(hasDecodingLoop)) throw new Error("Audio recovery still contains a decoding loop");
+      if (hasUncoveredAudio(await fsp.readFile(file), result.words, chunk.start - chunk.cropStart, chunk.end - chunk.cropStart)) {
+        throw new Error("Audio recovery still omits an audible interval");
+      }
       recovered.push({ ...result, segments: result.rawSegments });
       recoveryDuration += await getMediaDuration(file);
     }
@@ -1140,7 +1146,7 @@ export async function transcribeWithWordTimestamps({
   try {
     logger?.log?.(`Uploading audio to ${options.timedModel} for word-level transcription...`);
 
-    const transcription = await transcribeWithTimedModel(client, audioPreparation.audioPath, options, logger);
+    const transcription = await transcribeWithTimedModel(client, audioPreparation.audioPath, options, logger, resolvedInput);
 
     logger?.log?.("Processing word-level timestamps...");
 
