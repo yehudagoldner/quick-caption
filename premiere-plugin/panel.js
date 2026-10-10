@@ -168,7 +168,7 @@ function controls() {
   $('link-section').hidden = !linking;
   $('account-menu').hidden = !connected;
   if (!connected) $('account-settings').hidden = true;
-  disable('selected', active || booting || (!hasPending && (!account || !quote || account.credits < quote.estimatedCredits)));
+  disable('selected', active || booting || (hasPending && !connected) || (!hasPending && (!account || !quote || account.credits < quote.estimatedCredits)));
   disable('toolbar-caption', busy || preparing || uploading || watching || booting);
   $('toolbar-caption').setAttribute('title', hasPending ? 'פתיחת התמלול הפעיל או הכתוביות המוכנות' : 'קבלת כתוביות לקטעים שנבחרו');
   $('selected').hidden = active;
@@ -483,9 +483,12 @@ async function watchJob(job, allowMissing = false) {
 }
 async function send(approved) {
   await updateAccount();
-  if (!account || !approved || approved.settingsKey !== settingsKey() || approved.selectionKey !== selectionKey(selectionContext) || approved.policyVersion !== account.policy.version || Date.parse(approved.expiresAt) <= Date.now()) {
+  if (!account || !approved || approved.settingsKey !== settingsKey() || approved.selectionKey !== selectionKey(selectionContext) || approved.policyVersion !== account.policy.version) {
     invalidateQuote(); throw new Error('המחיר או החיבור השתנו. בדקו מחיר ואשרו שוב.');
   }
+  // Long audio exports may outlast the server quote. Renew only before any paid
+  // submission, under the same displayed price, policy, settings and selection.
+  if (Date.parse(approved.expiresAt) <= Date.now()) approved = await getQuote(approved);
   if (!approved.canStart || account.credits < approved.estimatedCredits) throw new Error('היתרה נמוכה מההערכה. בחרו קטעים קצרים יותר או רכשו קרדיטים');
   if ((await file.getMetadata()).size > account.policy.maxMediaBytes) throw new Error('הקובץ חורג מהגודל המותר לפי הכללים העדכניים');
   await validateSelection(ppro, selectionContext);

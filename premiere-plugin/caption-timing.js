@@ -12,7 +12,7 @@ function normalizeCaptionTiming(value, duration, minimum = .04) {
     else if (cue.start - left >= minimum) cue.start = Math.max(left, cue.start - .3);
     else if (previous?.end === cue.start && previous.end > previous.start) {
       previous.text = previous.text.trimEnd() + ' ' + cue.text.trim(); captions.splice(i--, 1);
-    } else if (next?.start === cue.end && next.end > next.start) {
+    } else if (next?.start === cue.end && next.end >= next.start) {
       next.text = cue.text.trim() + ' ' + next.text.trimStart(); captions.splice(i--, 1);
     }
   }

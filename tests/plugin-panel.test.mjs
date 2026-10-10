@@ -393,3 +393,11 @@ test('changing selection after the displayed estimate requires approval of the n
   assert.match(panel.node('status').textContent,/הבחירה השתנתה/);
   assert.equal(panel.calls.some(url=>url.endsWith('/api/transcribe')||url.endsWith('/api/plugin/quote')),false);
 });
+
+test('a long export renews an expired admission quote within the original approval and submits only once',async()=>{
+  const panel=await openPanel({placement:{trackIds:[]}});
+  vm.runInContext("file={name:'long.wav',getMetadata:async()=>({size:48})};selectionContext={duration:24};watchJob=async()=>{};invalidateQuote();",panel.context);
+  await vm.runInContext('getQuote(quote).then(value=>{value.expiresAt=new Date(0).toISOString();return send(value);})',panel.context);
+  assert.equal(panel.calls.filter(url=>url.endsWith('/api/plugin/quote')).length,2);
+  assert.equal(panel.calls.filter(url=>url.endsWith('/api/transcribe')).length,1);
+});

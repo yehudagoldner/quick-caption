@@ -47,6 +47,12 @@ test('point cues at tight boundaries keep their text without overlapping native 
   assert.deepEqual(plan.phrases.map(p=>p.text),['שלום גם','לכם']);
   assert.equal(segments[0].text,'שלום');assert.equal(segments[1].end,1);
 });
+
+test('consecutive point cues at the beginning are kept in order inside their available gap',()=>{
+  const plan=native.buildActiveWordPlan({...fixture,segments:[{id:1,start:0,end:0,text:'אה'}, {id:2,start:0,end:0,text:'טוב'}, {id:3,start:.3,end:2,text:'אני רוצה כתוביות'}]});
+  assert.deepEqual(plan.phrases.map(p=>p.text),['אה טוב','אני רוצה כתוביות']);
+  assert.equal(plan.phrases[0].startFrame,250);assert.equal(plan.phrases[0].endFrame,258);
+});
 test('the Premiere copy of alignment is generated from the current website rules', async () => {
   const source=await readFile(new URL('../src/wordAlignment.js',import.meta.url),'utf8');const built=await readFile(new URL('../premiere-bridge/word-alignment.js',import.meta.url),'utf8');
   assert.ok(built.includes(createHash('sha256').update(source).digest('hex')),'Regenerate bridge alignment after changing website rules');

@@ -129,7 +129,7 @@ Docking is controlled by Premiere's workspace. UXP provides preferred sizes,
 not a forced side/full-height dock API; keep the panel's existing entrypoint and
 dock its tab once at the outside edge, then save the workspace.
 
-This update passed 87 plugin tests and 5 credit-accounting tests locally. The
+This update passed 89 plugin tests and 5 credit-accounting tests locally. The
 pricing-only QA commit `9751ba9` was applied in place to the existing checkout:
 build and 12 relevant tests passed there, with public health/HTML/assets and
 Socket.IO verified. Production and the other PM2 applications were unchanged.
