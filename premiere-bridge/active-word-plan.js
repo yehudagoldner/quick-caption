@@ -1,5 +1,6 @@
 'use strict';
 const { synchronizeWords } = require('./word-alignment.js');
+const { normalizeCaptionTiming } = require('./caption-timing.js');
 const TICKS_PER_SECOND = 254016000000;
 const bad = message => { throw Object.assign(new Error(message), { code: 'invalid_graphics' }); };
 function rows(value, name) {
@@ -9,7 +10,7 @@ function rows(value, name) {
   return parsed;
 }
 function buildActiveWordPlan({ segments, words, ranges, frameTicks, color = '#FFD45A' }) {
-  const captions = rows(segments, 'captions'), source = rows(words, 'word timings');
+  const rawCaptions = rows(segments, 'captions'), source = rows(words, 'word timings');
   if (!/^\d+$/.test(String(frameTicks)) || Number(frameTicks) <= 0 || Number(frameTicks) > TICKS_PER_SECOND / 10) bad('Invalid frame rate');
   if (!/^#[0-9a-f]{6}$/i.test(color)) bad('Invalid highlight color');
   if (!Array.isArray(ranges) || !ranges.length) bad('Missing selection timing');
@@ -19,11 +20,13 @@ function buildActiveWordPlan({ segments, words, ranges, frameTicks, color = '#FF
     cursor += range.end - range.start; previousEnd = range.end;
   }
   const ids = new Set();
-  if (!captions.length || captions.length > 2000) bad('Invalid caption count');
-  for (const s of captions) {
-    if (!s || ids.has(String(s.id)) || typeof s.text !== 'string' || !s.text.trim() || s.text.length > 2000 || /\0/.test(s.text) || ![s.start, s.end].every(Number.isFinite) || s.start < 0 || s.end <= s.start || s.end > cursor + .1) bad('Invalid caption');
+  if (!rawCaptions.length || rawCaptions.length > 2000) bad('Invalid caption count');
+  for (const s of rawCaptions) {
+    if (!s || ids.has(String(s.id)) || typeof s.text !== 'string' || !s.text.trim() || s.text.length > 2000 || /\0/.test(s.text) || ![s.start, s.end].every(Number.isFinite) || s.start < 0 || s.end < s.start || s.end > cursor + .1) bad('Invalid caption');
     ids.add(String(s.id));
   }
+  const captions = normalizeCaptionTiming(rawCaptions, cursor, Number(frameTicks) / TICKS_PER_SECOND);
+  if (captions.some(s => s.end <= s.start || s.text.length > 2000)) bad('Invalid caption');
   // Missing word times must not silently turn into entirely guessed highlighting.
   if (!source.some(w => w && Number.isFinite(w.start) && Number.isFinite(w.end) && w.end > w.start && typeof w.word === 'string')) bad('No usable word timings; regular captions are still available');
   const aligned = synchronizeWords(captions, source);

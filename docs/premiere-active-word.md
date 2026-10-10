@@ -103,3 +103,28 @@ to create duplicate master audio.
 
 The earlier recovery point remains
 `checkpoint/before-active-word-20261010`; see [recovery-point.md](recovery-point.md).
+
+## Point-cue recovery and one-click flow
+
+The two-selected-clip transcription (QA video 36) contained a cue at
+156.419998 seconds with identical start/end. Native clips require a duration.
+`normalizeCaptionTiming` preserves that word with up to 300 ms from the free
+adjacent gap. When no whole-frame gap exists, it joins a touching timed cue,
+preserving text rather than dropping the word or overlapping clips. Negative
+intervals, duplicate identities and overlapping timed captions remain errors.
+Both UXP and the bridge use the generated normalization copy; UXP normalization
+also repairs completed jobs while an installed companion still runs its old
+Node module. The original account captions are not overwritten.
+
+The existing completed job was recovered into 67 native sentence nests on V4,
+without retranscription or another charge. Native graphic construction exceeded
+the former one-minute client timeout; graphics requests now allow 20 minutes,
+and timeout messages no longer misdiagnose a slow build as an unloaded bridge.
+Receipt replay retained the built sequences for recovery without duplication.
+
+The main action displays a local, policy-based credit estimate before the click.
+After one click, transcription and native placement proceed with one progress
+indicator. Failed placement reuses that action for an explicitly uncharged retry.
+Docking is controlled by Premiere's workspace. UXP provides preferred sizes,
+not a forced side/full-height dock API; keep the panel's existing entrypoint and
+dock its tab once at the outside edge, then save the workspace.

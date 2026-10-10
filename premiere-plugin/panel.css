@@ -28,6 +28,7 @@ sp-button { display: block; width: 100%; margin-top: 10px; }
 .price { font-size: 20px; font-weight: 700; color: #e0e7ff; }
 .quote-card .card-header { margin-bottom: 5px; }
 .billing-note { color: #a5afbf; font-size: 10px; margin-top: 7px; }
+#progress-bar { width: 100%; margin: 8px 0 12px; }
 #link-code { color: #cad5ff; font-size: 25px; font-weight: 600; letter-spacing: 4px; text-align: center; margin: 15px 0; }
 .notice { background: #293145; border: 1px solid #41516e; border-radius: 9px; padding: 11px; margin: 12px 0; color: #d0ddfa; font-size: 12px; }
 .notice.error { background: #382729; border-color: #765152; color: #f6c7c7; }

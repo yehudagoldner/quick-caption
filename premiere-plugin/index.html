@@ -62,18 +62,15 @@
       </div>
       <p id="active-word-help" class="setting-help" hidden>לחיצה כפולה על משפט פותחת את ההדגשות עם האודיו שלו. לתיקון תזמון: N וגרירת הגבול בין המילים. להתאמת המשפט לרוחב הטיימליין: לחצו בתוכו ואז \ . להגדלת גובה הקטעים: Ctrl + =.</p>
     </div>
-    <sp-button id="selected" variant="cta" class="main-action">הכנת כתוביות לבחירה</sp-button>
     <div id="quote-section" class="card quote-card" hidden>
       <div class="card-header"><span class="eyebrow">עלות התמלול</span><span id="price" class="price">—</span></div>
       <p id="price-detail" class="muted"></p>
       <p class="billing-note">החיוב הסופי לפי עלות העיבוד בפועל.</p>
-      <sp-button id="quote" variant="cta">עדכון הערכת המחיר</sp-button>
-      <sp-button id="send" variant="cta" hidden>אישור ותמלול</sp-button>
       <sp-button id="buy" variant="secondary" hidden>הוספת קרדיטים באתר</sp-button>
     </div>
-    <div id="progress-section" class="card" hidden><p class="card-title">התמלול שלכם</p><p id="progress"></p></div>
+    <sp-button id="selected" variant="cta" class="main-action">יצירת כתוביות לבחירה</sp-button>
+    <div id="progress-section" class="card" hidden><p id="progress-title" class="card-title">מכין את הכתוביות</p><sp-progressbar id="progress-bar" indeterminate aria-label="התקדמות יצירת הכתוביות"></sp-progressbar><p id="progress"></p></div>
     <sp-button id="add-reference-audio" variant="secondary" hidden>הוספת סאונד לכתוביות הקיימות</sp-button>
-    <sp-button id="resume" variant="secondary" hidden>המשך התמלול הפעיל</sp-button>
     <p id="status" class="notice" role="status" hidden></p>
     <p id="footer-note" class="footer-note">רק הקטעים שנבחרו · המחיר מוצג לפני השליחה</p>
   </main>

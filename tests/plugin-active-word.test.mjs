@@ -30,6 +30,23 @@ test('translation or correction aligns to displayed words and never resurrects r
 test('invalid data cannot create misleading or out-of-selection graphics', () => {
   for(const changed of [{words:[]},{frameTicks:'0'},{color:'invalid'},{ranges:[{start:10,end:12,outputStart:1}]},{segments:[...fixture.segments,{id:2,start:1,end:2,text:'overlap'}]},{segments:[{id:1,start:0,end:3,text:'outside'}]}])assert.throws(()=>native.buildActiveWordPlan({...fixture,...changed}),{code:'invalid_graphics'});
 });
+
+test('a model cue with identical start and end no longer aborts all selected clips or loses its word', () => {
+  const plan = native.buildActiveWordPlan({...fixture, segments:[
+    {id:58,start:0,end:1,text:'רגע רגע'}, {id:59,start:1,end:1,text:'אה'}, {id:60,start:1.68,end:2,text:'אז קבלו'}
+  ], words:[{word:'רגע',start:0,end:.5},{word:'רגע',start:.5,end:1},{word:'אז',start:1.68,end:1.8},{word:'קבלו',start:1.8,end:2}]});
+  assert.deepEqual(plan.phrases.map(p=>p.text),['רגע רגע','אה','אז קבלו']);
+  assert.equal(plan.phrases[1].startFrame,275); assert.equal(plan.phrases[1].endFrame,283);
+  assert.ok(plan.phrases[1].states.some(s=>s.word==='אה'));
+  assert.ok(plan.phrases[1].estimatedWords>0);
+});
+
+test('point cues at tight boundaries keep their text without overlapping native clips or modifying the response', () => {
+  const segments=[{id:1,start:0,end:1,text:'שלום'}, {id:2,start:1,end:1,text:'גם'}, {id:3,start:1,end:2,text:'לכם'}];
+  const plan=native.buildActiveWordPlan({...fixture,segments});
+  assert.deepEqual(plan.phrases.map(p=>p.text),['שלום גם','לכם']);
+  assert.equal(segments[0].text,'שלום');assert.equal(segments[1].end,1);
+});
 test('the Premiere copy of alignment is generated from the current website rules', async () => {
   const source=await readFile(new URL('../src/wordAlignment.js',import.meta.url),'utf8');const built=await readFile(new URL('../premiere-bridge/word-alignment.js',import.meta.url),'utf8');
   assert.ok(built.includes(createHash('sha256').update(source).digest('hex')),'Regenerate bridge alignment after changing website rules');

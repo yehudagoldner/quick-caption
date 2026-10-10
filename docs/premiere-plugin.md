@@ -16,7 +16,8 @@ caption-track creation. It has not been submitted to Adobe Marketplace.
 - Access tokens last 15 minutes, refresh tokens rotate and expire after 30 days.
   Plugin credentials are kept in UXP secureStorage. Disconnect revokes the server session.
 - Website and plugin operate on the same verified user UID and `users.credits` record.
-  No balance or price formula is stored in the plugin.
+  The plugin computes a displayed estimate from versioned public rules fetched
+  with the account; balance and final charging stay authoritative on the server.
 - Quote and upload pre-check both use `currentTranscriptionModels()` and the existing
   `estimateTranscriptionCredits()`. Final billing goes through the existing atomic
   `completeTranscriptionJob()` transaction, using actual AI usage and the existing
@@ -30,7 +31,11 @@ caption-track creation. It has not been submitted to Adobe Marketplace.
   and job completion, plus every 30 seconds while the window/panel is visible.
   An unavailable balance is displayed as unknown, not as a current cached number.
   Upload admission and the final deduction still use the current server balance.
-- `pluginPolicy()` publishes defaults, languages, media limits and protocol compatibility.
+- `pluginPolicy()` publishes defaults, languages, media limits, protocol compatibility
+  and `creditEstimate` v1 (current audio and correction rates, token rounding and
+  USD per credit). `src/creditEstimate.js` is copied to UXP by
+  `node scripts/build-premiere-shared.mjs`. Tests compare local estimates with
+  server quotes across model/tier changes and rounding boundaries.
   Its version hashes the pricing, package, usage, transcription setting and media policy
   sources plus current model configuration. A changed version invalidates a pending quote;
   the server rejects a plugin upload with the old version before any paid processing.
@@ -68,14 +73,16 @@ caption-track creation. It has not been submitted to Adobe Marketplace.
    For a compact shortcut, open the `CC · כתוביות` panel from the same plugin menu
    and drag its panel tab beside Premiere's Tools panel. This is a separate dockable
    panel, not an added native editing tool. Its blue CC button opens the main panel
-   and prepares the current selection for a quote; it never confirms a paid upload.
+   and shows a locally computed price for the current selection; it never confirms a paid upload.
    If a job is awaiting completion or placement, the shortcut opens that job instead
    of preparing another selection. Both panels share the same account and state.
    On Premiere 25.6.6 the panel tabs use the plugin name, and a newly opened main
-   panel can inherit a very small floating size. Dock its tab into a wider panel
-   area (verified in the left Learn area) to show the full controls.
-5. If the account is disconnected, the plugin opens browser pairing and resumes the
-   captured selection after the user confirms the matching code and account.
+   panel can inherit a floating size. The UXP API does not expose a dock-position
+   setter: drag the panel's tab (not the OS title bar) to the outside edge until
+   Premiere shows a full-height docking zone, then save a custom workspace.
+   The shortcut does not call `showPanel` again while the main panel is visible.
+5. If the account is disconnected, connect it through browser pairing and confirm
+   the matching code and account. The selection and estimate refresh automatically.
 6. First use asks for an existing Waveform Audio `.epr` preset. Its persistent file
    permission is saved; this is export configuration, not another media file. On this
    Windows installation the Adobe preset is at `C:\Program Files\Adobe\Adobe Premiere Pro 2025\MediaIO\systempresets\3F3F3F3F_57415645\Waveform Audio 48kHz 16-bit.epr`.
@@ -96,11 +103,15 @@ caption-track creation. It has not been submitted to Adobe Marketplace.
    searchable checkbox list; the primary language cannot also be an additional one.
    These preferences persist locally across plugin reloads. Live policy determines
    the available languages/modes without replacing user choices on balance refresh.
-   Every setting change invalidates the quote, and upload compares the settings with
-   the approved quote before submitting. Review the server quote after changes.
+   The selected duration and price refresh without exporting audio or requesting a
+   server quote. Click `יצירת כתוביות · כ־N קרדיטים` once: preflight, server admission,
+   audio preparation, upload, transcription and timeline placement run automatically.
+   The server quote is requested internally after that click and must match the
+   displayed policy version and price. Selection, settings, policy or price changes
+   stop before paid submission and require approval of the updated display.
    The server probes the actual media duration on upload and performs its authoritative
    credit check again. The quote is an estimate, not a maximum-price guarantee.
-8. Confirm transcription. On completion the companion writes a permanent SRT in
+8. On completion the companion writes a permanent SRT in
    `%APPDATA%/Quick Caption/Premiere Bridge QA/captions`, imports the exact file and
    calls Adobe's `createCaptionTrack` on the original sequence. No save picker,
    media import, or manual timeline drag is part of this flow.
@@ -115,7 +126,10 @@ caption-track creation. It has not been submitted to Adobe Marketplace.
    nonempty delivered track still exist. The main panel shows the timeline action and connected
    balance; account settings are collapsed, and unrelated video history is not loaded.
    If placement is interrupted, the saved completed job remains available through
-   "הצבת הכתוביות המוכנות". This retries delivery, never the paid transcription.
+   the same primary button, `נסיון חוזר · ללא חיוב נוסף`. This retries delivery,
+   never the paid transcription. Active words also place automatically; there is
+   no separate placement step. One indeterminate progress bar accompanies the
+   current stage and disappears on completion or failure.
 
 Premiere 25.6's UXP API does not expose `createCaptionTrack`. Adobe's official CEP
 PProPanel sample demonstrates this ExtendScript method. The companion uses that API;

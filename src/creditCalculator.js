@@ -54,6 +54,16 @@ export function estimateTranscriptionCredits(durationMinutes, options = {}) {
   return creditsForCost(estimateTranscriptionCost(durationMinutes, options));
 }
 
+export function transcriptionEstimateRules({ timedModel = FALLBACK_AUDIO_MODEL, highAccuracyModel = null, correctionModel = null, serviceTier = 'default' } = {}) {
+  const correction = correctionModel && correctionModel !== 'none';
+  return { version: 1, costUSDPerCredit: COST_USD_PER_CREDIT,
+    audioUSDPerMinute: audioTranscriptionCost(1, timedModel) + (shouldRunHighAccuracy(highAccuracyModel) ? audioTranscriptionCost(1, highAccuracyModel) : 0),
+    inputTokensPerMinute: correction ? CORRECTION_INPUT_TOKENS_PER_MINUTE : 0,
+    outputTokensPerMinute: correction ? CORRECTION_OUTPUT_TOKENS_PER_MINUTE : 0,
+    inputUSDPerToken: correction ? textCost(1, 0, 0, { model: correctionModel, serviceTier }) : 0,
+    outputUSDPerToken: correction ? textCost(0, 1, 0, { model: correctionModel, serviceTier }) : 0 };
+}
+
 function stageCost(usage) {
   if (!usage) return 0;
   if (usage.durationMinutes !== undefined) return audioTranscriptionCost(usage.durationMinutes, usage.model);

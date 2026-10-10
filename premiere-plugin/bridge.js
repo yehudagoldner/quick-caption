@@ -1,4 +1,5 @@
 const { validateSelection } = require('./selection.js');
+const { normalizeCaptionTiming } = require('./caption-timing.js');
 const UNAVAILABLE = 'רכיב ההצבה האוטומטית לא נטען בפרימייר. הפעילו את קובץ הגדרת הפיתוח שקיבלתם, הפעילו מחדש את פרימייר ואז נסו שוב. אין צורך בתמלול נוסף.';
 const unavailable = () => Object.assign(new Error(UNAVAILABLE), { code: 'bridge_unavailable' });
 
@@ -13,8 +14,10 @@ class TimelineBridge {
         method: body ? 'POST' : 'GET', headers: { 'X-Quick-Caption-Bridge': this.configuration.token, ...(body ? { 'Content-Type': 'application/json' } : {}) },
         ...(body ? { body: JSON.stringify(body) } : {}),
       });
-      response = await Promise.race([request, new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(UNAVAILABLE)), 60000); })]);
+      const timeout = route === '/build-graphics' ? 20 * 60000 : route === '/prepare-graphics' ? 2 * 60000 : 60000;
+      response = await Promise.race([request, new Promise((_, reject) => { timer = setTimeout(() => reject(Object.assign(new Error('ההצבה בפרימייר נמשכת מעבר לזמן ההמתנה. התמלול נשמר; נסיון חוזר לא יתמלל או יחייב שוב.'), {code:'bridge_timeout'})), timeout); })]);
     } catch (error) {
+      if (error.code === 'bridge_timeout') throw error;
       if (/Permission denied|Manifest entry not found/i.test(error.message || '')) throw Object.assign(new Error('פרימייר לא טען את הרשאות החיבור המעודכנות. טענו מחדש את התוסף בכלי הפיתוח ונסו שוב.'), { code: 'bridge_permissions' });
       throw unavailable();
     } finally { clearTimeout(timer); }
@@ -23,6 +26,7 @@ class TimelineBridge {
       delivery_uncertain: 'ייתכן שהכתוביות כבר הוצבו. בדקו את הטיימליין לפני שחזור; לא ייווצר ערוץ נוסף ולא יהיה חיוב נוסף.',
       delivery_conflict: 'התמלול השתנה אחרי ניסיון ההצבה. נדרש לבדוק את הערוץ הקיים לפני עדכון.',
       invalid_subtitles: 'לא נמצאו כתוביות תקינות להצבה בקטעים שנבחרו.',
+      invalid_graphics: 'תזמון הכתוביות אינו מאפשר הצבה בטוחה. התמלול נשמר בחשבון, ללא צורך בתמלול או חיוב נוסף.',
     }[result.code];
     if (!response.ok || !result.ok) throw Object.assign(new Error(explanation || result.error || UNAVAILABLE), { code: result.code });
     return result;
@@ -52,7 +56,10 @@ class TimelineBridge {
       const {sourcePath,durationSeconds,ranges} = referenceAudio;
       target.referenceAudio = {sourcePath,durationSeconds,ranges};
     }
-    return this.request('/build-graphics', {target,id,segments:video.subtitle_json,words:video.words_json,ranges:snapshot.ranges,color});
+    const info = await this.request('/prepare', {target});
+    const duration = snapshot.ranges.reduce((total, range) => total + range.end - range.start, 0);
+    const segments = normalizeCaptionTiming(video.subtitle_json, duration, Number(info.frameTicks) / 254016000000 || .04);
+    return this.request('/build-graphics', {target,id,segments,words:video.words_json,ranges:snapshot.ranges,color});
   }
   async deliver(ppro, snapshot, id, srt) { return this.request('/deliver', { target: await this.target(ppro, snapshot), id, srt }); }
   async attachReferenceAudio(ppro, snapshot, id, delivery, referenceAudio) {
