@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { Transcriptions } from 'openai/resources/audio/transcriptions';
 import { Responses } from 'openai/resources/responses/responses';
+import { pcmFixture } from './fixtures/audio.mjs';
 
 // Unit tests must never load local credentials or contact the real API.
 globalThis.__appEnvLoaded = true;
@@ -13,7 +14,8 @@ const { transcribeMedia, aiEditSubtitles, intelligentSplitSegment, resegmentWith
 const segment = { id: 7, start: 0, end: 2, text: 'שלום עולם' };
 const words = [{ word: 'שלום', start: 0.1, end: 0.8 }, { word: 'עולם', start: 1.1, end: 1.8 }];
 
-async function setup(t, { failAudio = false, failCorrection = false, legacy = false } = {}) {
+async function setup(t, { failAudio = false, failCorrection = false, legacy = false,
+  timedSegment = segment, timedWords = words, accurateText = segment.text } = {}) {
   const savedEnv = { ...process.env };
   Object.assign(process.env, {
     OPENAI_API_KEY: 'unit-test-no-network', OPENAI_LANGUAGE: 'he',
@@ -26,7 +28,7 @@ async function setup(t, { failAudio = false, failCorrection = false, legacy = fa
   if (legacy) delete process.env.OPENAI_TEXT_SERVICE_TIER;
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'caption-models-'));
   const inputPath = path.join(dir, 'sample.wav');
-  await fs.writeFile(inputPath, 'fake audio consumed only by mock');
+  await fs.writeFile(inputPath, pcmFixture());
   const audioRequests = [];
   const textRequests = [];
   const streams = [];
@@ -41,21 +43,35 @@ async function setup(t, { failAudio = false, failCorrection = false, legacy = fa
   t.mock.method(Transcriptions.prototype, 'create', async request => {
     streams.push(request.file);
     audioRequests.push(request);
-    if (request.model === 'whisper-1') return { text: segment.text, segments: [segment], words };
+    if (request.model === 'whisper-1') return { text: timedSegment.text, segments: [timedSegment], words: timedWords };
     if (failAudio) throw new Error('Transcription unavailable');
-    return { text: segment.text }; // No segment timestamps in gpt-transcribe output.
+    return { text: accurateText }; // No segment timestamps in gpt-transcribe output.
   });
   t.mock.method(Responses.prototype, 'create', async request => {
     textRequests.push(request);
     if (failCorrection) throw new Error('Correction unavailable');
     return {
-      output_text: JSON.stringify({ segments: [{ ...segment, start: 99, end: 100 }] }),
+      output_text: JSON.stringify({ segments: [{ ...timedSegment, start: 99, end: 100 }] }),
       service_tier: 'fast',
       usage: { input_tokens: 100, output_tokens: 20, input_tokens_details: { cached_tokens: 30 } },
     };
   });
   return { inputPath, maxWordsPerSubtitle: 0, logger: {}, audioRequests, textRequests };
 }
+
+test('a complete high-accuracy text cannot recover an intro omitted from the timed transcript', async t => {
+  const context = await setup(t, { timedSegment: { id: 7, start: 27.32, end: 29, text: 'המשך הדיבור' },
+    timedWords: [{ word: 'המשך', start: 27.4, end: 28 }, { word: 'הדיבור', start: 28, end: 29 }],
+    accurateText: 'תודה תודה זאת תחילת ההקלטה. המשך הדיבור' });
+  const stages = [];
+  const result = await transcribeMedia({ ...context, onStage: (stage, status) => stages.push({ stage, status }) });
+  assert.ok(JSON.parse(context.textRequests[0].input[2].content[0].text).high_accuracy.text.startsWith('תודה תודה'));
+  assert.equal(result.segments[0].start, 27.32);
+  assert.equal(result.words.some(w => w.start < 27.32), false);
+  assert.equal(result.text.includes('תחילת ההקלטה'), false);
+  assert.ok(stages.some(s => s.stage === 'high-accuracy' && s.status === 'done'));
+  assert.ok(stages.some(s => s.stage === 'correction' && s.status === 'done'));
+});
 
 test('new models keep Whisper word times, use languages and request Fast only for text', async t => {
   const context = await setup(t);
@@ -75,7 +91,7 @@ test('new models keep Whisper word times, use languages and request Fast only fo
   assert.equal(request.text.format.type, 'json_object');
   assert.deepEqual(result.segments, [segment], 'correction cannot move source timestamps');
   assert.deepEqual(result.words.map(w => [w.start, w.end]), words.map(w => [w.start, w.end]));
-  assert.equal(result.usage.highAccuracy.durationSeconds, 2, 'text-only response must not erase duration');
+  assert.ok(Math.abs(result.usage.highAccuracy.durationSeconds - 2) < 0.1, 'text-only response must retain actual audio duration');
   assert.equal(result.usage.correction.cachedTokens, 30);
   assert.equal(result.usage.correction.serviceTier, 'fast');
   assert.equal(result.warnings.length, 0);

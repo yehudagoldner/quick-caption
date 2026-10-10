@@ -1,7 +1,8 @@
-﻿import fs from "fs";
+import fs from "fs";
 import { promises as fsp } from "fs";
 import { spawn } from "child_process";
 import path from "path";
+import { recoveryPlan, mergeRecoveredTranscript, hasDecodingLoop } from "./transcriptionRecovery.js";
 import OpenAI from "openai";
 import { instrumentOpenAI } from "./aiUsage.js";
 import "./loadAppEnv.js";
@@ -9,7 +10,6 @@ import { limitSubtitleCharacters } from "./subtitleSegmentation.js";
 import { transcriptionLanguageOptions, transcriptionCorrectionPrompt, validateTranscriptionLanguages } from "./transcriptionSettings.js";
 import { synchronizeWords, mergeCorrectedSegments, subtitleTokens } from "./wordAlignment.js";
 
-const AUDIO_EXTENSIONS = new Set([".mp3", ".wav", ".m4a", ".aac", ".ogg", ".flac", ".opus"]);
 const SUBTITLE_FORMATS = new Set([".txt", ".srt", ".vtt"]);
 const OPENAI_UPLOAD_LIMIT_BYTES = 25 * 1024 * 1024; // 25 MB per upload
 
@@ -479,6 +479,7 @@ export async function transcribeMedia({
     if (timedResult.usage) {
       usage.timedTranscription = timedResult.usage;
     }
+    if (timedResult.recovery) warnings.push("חלונות אודיו שהתמלול שלהם נפגם תומללו מחדש והתזמון שוחזר.");
     notify("timed-transcription", "done");
 
     let highAccuracyResult = null;
@@ -490,7 +491,7 @@ export async function transcribeMedia({
           audioPreparation.audioPath,
           options,
           logger,
-          timedResult.usage.durationSeconds,
+          timedResult.sourceDurationSeconds,
         );
         if (highAccuracyResult.usage) {
           usage.highAccuracy = highAccuracyResult.usage;
@@ -567,6 +568,7 @@ export async function transcribeMedia({
         correction: options.correctionModel ?? null,
       },
       usage, // Include API usage data
+      ...(timedResult.recovery ? { recovery: timedResult.recovery } : {}),
     };
   } finally {
     if (audioPreparation.cleanup) {
@@ -685,13 +687,54 @@ function getTranscriptionOptions() {
 }
 
 async function transcribeWithTimedModel(client, audioPath, options, logger) {
+  const duration = await getMediaDuration(audioPath);
+  const initial = await requestTimedTranscript(client, audioPath, options, logger);
+  const plan = recoveryPlan(initial.rawSegments, duration);
+  if (!plan.chunks.length) return { ...initial, sourceDurationSeconds: duration };
+  logger?.warn?.(`Recovering ${plan.chunks.length} damaged audio windows...`);
+  const directory = await fsp.mkdtemp(path.join(path.dirname(audioPath), "recovery-"));
+  const recovered = [];
+  let recoveryDuration = 0;
+  try {
+    for (const [index, chunk] of plan.chunks.entries()) {
+      const file = path.join(directory, `${index}.mp3`);
+      await runCommand("ffmpeg", ["-nostdin", "-v", "error", "-y", "-i", audioPath,
+        "-ss", String(chunk.cropStart), "-t", String(chunk.cropEnd - chunk.cropStart),
+        "-vn", "-af", "aformat=sample_fmts=fltp", "-ac", "1", "-ar", "16000", "-b:a", "128k", file], { logger, stdio: ["ignore", "ignore", "pipe"] });
+      const result = await requestTimedTranscript(client, file, options, logger, true);
+      if (result.rawSegments.some(hasDecodingLoop)) throw new Error("Audio recovery still contains a decoding loop");
+      recovered.push({ ...result, segments: result.rawSegments });
+      recoveryDuration += await getMediaDuration(file);
+    }
+    const result = mergeRecoveredTranscript(initial, plan, recovered);
+    const billedDuration = initial.usage.durationSeconds + recoveryDuration;
+    return { ...result, sourceDurationSeconds: duration,
+      recovery: { ranges: plan.ranges, calls: recovered.length },
+      usage: { ...initial.usage, durationSeconds: billedDuration, durationMinutes: billedDuration / 60,
+        recoveryDurationSeconds: recoveryDuration } };
+  } catch (error) {
+    throw new Error("התמלול החזיר טקסט פגום ולא ניתן היה לשחזר את כל הזמנים. נסו שוב; לא נשמר תמלול חלקי.", { cause: error });
+  } finally {
+    await fsp.rm(directory, { recursive: true, force: true });
+  }
+}
+
+async function createAudioTranscription(client, audioPath, request) {
+  const stream = fs.createReadStream(audioPath);
+  try { return await client.audio.transcriptions.create({ ...request, file: stream }); }
+  finally {
+    stream.destroy();
+    if (!stream.closed) await new Promise(resolve => stream.once("close", resolve));
+  }
+}
+
+async function requestTimedTranscript(client, audioPath, options, logger, allowEmpty = false) {
   const { timedModel, temperature, translate, language, prompt } = options;
   const responseFormat = timedModel.includes("whisper") ? "verbose_json" : "json";
 
   logger?.log?.(`Uploading audio to ${timedModel} for timestamped transcription...`);
 
-  const transcription = await client.audio.transcriptions.create({
-    file: fs.createReadStream(audioPath),
+  const transcription = await createAudioTranscription(client, audioPath, {
     model: timedModel,
     temperature,
     response_format: responseFormat,
@@ -706,17 +749,18 @@ async function transcribeWithTimedModel(client, audioPath, options, logger) {
   const combinedText =
     transcription.text?.trim() ?? segments.map((segment) => segment.text).join(" ").trim();
 
-  if (!segments.length) {
+  if (!segments.length && !allowEmpty) {
     throw new Error(`No segments returned by model ${timedModel}; cannot proceed without timestamps.`);
   }
 
   // Extract usage data for billing (duration in seconds)
-  const duration = segments.length > 0 ? segments[segments.length - 1].end : 0;
+  const duration = await getMediaDuration(audioPath);
 
   return {
     text: combinedText,
     segments,
     words,
+    rawSegments: (transcription.segments || []).flatMap(segment => extractSegmentsFromTranscription({ segments: [segment] }).map(cue => ({ ...segment, ...cue }))),
     usage: {
       model: timedModel,
       durationSeconds: duration,
@@ -737,8 +781,7 @@ async function transcribeWithHighAccuracyModel(client, audioPath, options, logge
   const { highAccuracyModel, temperature, translate, language, languages, prompt } = options;
   const isGptTranscribe = highAccuracyModel === "gpt-transcribe";
 
-  const transcription = await client.audio.transcriptions.create({
-    file: fs.createReadStream(audioPath),
+  const transcription = await createAudioTranscription(client, audioPath, {
     model: highAccuracyModel,
     ...(isGptTranscribe
       ? ((languages?.length || language) ? { languages: languages?.length ? languages : [language] } : {})
@@ -896,54 +939,49 @@ async function refineTranscriptWithGPT(client, baseResult, highAccuracyResult, o
 }
 
 async function prepareAudioForTranscription(inputPath, logger) {
-  const stats = await fsp.stat(inputPath);
-  const ext = path.extname(inputPath).toLowerCase();
-
-  const isAudio = AUDIO_EXTENSIONS.has(ext);
-  const withinLimit = stats.size <= OPENAI_UPLOAD_LIMIT_BYTES;
-
-  if (isAudio && withinLimit) {
-    return { audioPath: inputPath, cleanup: null };
-  }
-
   await assertFfmpeg();
+  const directory = await fsp.mkdtemp(path.join(path.dirname(inputPath), ".caption-audio-"));
+  const tempPath = path.join(directory, "audio.mp3");
+  try {
 
-  const tempPath = path.join(
-    path.dirname(inputPath),
-    `${path.basename(inputPath, path.extname(inputPath))}_openai_tmp.mp3`,
-  );
+    logger?.log?.("Converting media to OpenAI-friendly audio (mono 16 kHz)...");
 
-  logger?.log?.("Converting media to OpenAI-friendly audio (mono 16 kHz)...");
-
-  await runCommand(
-    "ffmpeg",
-    [
-      "-y",
-      "-i",
-      inputPath,
-      "-vn",
-      "-ac",
-      "1",
-      "-ar",
-      "16000",
-      "-b:a",
-      "128k",
-      tempPath,
-    ],
-    { logger },
-  );
-
-  const convertedStats = await fsp.stat(tempPath);
-  if (convertedStats.size > OPENAI_UPLOAD_LIMIT_BYTES) {
-    throw new Error(
-      `Converted audio (${(convertedStats.size / (1024 * 1024)).toFixed(1)} MB) still exceeds the 25 MB OpenAI limit.`,
+    await runCommand(
+      "ffmpeg",
+      [
+        "-nostdin", "-v", "error", "-y",
+        "-i",
+        inputPath,
+        "-vn",
+        // AAC normally negotiates float; PCM WAV otherwise negotiates integer
+        // rematrixing and can lose ~3 dB. Force the same path for every input.
+        "-af", "aformat=sample_fmts=fltp",
+        "-ac",
+        "1",
+        "-ar",
+        "16000",
+        "-b:a",
+        "128k",
+        tempPath,
+      ],
+      { logger, stdio: ["ignore", "ignore", "pipe"] },
     );
-  }
 
-  return {
-    audioPath: tempPath,
-    cleanup: () => fsp.unlink(tempPath),
-  };
+    const convertedStats = await fsp.stat(tempPath);
+    if (convertedStats.size > OPENAI_UPLOAD_LIMIT_BYTES) {
+      throw new Error(
+        `Converted audio (${(convertedStats.size / (1024 * 1024)).toFixed(1)} MB) still exceeds the 25 MB OpenAI limit.`,
+      );
+    }
+
+    return {
+      audioPath: tempPath,
+      cleanup: () => fsp.rm(directory, { recursive: true, force: true }),
+    };
+  } catch (error) {
+    await fsp.rm(directory, { recursive: true, force: true });
+    throw error;
+  }
 }
 
 function buildSrtFromSegments(segments) {
@@ -1055,6 +1093,8 @@ function escapeForSubtitleFilter(filePath) {
 async function runCommand(command, args, { stdio = "inherit", cwd, logger } = {}) {
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, { stdio, cwd, shell: false });
+    let errorOutput = "";
+    child.stderr?.on("data", data => { errorOutput = (errorOutput + data.toString()).slice(-4000); });
 
     child.on("error", (error) => {
       logger?.error?.(error);
@@ -1065,7 +1105,7 @@ async function runCommand(command, args, { stdio = "inherit", cwd, logger } = {}
       if (code === 0) {
         resolve();
       } else {
-        reject(new Error(`${command} exited with code ${code}`));
+        reject(new Error(`${command} exited with code ${code}${errorOutput ? `: ${errorOutput.trim()}` : ""}`));
       }
     });
   });
@@ -1100,15 +1140,7 @@ export async function transcribeWithWordTimestamps({
   try {
     logger?.log?.(`Uploading audio to ${options.timedModel} for word-level transcription...`);
 
-    // Request word-level timestamps from Whisper API
-    const transcription = await client.audio.transcriptions.create({
-      file: fs.createReadStream(audioPreparation.audioPath),
-      model: options.timedModel,
-      temperature: options.temperature,
-      response_format: "verbose_json",
-      language: options.language,
-      timestamp_granularities: ["word", "segment"],
-    });
+    const transcription = await transcribeWithTimedModel(client, audioPreparation.audioPath, options, logger);
 
     logger?.log?.("Processing word-level timestamps...");
 
