@@ -218,6 +218,7 @@ export function MobileCaptionEditor({
   const selectionMode = mode === "timing" && checkedIds.length > 0;
   const singleChecked = checkedIds.length === 1 ? editableSegments.find(segment => segment.id === checkedIds[0]) : undefined;
   const canSplitChecked = canSplitCaptionAtTime(singleChecked, currentTime);
+  const canMergeChecked = checkedIds.length === 2 && canMergeCaptions(editableSegments, checkedIds);
   useEffect(() => { setCheckedIds([]); setBatchError(null); setBatchNotice(null); }, [mode, mediaUrl]);
   useEffect(() => {
     // A later edit owns Undo now; do not leave the previous batch's toast active.
@@ -246,6 +247,7 @@ export function MobileCaptionEditor({
   const runBatch = async (action: CaptionBatchAction) => {
     if (batchFlight.current || !checkedIds.length || saveState === "saving") return;
     if (action === "split" && !canSplitChecked) return;
+    if (action === "merge" && !canMergeChecked) return;
     batchFlight.current = true;
     setBatchBusy(true);
     setBatchError(null);
@@ -610,17 +612,16 @@ export function MobileCaptionEditor({
         sx={{ position: "absolute", inset: "0px 8px 1px", zIndex: 9, borderRadius: 3, bgcolor: "background.paper", display: "flex", alignItems: "center", px: 0.5, gap: 0.25 }}>
         <IconButton aria-label="ביטול בחירת כתוביות" disabled={batchBusy} onClick={() => { setCheckedIds([]); setBatchError(null); }} sx={{ width: 44, height: 44 }}><CloseRounded /></IconButton>
         <Typography role="status" variant="body2" sx={{ flex: 1, whiteSpace: "nowrap", fontSize: 12 }}>{batchBusy ? "שומר..." : `${checkedIds.length} נבחרו`}</Typography>
-        {checkedIds.length === 1
-          ? <Button aria-label="פיצול כתובית בנקודת הקו" disabled={batchBusy || saveState === "saving" || !canSplitChecked} onClick={() => void runBatch("split")}
-              sx={{ minHeight: 44, minWidth: 64, gap: 0.5, px: 0.75 }}><ContentCutRounded fontSize="small" />פיצול</Button>
-          : <Button aria-label="חיבור כתוביות נבחרות" disabled={batchBusy || saveState === "saving" || !canMergeCaptions(editableSegments, checkedIds)} onClick={() => void runBatch("merge")}
+        {checkedIds.length === 1 && <Button aria-label="פיצול כתובית בנקודת הקו" disabled={batchBusy || saveState === "saving" || !canSplitChecked} onClick={() => void runBatch("split")}
+              sx={{ minHeight: 44, minWidth: 64, gap: 0.5, px: 0.75 }}><ContentCutRounded fontSize="small" />פיצול</Button>}
+        {canMergeChecked && <Button aria-label="חיבור כתוביות נבחרות" disabled={batchBusy || saveState === "saving"} onClick={() => void runBatch("merge")}
               sx={{ minHeight: 44, minWidth: 64, gap: 0.5, px: 0.75 }}><JoinFullRounded fontSize="small" />חיבור</Button>}
         <Button aria-label="מחיקת כתוביות נבחרות" color="error" disabled={batchBusy || saveState === "saving"} onClick={() => void runBatch("delete")}
           sx={{ minHeight: 44, minWidth: 64, gap: 0.5, px: 0.75 }}><DeleteOutlineRounded fontSize="small" />מחיקה</Button>
       </Paper>}
-      {selectionMode && !batchBusy && (batchError || (checkedIds.length > 1 && !canMergeCaptions(editableSegments, checkedIds))) &&
-        <Alert severity={batchError ? "error" : "info"} sx={{ position: "absolute", bottom: "100%", mx: 1, mb: 0.5, left: 0, right: 0, zIndex: 9, py: 0 }}>
-          {batchError ?? "לחיבור בחרו כתוביות רצופות. אפשר למחוק כל בחירה."}
+      {selectionMode && !batchBusy && batchError &&
+        <Alert severity="error" sx={{ position: "absolute", bottom: "100%", mx: 1, mb: 0.5, left: 0, right: 0, zIndex: 9, py: 0 }}>
+          {batchError}
         </Alert>}
       <Stack direction="row" component="nav" aria-label="מצבי עריכה" aria-hidden={selectionMode || undefined}
         sx={{ visibility: selectionMode ? "hidden" : "visible", flexShrink: 0, borderTop: 1, borderColor: "#e8edf3", bgcolor: "#ffffff", p: 0, zIndex: 8, position: "relative", "& .MuiSvgIcon-root": { fontSize: 20 } }}>
