@@ -279,7 +279,8 @@ export function MobileCaptionEditor({
   // A loop belongs only to this editing view, including across responsive
   // layout changes or replacing the loaded video.
   useEffect(() => () => loopChangeRef.current(false), [mode, mediaUrl]);
-  useEffect(() => { setTimingWordsId(null); }, [mode, mediaUrl]);
+  useEffect(() => { setTimingWordsId(null); }, [mediaUrl]);
+  useEffect(() => { if (mode !== "timing") setTimingWordsId(null); }, [mode]);
 
   const duration = videoDuration && Number.isFinite(videoDuration) ? videoDuration : Math.max(1, ...editableSegments.map(s => s.end), 1);
   const timingWordsSegment = editableSegments.find(segment => segment.id === timingWordsId);

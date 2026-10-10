@@ -33,7 +33,11 @@ test('mobile timing is the main view and caption editing uses a pencil popup', a
   await expect(page.getByTestId('mobile-timing-editor')).toBeVisible();
   await page.getByRole('button', { name: 'צפייה', exact: true }).click();
   await expect(page.getByTestId('mobile-timing-editor')).toHaveCount(0);
-  await page.getByRole('button', { name: 'תזמון', exact: true }).click();
+  await page.getByRole('button', { name: 'כתובית: שלום עולם', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'עריכת כתובית', exact: true });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByRole('textbox', { name: 'טקסט הכתובית' })).toHaveValue('שלום עולם');
+  await dialog.getByRole('button', { name: 'סיום', exact: true }).click();
   await expect(page.getByTestId('mobile-timing-editor')).toBeVisible();
 });
 
