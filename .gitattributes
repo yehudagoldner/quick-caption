@@ -1,0 +1,2 @@
+# macOS launchers must remain executable shell text after Windows checkouts.
+installer/macos/** text eol=lf

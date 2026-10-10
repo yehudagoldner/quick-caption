@@ -93,6 +93,17 @@ local until the authenticated bridge becomes reachable. Native Adobe/UDT loading
 logs may still be needed for failures before our code runs. The server marks
 device clock skew and uses its own clock for expiry.
 
+The Mac beta installer has a separate, pre-login diagnostic report. It writes
+one sanitized `last-install.json` under the user's Library/Application Support/
+Quick Caption/Installer, with stage, Adobe status, architecture and versions.
+An hourly user LaunchAgent expires it after seven days and unregisters itself
+when no report remains; `cleanupScheduled` records whether macOS accepted it.
+`Quick Caption Diagnostics.command` exports that report for attachment here
+when the panel cannot load on a different Mac. The exported copy is user-owned.
+Installer UUIDs alone are not central lookup keys before authenticated login.
+No anonymous endpoint or additional server logs were introduced. See
+[Mac installer instructions](premiere-installer-mac.md).
+
 ## Verification recorded on 2026-10-10
 
 * Full Premiere/accounting/simulation suite: **164 passed**, no skipped tests,

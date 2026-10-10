@@ -110,13 +110,15 @@ versions/configuration are changed for distribution.
 
 ## macOS
 
-Runtime paths and failure cases have automated Mac simulations, but **this
-Windows EXE is not a Mac installer**. Native Mac signing/installation and actual
-Premiere rendering have not been verified. Adobe has documented cross-platform
-CEP signing issues; this build does not advertise the Windows-signed ZXP as a
-validated Mac release. Build/sign on a Mac and run the full installation,
-Hebrew rendering, audio export and active-word workflow before publishing a
-Mac package. A native notarized installer also requires an Apple Developer ID.
+The separate `QuickCaption-Installer-1.0.1-Mac-Beta.zip` now contains a Mac app
+launcher, built-in Bash installer and diagnostic export command. See
+[Mac beta instructions](premiere-installer-mac.md). **This Windows EXE is not
+a Mac installer.** The Mac beta uses the existing verified Adobe packages;
+it is unsigned/unnotarized by Apple and still carries the Windows-signed CEP.
+Mac simulations verify installer logic, not native installation or rendering.
+Adobe has documented cross-platform CEP signing issues. Build/sign on a Mac
+and test clean-machine installation, Hebrew, audio and active words before
+publishing a Mac release. Apple signing/notarization requires Developer ID.
 
 Official references:
 
