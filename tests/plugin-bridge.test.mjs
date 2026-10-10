@@ -12,6 +12,25 @@ const srt = '1\n00:00:10,500 --> 00:00:12,000\nשלום עולם\n\n2\n00:00:30,
 const clip = { kind: 'Audio', track: 0, sourcePath: 'C:/media/amit.mp4', startTicks: '10000', endTicks: '15000', inTicks: '0', outTicks: '5000', speed: 1, reversed: false, disabled: false };
 const target = { projectPath: 'C:/projects/Original.prproj', sequenceId: '{ABC-123}', clips: [clip] };
 const payload = { id: 'fixture-job:42', target, srt };
+
+test('a native graphics build survives the old one-minute cutoff and a timeout stays recoverable without claiming the bridge is unloaded',async()=>{
+  const source=await readFile(new URL('../premiere-plugin/bridge.js',import.meta.url),'utf8');
+  const timers=new Map();let now=0,serial=0,resolveBuild;
+  const context=vm.createContext({module:{exports:{}},require:()=>({}),fetch:()=>{},setTimeout(fn,delay){const id=++serial;timers.set(id,{fn,at:now+delay});return id;},clearTimeout(id){timers.delete(id);}});
+  vm.runInContext(source,context);
+  const Bridge=context.module.exports.TimelineBridge;
+  const bridge=new Bridge({configuration:{port:37289,token:'fixture'},fetcher:()=>new Promise(resolve=>{resolveBuild=resolve;})});
+  let complete=false;
+  const building=bridge.request('/build-graphics',{}).then(result=>{complete=true;return result;});
+  now=60001;for(const [id,timer] of timers)if(timer.at<=now){timers.delete(id);timer.fn();}
+  await Promise.resolve();assert.equal(complete,false);
+  resolveBuild({ok:true,json:async()=>({ok:true,phrases:[{sequenceId:'built'}]})});
+  assert.equal((await building).phrases[0].sequenceId,'built');
+  const timedOut=bridge.request('/build-graphics',{});
+  const rejection=assert.rejects(timedOut,error=>error.code==='bridge_timeout'&&/לא יתמלל או יחייב שוב/.test(error.message));
+  now+=21*60000;for(const [id,timer] of timers)if(timer.at<=now){timers.delete(id);timer.fn();}
+  await rejection;
+});
 async function temporaryRoot(t) {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'qc-bridge-test-'));
   t.after(async () => {
