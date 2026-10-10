@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
-import { estimateTranscriptionCredits } from './creditCalculator.js';
+import { estimateTranscriptionCredits, transcriptionEstimateRules } from './creditCalculator.js';
 import { MAX_MEDIA_BYTES, VIDEO_RETENTION_DAYS } from './mediaPolicy.js';
 import { parseTranscriptionSettings, TRANSCRIPTION_LANGUAGE_CODES, SECONDARY_LANGUAGE_MODES } from './transcriptionSettings.js';
 
@@ -14,7 +14,7 @@ export function currentTranscriptionModels(env = process.env) {
   };
 }
 
-const policySources = ['creditCalculator.js', 'creditPackages.js', 'aiUsage.js', 'transcriptionSettings.js', 'mediaPolicy.js']
+const policySources = ['creditCalculator.js', 'creditEstimate.js', 'creditPackages.js', 'aiUsage.js', 'transcriptionSettings.js', 'mediaPolicy.js']
   .map(file => readFileSync(new URL(file, import.meta.url), 'utf8')).join('\n');
 
 export function pluginPolicy() {
@@ -28,6 +28,7 @@ export function pluginPolicy() {
     secondaryLanguageModes: SECONDARY_LANGUAGE_MODES,
     balanceRefreshSeconds: 30,
     billing: 'actual-ai-cost',
+    creditEstimate: transcriptionEstimateRules(models),
   };
 }
 
