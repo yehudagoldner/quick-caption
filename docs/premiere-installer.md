@@ -38,6 +38,11 @@ Windows App Paths registry. An unknown custom installation is left to Adobe's
 installer to validate. The executable uses Windows' existing .NET Framework;
 no extra .NET runtime is downloaded.
 
+`--install` runs the same installation routine without the graphical window,
+for automated testing or deployment. It refuses installation while Premiere is
+running and emits a result with a diagnostic ID. No elevated/debug-mode
+workaround is used.
+
 UPIA can return process exit 0 after a failed install. The wrapper checks
 Adobe's printed status and requires an explicit success message; unrecognized
 results stop with code -10000 rather than claim success. This behavior was
@@ -132,7 +137,18 @@ Official references:
   file access and the private connection configuration were verified inside
   Premiere's UXP runtime. The installer UI was rendered and inspected without
   opening an interactive window.
-- Premiere was still open at delivery. A full install/upgrade/relaunch and a
-  clean-machine workflow have **not** yet been tested. Native Mac installation
-  and rendering remain unverified. No production deployment or paid model
-  call was made.
+- After the user closed Premiere, the compiled installer's shared installation
+  routine successfully installed both packages through UPIA. Adobe listed both
+  QA extensions as enabled at version 1.0.1. The installed CEP folder signature
+  was independently verified and neither installed bundle contains a pairing key.
+- The unsigned developer companion was preserved at
+  `%LOCALAPPDATA%/Quick Caption/Installer/development-bridge-backup`.
+- On relaunch, Adobe reported the UXP plugin in the ordinary `ThirdParty` runtime
+  group, loaded from `UXP/Plugins/External`, rather than the development source.
+  The installed CEP returned healthy version 1.3.0, reference-audio/native-graphics
+  capabilities, and the expected installed WAV preset through authenticated HTTP.
+- The computer already had Adobe developer settings enabled; those settings
+  were left unchanged. Clean-machine installation with signature enforcement,
+  native Mac installation/rendering, and an end-to-end caption workflow on the
+  newly installed package remain unverified. No production deployment or paid
+  model call was made.

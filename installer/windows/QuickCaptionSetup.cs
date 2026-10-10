@@ -106,6 +106,27 @@ static class Setup {
         if(Regex.IsMatch(output,@"\bsuccess(?:ful(?:ly)?)?\b",RegexOptions.IgnoreCase)) return 0;
         return -10000; // Unrecognized output: do not claim that Adobe installed it.
     }
+    static async Task<int> RunInstallation(Action<string> progress) {
+        if(!File.Exists(Agent)) {Record("creative_cloud_missing");return -10002;}
+        if(PremiereRunning()) return -10001;
+        string temporary=Path.Combine(Path.GetTempPath(),"QuickCaptionSetup-"+Guid.NewGuid().ToString("N"));
+        string developmentSource=null; bool completed=false;
+        try {
+            developmentSource=BackupDevelopmentBridge();
+            Directory.CreateDirectory(temporary);
+            for(int i=0;i<Packages.Length;i++) {
+                string stage=i==0 ? "bridge_install" : "plugin_install"; progress(stage);
+                var filename=Path.Combine(temporary,Packages[i]); File.WriteAllBytes(filename,Resource(Packages[i]));
+                int exit=await Install(filename); Record(stage,exit);
+                if(exit!=0) return exit;
+            }
+            completed=true; Record("complete",0); return 0;
+        } catch { Record("installer_failure"); return -10003; }
+        finally {
+            if(!completed) {try {RestoreDevelopmentBridge(developmentSource);} catch {Record("restore_failure");}}
+            try {Directory.Delete(temporary,true);} catch {}
+        }
+    }
     [STAThread] public static int Main(string[] args) {
         Prune();
         try { Verify(); } catch { if(args.Length>0) Console.WriteLine("{\"ok\":false,\"code\":\"invalid_package\"}"); else MessageBox.Show("The installer package is damaged. Download it again.","Quick Caption"); return 2; }
@@ -114,6 +135,10 @@ static class Setup {
             Console.WriteLine("{\"ok\":true,\"packages\":2,\"version\":\"1.0.1\",\"adobeStatusParser\":true}"); return 0;
         }
         if(args.Contains("--preflight")) { Console.WriteLine(Json.Serialize(new {ok=File.Exists(Agent), creativeCloud=File.Exists(Agent), premiereRunning=PremiereRunning(), hostVersions=HostVersions()})); return 0; }
+        if(args.Contains("--install")) {
+            int result=RunInstallation(stage=>Console.WriteLine(stage)).GetAwaiter().GetResult();
+            Console.WriteLine(Json.Serialize(new {ok=result==0, code=result, id=ReportId})); return result==0 ? 0 : 1;
+        }
         Application.EnableVisualStyles(); Application.SetCompatibleTextRenderingDefault(false);
         var form = new Form {Text="Quick Caption · Premiere Setup", ClientSize=new Size(570,410), StartPosition=FormStartPosition.CenterScreen, FormBorderStyle=FormBorderStyle.FixedDialog, MaximizeBox=false, BackColor=Color.FromArgb(25,30,39), ForeColor=Color.White, Font=new Font("Segoe UI",11)};
         var title=new Label {Text="Quick Caption", Font=new Font("Segoe UI",24,FontStyle.Bold), AutoSize=true, Location=new Point(28,24)};
@@ -129,22 +154,12 @@ static class Setup {
             if(!File.Exists(Agent)) { status.Text="Creative Cloud לא נמצא. התקינו או עדכנו אותו ונסו שוב."; Record("creative_cloud_missing"); return; }
             if(PremiereRunning()) { status.Text="שמרו וסגרו את פרימייר, ואז לחצו שוב על התקנה."; return; }
             running=true; install.Enabled=false; close.Enabled=false; progress.Visible=true;
-            string temporary=Path.Combine(Path.GetTempPath(),"QuickCaptionSetup-"+Guid.NewGuid().ToString("N"));
-            string developmentSource=null; bool completed=false;
             try {
-                developmentSource=BackupDevelopmentBridge();
-                Directory.CreateDirectory(temporary);
-                for(int i=0;i<Packages.Length;i++) {
-                    status.Text=i==0 ? "מתקין את רכיב ההצבה…" : "מתקין את התוסף…";
-                    var filename=Path.Combine(temporary,Packages[i]); File.WriteAllBytes(filename,Resource(Packages[i]));
-                    int exit=await Install(filename); Record(i==0?"bridge_install":"plugin_install",exit);
-                    if(exit!=0) { status.Text="ההתקנה נעצרה. קוד Adobe: "+exit+"\nקוד אבחון: "+ReportId; install.Text="ניסיון נוסף"; return; }
-                }
+                int exit=await RunInstallation(stage=>status.Text=stage=="bridge_install" ? "מתקין את רכיב ההצבה…" : "מתקין את התוסף…");
+                if(exit!=0) { status.Text="ההתקנה נעצרה. קוד Adobe: "+exit+"\nקוד אבחון: "+ReportId; install.Text="ניסיון נוסף"; return; }
                 status.Text="ההתקנה הושלמה. פתחו את פרימייר ואת Quick Caption QA.";
-                install.Visible=false; Record("complete",0);
-                completed=true;
-            } catch { status.Text="ההתקנה נכשלה. קוד אבחון: "+ReportId; Record("installer_failure"); }
-            finally { if(!completed) { try {RestoreDevelopmentBridge(developmentSource);} catch {Record("restore_failure");} } running=false; close.Enabled=true; install.Enabled=true; progress.Visible=false; try { Directory.Delete(temporary,true); } catch {} }
+                install.Visible=false;
+            } finally { running=false; close.Enabled=true; install.Enabled=true; progress.Visible=false; }
         };
         form.Controls.AddRange(new Control[]{title,description,status,progress,install,close});
         if(args.Length==2 && args[0]=="--preview") {
