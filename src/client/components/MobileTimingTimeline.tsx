@@ -7,9 +7,6 @@ import { formatTimecode } from "../utils/timecode";
 import { mobileTimelineWindowSeconds, placeMobileCaption } from "../../timelineEditing.js";
 import { CompactTimelineZoom } from "./CompactTimelineZoom";
 
-// Temporary pinch-only trial: restore this flag to show the retained zoom control.
-const SHOW_TIMING_ZOOM_BAR = false;
-
 function clock(seconds: number) {
   const whole = Math.max(0, Math.floor(seconds + 1e-4));
   return `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, "0")}`;
@@ -191,7 +188,7 @@ export function MobileTimingTimeline({
         {manualWindow == null ? "אוטומטי" : "התאם"}
       </Button>
     </Stack>
-    <Box data-testid="mobile-timing-zoom-control" sx={{ display: SHOW_TIMING_ZOOM_BAR ? "block" : "none", width: "100%", px: 0.5, boxSizing: "border-box", flexShrink: 0 }}>
+    <Box data-testid="mobile-timing-zoom-control" sx={{ width: "100%", px: 0.5, boxSizing: "border-box", flexShrink: 0 }}>
       <CompactTimelineZoom label="זום ציר התזמון" value={zoomValue} min={0} max={100} step={0.1}
         valueText={`${Number(windowSeconds.toFixed(2))} שניות בתצוגה`} disabled={zoomRange === 0}
         onChange={value => { fromScroll.current = null; setManualWindow(total / Math.exp(value / 100 * zoomRange)); }} />
@@ -222,20 +219,21 @@ export function MobileTimingTimeline({
                 border: 1, borderColor: (selecting ? checked : focused) ? "primary.main" : "#e4e8ee", boxShadow: (selecting ? checked : focused) ? "0 0 0 1px #1976d2" : "none",
                 overflow: "hidden", zIndex: focused ? 2 : 1, touchAction: "pan-x",
               }}>
+              <Box sx={{ position: "absolute", top: 0, left: 0, right: 0, height: 44, display: "flex", alignItems: "center", justifyContent: "space-between", zIndex: 3 }}>
               <Checkbox data-caption-checkbox checked={checked} disabled={disabled} size="small"
                 slotProps={{ input: { "aria-label": `בחירת כתובית: ${segment.text}` } }}
                 onPointerDown={event => event.stopPropagation()} onClick={event => event.stopPropagation()}
                 onChange={() => onToggleChecked(segment.id)}
-                sx={{ position: "absolute", top: 0, left: 0, width: "min(44px, 100%)", height: 44, p: 0, zIndex: 3 }} />
+                sx={{ width: "min(44px, 50%)", height: 44, p: 0, "& .MuiSvgIcon-root": { fontSize: Math.min(24, cardWidth / 2 - 2) } }} />
               {!selecting && <IconButton data-word-timing-button size="small" aria-label={`עריכת כתובית: ${segment.text}`} title="עריכת טקסט ותזמון" disabled={disabled}
                 onPointerDown={event => event.stopPropagation()}
                 onClick={event => { event.stopPropagation(); onEditCaption(segment.id); }}
-                sx={{ position: "absolute", top: cardWidth >= 76 ? 2 : 44, right: 2, width: 32, height: 32, zIndex: 3, color: "primary.main", bgcolor: "#e8f1fc", "&:hover": { bgcolor: "#d7e8fc" } }}>
-                <EditRounded sx={{ fontSize: 20 }} />
+                sx={{ width: "min(32px, 50%)", height: 32, p: 0, color: "primary.main", bgcolor: "#e8f1fc", "&:hover": { bgcolor: "#d7e8fc" } }}>
+                <EditRounded sx={{ fontSize: Math.min(20, cardWidth / 2 - 2) }} />
               </IconButton>}
-              <Box sx={{ height: "100%", px: showChrome ? 4.5 : 1.5, display: "flex", flexDirection: "column", justifyContent: "center", pt: 3.25, pb: showChrome ? "32px" : 0.5, overflow: "hidden" }}>
-                <Typography dir={preferences.direction} sx={{ flexShrink: 0, fontSize: 15, fontWeight: 600, lineHeight: 1.3, overflowWrap: "anywhere", display: "-webkit-box", WebkitLineClamp: 4, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{segment.text}</Typography>
-                <Typography dir="ltr" variant="caption" color="text.secondary" sx={{ flexShrink: 0, fontSize: 10, lineHeight: 1.2, mt: 0.25, textAlign: preferences.direction === "rtl" ? "right" : "left" }}>{formatTimecode(segment.start, fps)}–{formatTimecode(segment.end, fps)}</Typography>
+              </Box>
+              <Box sx={{ height: "100%", px: 1.5, display: "flex", flexDirection: "column", justifyContent: "center", pt: "44px", pb: showChrome ? "32px" : 0.5, overflow: "hidden" }}>
+                <Typography data-testid="mobile-timing-caption-text" dir={preferences.direction} title={segment.text} sx={{ flexShrink: 0, fontSize: 13, fontWeight: 600, lineHeight: 1.3, maxHeight: "2.6em", overflowWrap: "anywhere", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{segment.text}</Typography>
               </Box>
               {showChrome && <>
                 <Handle label="הזזת התחלה" edge="start" onDown={event => beginDrag(event, segment, "start")} onMove={moveDrag} onUp={endDrag} />
@@ -267,6 +265,6 @@ function Handle({ label, edge, onDown, onMove, onUp }: {
 }) {
   return <Box data-timing-handle role="slider" aria-label={label} onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp}
     sx={{ position: "absolute", top: "50%", [edge === "start" ? "left" : "right"]: 0, transform: "translateY(-50%)", width: "min(36px, 50%)", height: 72, display: "flex", alignItems: "center", justifyContent: "center", touchAction: "none", zIndex: 2 }}>
-    <Box sx={{ width: 6, height: 36, borderRadius: 99, bgcolor: "primary.main" }} />
+    <Box sx={{ position: "absolute", [edge === "start" ? "left" : "right"]: 2, width: 6, height: 36, borderRadius: 99, bgcolor: "primary.main" }} />
   </Box>;
 }

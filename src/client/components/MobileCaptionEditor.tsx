@@ -569,9 +569,8 @@ export function MobileCaptionEditor({
             <Box sx={{ flex: 1, minWidth: 0, minHeight: 0, width: "100%", display: "flex", overflow: "hidden" }}>
               {player}
             </Box>
-            {/* The hidden zoom frees 28px; captions shrink another 10px.
-                Use viewport height so smaller menus give their space to the video. */}
-            <Box sx={{ flex: "0 0 calc(30dvh - 110px)", minWidth: 0, minHeight: 180, width: "100%", display: "flex", overflow: "hidden" }}>
+            {/* Reserve room for zoom, the card controls and two caption lines. */}
+            <Box sx={{ flex: "0 0 calc(30dvh - 82px)", minWidth: 0, minHeight: 216, width: "100%", display: "flex", overflow: "hidden" }}>
             <MobileTimingTimeline
               mediaUrl={mediaUrl}
               segments={editableSegments}

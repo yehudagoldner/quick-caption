@@ -46,6 +46,44 @@ async function openCaption(page: Page) {
   await expect(page.getByRole('dialog', { name: 'עריכת כתובית', exact: true })).toBeVisible();
 }
 
+for (const width of [320, 390]) test(`timing cards keep controls above two caption lines and omit times at ${width}px`, async ({ page }) => {
+  const text = 'בואו נתחיל לעבוד על הכתוביות עם טקסט ארוך שצריך להופיע בשתי שורות בלבד ולא לכסות את הכפתורים. '.repeat(2).trim();
+  await openEditor(page, [{ id: 1, start: 0, end: 0.5, text }, { id: 2, start: 0.5, end: 4, text: 'המשך' }], []);
+  await page.setViewportSize({ width, height: width === 320 ? 568 : 844 });
+  const card = page.getByTestId('mobile-timing-clip').first();
+  const caption = card.getByTestId('mobile-timing-caption-text');
+  await expect(card).toHaveText(text);
+  await expect(caption).toHaveAttribute('title', text);
+  const zoom = page.getByRole('slider', { name: 'זום ציר התזמון', exact: true });
+  await expect(zoom).toBeVisible();
+  const checkControls = async () => {
+    const clip = (await card.boundingBox())!;
+    const checkbox = (await card.getByRole('checkbox').boundingBox())!;
+    const pen = (await card.getByRole('button', { name: `עריכת כתובית: ${text}`, exact: true }).boundingBox())!;
+    const content = (await caption.boundingBox())!;
+    expect(checkbox.y - clip.y).toBeLessThan(8);
+    expect(pen.y - clip.y).toBeLessThan(8);
+    expect(checkbox.x + checkbox.width).toBeLessThanOrEqual(pen.x + 1);
+    expect(content.y).toBeGreaterThanOrEqual(checkbox.y + checkbox.height - 1);
+    const layout = await caption.evaluate(el => {
+      const style = getComputedStyle(el);
+      return { fontSize: Number.parseFloat(style.fontSize), height: el.clientHeight, lineHeight: Number.parseFloat(style.lineHeight), clipped: el.scrollHeight > el.clientHeight, lines: style.webkitLineClamp };
+    });
+    expect(layout.fontSize).toBeLessThan(15);
+    expect(layout.lines).toBe('2');
+    expect(layout.height).toBeLessThanOrEqual(layout.lineHeight * 2 + 1);
+    expect(layout.clipped).toBe(true);
+  };
+  await checkControls();
+  await page.screenshot({ path: `tmp/review/timing-card-layout-${width}.png` });
+  await zoom.focus();
+  await page.keyboard.press('Home');
+  await checkControls();
+  await page.keyboard.press('End');
+  await checkControls();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBe(0);
+});
+
 async function dragBy(page: Page, control: Locator, pixels: number) {
   await control.scrollIntoViewIfNeeded();
   const rect = (await control.boundingBox())!;
@@ -325,7 +363,7 @@ test('caption audio preview reports playback failure and can retry', async ({ pa
   await expect(dialog.getByRole('button', { name: 'השהיה', exact: true })).toBeVisible();
 });
 
-for (const width of [320, 390]) test(`pinch zoom keeps video size and playback position with the zoom bar hidden at ${width}px`, async ({ page, context }) => {
+for (const width of [320, 390]) test(`zoom bar and pinch keep video size and playback position at ${width}px`, async ({ page, context }) => {
   await openEditor(page);
   await page.setViewportSize({ width, height: width === 320 ? 568 : 844 });
   let saves = 0;
@@ -337,8 +375,14 @@ for (const width of [320, 390]) test(`pinch zoom keeps video size and playback p
   await expect(page.getByTestId('playhead-timecode')).toHaveText('00:00:01:06');
   const bounds = (await video.boundingBox())!;
   const editor = page.getByTestId('mobile-timing-editor');
-  const zoom = editor.getByRole('slider', { name: 'זום ציר התזמון', exact: true, includeHidden: true });
-  await expect(zoom).toBeHidden();
+  const zoom = editor.getByRole('slider', { name: 'זום ציר התזמון', exact: true });
+  await expect(zoom).toBeVisible();
+  await zoom.focus();
+  await page.keyboard.press('End');
+  await expect(editor).toHaveAttribute('data-window-seconds', '0.50');
+  await page.keyboard.press('Home');
+  await expect(editor).toHaveAttribute('data-window-seconds', '4.00');
+  await editor.getByRole('button', { name: 'התאמת זום לעריכה' }).click();
   await expect(editor.getByRole('slider', { name: 'מיקום בהקלטה', exact: true })).toHaveCount(0);
   // Dispatch two actual touch contacts, including adding the second finger after the first.
   const client = await context.newCDPSession(page);
