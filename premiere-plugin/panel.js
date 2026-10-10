@@ -578,7 +578,9 @@ async function openTimelineAction() {
   if (busy || preparing || uploading || watching || booting) return;
   const plugin = Array.from(uxp.pluginManager.plugins).find(item => item.id === 'com.quickcaption.premiere.qa');
   if (!plugin) throw new Error('לא ניתן לפתוח את חלון הכתוביות');
-  if (!visiblePanels.has('quickCaption')) await plugin.showPanel('quickCaption');
+  // Premiere 25.6 does not reliably deliver hide(); always bring the existing
+  // entrypoint forward so a background/closed tab cannot become unreachable.
+  await plugin.showPanel('quickCaption');
   // A completed or running job must be resumed, never replaced by a new quote.
   if (hasPending) { mainPanel.scrollTop = 0; return; }
   await refreshSelection();

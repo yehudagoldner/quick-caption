@@ -91,7 +91,7 @@ test('the compact panel mounts only its icon and launches the existing selection
   panel.entrypoints.panels.quickCaption.show({ appendChild: node => main.push(node.id) });
   assert.deepEqual(toolbar, ['quick-caption-toolbar']); assert.deepEqual(main, ['plugin-main']);
   await vm.runInContext('openTimelineAction()', panel.context);
-  assert.deepEqual(panel.openedPanels, [], 'an already visible panel keeps its existing workspace position');
+  assert.deepEqual(panel.openedPanels, ['quickCaption'], 'the same panel entrypoint is brought forward');
   assert.match(panel.node('selection-summary').textContent, /Selected clips/);
   assert.equal(panel.calls.some(url => url.endsWith('/api/transcribe')), false);
 });

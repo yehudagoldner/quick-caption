@@ -80,7 +80,8 @@ caption-track creation. It has not been submitted to Adobe Marketplace.
    panel can inherit a floating size. The UXP API does not expose a dock-position
    setter: drag the panel's tab (not the OS title bar) to the outside edge until
    Premiere shows a full-height docking zone, then save a custom workspace.
-   The shortcut does not call `showPanel` again while the main panel is visible.
+   The shortcut brings forward the same panel entrypoint. It must not depend on
+   `hide()` to decide visibility: Premiere 25.6 does not reliably deliver that hook.
 5. If the account is disconnected, connect it through browser pairing and confirm
    the matching code and account. The selection and estimate refresh automatically.
 6. First use asks for an existing Waveform Audio `.epr` preset. Its persistent file
