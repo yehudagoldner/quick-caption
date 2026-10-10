@@ -9,6 +9,7 @@ const { LIMITS, normalizeSettings, transcriptionFields } = require('./transcript
 const languageLabels = require('./language-labels.json');
 const { captionPlacementInfo, savedPlacementInfo } = require('./caption-placement.js');
 const { placeGraphics } = require('./graphics-placement.js');
+const { retainReferenceAudio, referenceAudioExists } = require('./reference-audio.js');
 let bridgeConfiguration = null;
 try { bridgeConfiguration = require('./bridge-config.json'); } catch { /* QA installer pairs both local components. */ }
 const bridge = new TimelineBridge({ configuration: bridgeConfiguration });
@@ -24,6 +25,7 @@ let account = null, file = null, quote = null, busy = false, linkEpoch = 0, time
 let accountPending = null;
 let uploading = false;
 let hasPending = false;
+let canAddReference = false;
 let selectionContext = null;
 let ready = null;
 let booting = true, linking = false, preparing = false, watching = false;
@@ -158,6 +160,8 @@ function controls() {
   additionalCheckboxes.forEach(checkbox => { checkbox.disabled = settingsLocked; });
   $('resume').hidden = !hasPending || watching;
   disable('resume', busy || !hasPending || !connected);
+  $('add-reference-audio').hidden = !canAddReference || !connected;
+  disable('add-reference-audio', busy || preparing || uploading || watching || booting || !connected);
 }
 function compatible(policy) {
   const parts = value => value.split('.').map(Number);
@@ -175,6 +179,10 @@ async function updateAccount() {
       if (account?.policy.version !== next.policy.version) invalidateQuote();
       account = next;
       const job = await pendingJob(); hasPending = needsResume(job);
+      canAddReference = false;
+      if (job?.style?.activeWord && ['delivered','placing'].includes(job.delivery?.status) && job.delivery.built && !job.delivery.built.referenceAudio) {
+        try { const project = await ppro.Project.getActiveProject(); canAddReference = project?.guid.toString() === job.selection.projectId; } catch { /* Only show migration in its own project. */ }
+      }
       if (booting && !hasPending && job?.delivery?.status === 'delivered') {
         // Show only the completed delivery in this project, never unrelated history.
         try { const placed = await savedPlacementInfo(ppro, job); if (placed) placementMessage(placed, job.result || {}); } catch { /* Reading UI status must not disconnect the account. */ }
@@ -235,9 +243,10 @@ async function deliverJob(job) {
     progress('הכתוביות מוכנות. מכין את צירי הזמן של ההדגשות…');
     let built = job.delivery?.built;
     if (!built) {
+      job = await ensureReferenceAudio(job);
       const data = await client.request(`/api/videos/${job.result.videoId}`);
       if (!data.video) throw new Error('נתוני הכתוביות אינם זמינים. התמלול נשמר; לא יבוצע תמלול נוסף.');
-      built = await bridge.buildGraphics(ppro, job.selection, `${job.id}:${job.result.videoId}`, data.video, job.style.activeWordColor);
+      built = await bridge.buildGraphics(ppro, job.selection, `${job.id}:${job.result.videoId}`, data.video, job.style.activeWordColor, job.referenceAudio);
       await saveJob({...job,delivery:{kind:'graphics',status:'built',built}});
     }
     const delivery = await placeGraphics(ppro,job.selection,built,job.delivery?.status==='placing'?job.delivery:null,async delivery=>saveJob({...job,delivery}));
@@ -275,6 +284,46 @@ async function audioPreset(sequence) {
   if (extension !== 'wav') throw new Error('בחרו preset מסוג Waveform Audio (WAV) לייצוא האודיו של הקטעים שנבחרו');
   await uxp.storage.secureStorage.setItem('audio-preset', JSON.stringify(await fs.createPersistentToken(preset)));
   return preset;
+}
+
+async function ensureReferenceAudio(job) {
+  if (await referenceAudioExists(uxp, job.referenceAudio)) return job;
+  await validateSelection(ppro, job.selection);
+  let output, isolated;
+  const reusable = file && JSON.stringify(selectionContext) === JSON.stringify(job.selection);
+  try {
+    if (reusable) output = file;
+    else {
+      progress('מכין אודיו מסונכרן לעריכת ההדגשות…');
+      isolated = await isolatedSelection(ppro, job.selection);
+      const preset = await audioPreset(isolated.sequence);
+      if (!preset) throw new Error('נדרש preset אודיו להכנת הסאונד לעריכה. התמלול נשמר; לא יבוצע חיוב נוסף.');
+      output = await (await fs.getTemporaryFolder()).createFile(`quick-caption-reference-${Date.now()}.wav`, {overwrite:false});
+      if (!await ppro.EncoderManager.getManager().exportSequence(isolated.sequence, ppro.Constants.ExportType.IMMEDIATELY, output.nativePath, preset.nativePath, true)) throw new Error('ייצוא האודיו לעריכה לא התחיל');
+      await waitForWave(output, account?.policy.maxMediaBytes || 512 * 1024 * 1024);
+    }
+    const referenceAudio = await retainReferenceAudio(uxp, output, job.id, job.selection);
+    const updated = {...job, referenceAudio};
+    await saveJob(updated);
+    return updated;
+  } finally {
+    if (isolated) await isolated.cleanup();
+    if (output && !reusable) await output.delete();
+  }
+}
+
+async function addSoundToExistingCaptions() {
+  let job = await pendingJob();
+  if (!job?.style?.activeWord || !['delivered','placing'].includes(job.delivery?.status) || !job.delivery.built) throw new Error('לא נמצאו כתוביות עם מילה פעילה מהתמלול האחרון');
+  if (job.delivery.built.referenceAudio) { message('האודיו כבר נמצא בתוך המשפטים. לחצו פעמיים על משפט כדי לשמוע אותו ולערוך את ההדגשות.'); return; }
+  job = await ensureReferenceAudio(job);
+  progress('מוסיף את הסאונד למשפטים הקיימים. ההדגשות שערכתם נשמרות…');
+  const existing = {...job.delivery,built:{...job.delivery.built,binName:job.delivery.built.binName || `Quick Caption · active words · ${job.id}:${job.result.videoId}`}};
+  const result = await bridge.attachReferenceAudio(ppro,job.selection,`${job.id}:${job.result.videoId}`,existing,job.referenceAudio);
+  await saveJob({...job,delivery:result.delivery});
+  canAddReference = false;
+  hasPending = false;
+  message('האודיו נוסף למשפטים הקיימים. לחצו פעמיים על משפט כדי לשמוע אותו בזמן תיקון ההדגשות.');
 }
 
 async function waitForWave(entry, maxMediaBytes) {
@@ -428,6 +477,7 @@ async function send() {
   form.append('billingPolicyVersion', approved.policyVersion);
   for (const [key, value] of Object.entries(fields)) form.append(key, value);
   const job = { id: approved.jobId, uid: account.user.uid, selection: selectionContext, style: {activeWord:settings.activeWord,activeWordColor:settings.activeWordColor} };
+  if (settings.activeWord) job.referenceAudio = await retainReferenceAudio(uxp, file, job.id, job.selection);
   await saveJob(job);
   hasPending = true; invalidateQuote();
   progress('מעלה את האודיו ומתחיל תמלול…');
@@ -505,6 +555,7 @@ $('additional-toggle').addEventListener('click', () => {
 });
 $('language-search').addEventListener('input', renderAdditionalLanguages);
 $('resume').addEventListener('click', () => run(async () => { const job = await pendingJob(); if (job) await watchJob(job); }));
+$('add-reference-audio').addEventListener('click', () => run(addSoundToExistingCaptions));
 async function openTimelineAction() {
   if (busy || preparing || uploading || watching || booting) return;
   const plugin = Array.from(uxp.pluginManager.plugins).find(item => item.id === 'com.quickcaption.premiere.qa');

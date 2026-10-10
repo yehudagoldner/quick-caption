@@ -104,6 +104,12 @@ test('a host permission rejection is distinct from a disconnected companion', as
   const client = new bridgeClient.TimelineBridge({ configuration: { token: 'a'.repeat(64), port: 37289 }, fetcher: async () => { throw new Error('Permission denied to the url. Manifest entry not found.'); } });
   await assert.rejects(client.request('/health'), { code: 'bridge_permissions' });
 });
+test('active word preparation rejects an older silent bridge before preparing media or paid processing', async () => {
+  const routes=[];
+  const client=new bridgeClient.TimelineBridge({configuration:{token:'a'.repeat(64),port:37289},fetcher:async url=>{routes.push(new URL(url).pathname);return {ok:true,json:async()=>({ok:true,nativeGraphics:true})};}});
+  await assert.rejects(client.prepareGraphics({},{}),/לא בוצע חיוב/);
+  assert.deepEqual(routes,['/health']);
+});
 const jsonSource = await readFile(new URL('../premiere-bridge/vendor/json2.jsx', import.meta.url), 'utf8');
 function hostFixture() {
   const media = { type: 1, nodeId: 'source', getMediaPath: () => clip.sourcePath };

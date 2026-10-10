@@ -76,7 +76,8 @@ async function placeGraphics(ppro, snapshot, built, existingJournal, saveJournal
       for(const phrase of missing)compound.addAction(editor.createInsertProjectItemAction(phrase.source,ppro.TickTime.createWithTicks(phrase.start),journal.videoIndex,journal.audioIndex,true));
     });
   }
-  // A nested sequence can produce an empty audio clip. Only our new sources on
+  // Reference audio belongs inside the nest for editing, never in the master mix.
+  // Only our new sources on
   // the reserved new audio track may be removed; source audio is never targeted.
   const audio=await items(ppro,original,'Audio');
   const ownedAudio=audio.filter(row=>phrases.some(phrase=>phrase.sourceId===row.source));

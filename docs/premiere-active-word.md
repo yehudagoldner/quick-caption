@@ -7,12 +7,35 @@ nested sequence, containing consecutive native Premiere text graphics. Each
 internal clip displays the complete caption and highlights its current word.
 Pauses retain the caption without a highlighted word.
 
+New active-word jobs keep the already-rendered selection WAV in the plugin's
+persistent `PluginData/reference-audio` folder. Each internal sequence includes
+the matching audio interval on A1, including offsets across disconnected selected
+ranges. This provides playback and Premiere's waveform for timing edits. The
+original audio still supplies the main sequence mix; audio inserted alongside our
+nested graphics on the reserved new master track is removed to avoid duplication.
+Do not delete reference WAV files while their projects are in use.
+
+Existing graphics can be upgraded with **הוספת סאונד לכתוביות הקיימות**. This
+adds only reference audio inside the job's verified native sequences; existing
+word edits and master timeline trims are preserved. The job bin must be unique,
+contain every recorded nested source, and correspond to the original caption
+placements. Existing user audio is never replaced. A retry fills only empty nests
+and retains already-added reference clips without duplicate audio. Interrupted
+jobs reuse their saved WAV; if it is missing, the plugin can render the selection
+again locally without a new paid transcription.
+
 To correct timing, double-click a caption clip in the main timeline. Inside the
 nested sequence, use Premiere's **Rolling Edit** tool to move the shared boundary
 between adjacent word states. The full sentence remains one clip in the main
 timeline. Use **Properties** to edit the native text graphics; a text change
 should be applied to each word state containing that sentence. This is a video
 graphic workflow, rather than a native caption-track styling effect.
+
+Premiere 25.6's supported UXP/ExtendScript APIs expose no timeline zoom or track
+height setter. The panel shows the default shortcuts: click the timeline and use
+`\` to fit the sentence, `Ctrl + =` to increase video track height, and `N` to
+adjust the word boundary. The plugin does not send simulated keystrokes or change
+the user's workspace to force these view preferences.
 
 The option is recorded with a new transcription job. Delivery and recovery use
 that recorded choice. An existing completed regular-caption job is not converted
@@ -60,9 +83,23 @@ Native test in Premiere **25.6.6**, **1920×1080**:
 - No model calls, transcription uploads, account credit deductions or server
   deployments were used in this test.
 
+Reference-audio validation used the open project's rendered selection in a
+temporary copy on V5. Both sentence intervals matched the source WAV, master
+audio remained unchanged, and both ordinary placement and the legacy audio
+upgrade replayed without duplicates. The import's one-frame end truncation was
+corrected with explicit native audio clip bounds. Video ProjectItem out bounds
+use exact tick strings to avoid a separate floating-point frame truncation.
+All owned compatibility bins, reference WAVs, graphics assets and receipts were
+removed after verification. The existing 14 sentence nests in the user's project
+were then upgraded; each contains one reference clip, with zero nested reference
+audio clips in the master sequence. No paid transcription was performed.
+
 Automated tests cover selection gaps, Unicode spans, corrected caption text,
 archive integrity, timing alignment, dedicated tracks, persistence failures,
 interrupted builds and placement, locked settings and the existing SRT workflow.
+The full plugin suite passed **74 tests**, including durable WAV recovery,
+disconnected-range mapping, legacy upgrade ownership, retained edits and refusal
+to create duplicate master audio.
 
 The earlier recovery point remains
 `checkpoint/before-active-word-20261010`; see [recovery-point.md](recovery-point.md).

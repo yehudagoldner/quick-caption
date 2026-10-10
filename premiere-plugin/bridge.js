@@ -40,10 +40,28 @@ class TimelineBridge {
     return { projectPath: project.path, sequenceId: original.guid.toString(), clips };
   }
   async prepare(ppro, snapshot) { return this.request('/prepare', { target: await this.target(ppro, snapshot) }); }
-  async prepareGraphics(ppro, snapshot) { return this.request('/prepare-graphics', { target: await this.target(ppro, snapshot) }); }
-  async buildGraphics(ppro, snapshot, id, video, color) {
-    return this.request('/build-graphics', {target:await this.target(ppro,snapshot),id,segments:video.subtitle_json,words:video.words_json,ranges:snapshot.ranges,color});
+  async prepareGraphics(ppro, snapshot) {
+    const health = await this.request('/health');
+    if (!health.referenceAudio) throw new Error('נדרש עדכון לרכיב Quick Caption Timeline Bridge לפני יצירת הדגשות עם סאונד. לא נשלח תמלול ולא בוצע חיוב.');
+    return this.request('/prepare-graphics', { target: await this.target(ppro, snapshot) });
+  }
+  async buildGraphics(ppro, snapshot, id, video, color, referenceAudio) {
+    const target = await this.target(ppro,snapshot);
+    if (referenceAudio) {
+      // Permission tokens remain in UXP storage; the bridge only needs the file.
+      const {sourcePath,durationSeconds,ranges} = referenceAudio;
+      target.referenceAudio = {sourcePath,durationSeconds,ranges};
+    }
+    return this.request('/build-graphics', {target,id,segments:video.subtitle_json,words:video.words_json,ranges:snapshot.ranges,color});
   }
   async deliver(ppro, snapshot, id, srt) { return this.request('/deliver', { target: await this.target(ppro, snapshot), id, srt }); }
+  async attachReferenceAudio(ppro, snapshot, id, delivery, referenceAudio) {
+    const target = await this.target(ppro,snapshot);
+    const {sourcePath,durationSeconds,ranges} = referenceAudio;
+    // The existing companion already serializes /prepare and forwards targets.
+    // A fixed host operation lets installed companions hot-load this upgrade.
+    Object.assign(target,{operation:'attach-reference-audio',id,graphicsDelivery:delivery,referenceAudio:{sourcePath,durationSeconds,ranges}});
+    return this.request('/prepare',{target});
+  }
 }
 module.exports = { TimelineBridge };

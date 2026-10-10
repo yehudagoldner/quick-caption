@@ -68,6 +68,7 @@ async function openPanel({ connected = true, offline = false, finished = true, j
       if (name === './language-labels.json') return {};
       if (name === './caption-placement.js') return captionPlacement;
       if (name === './graphics-placement.js') return graphics ? {async placeGraphics(ppro,snapshot,built,journal,save){graphics.placements.push({snapshot,built,journal});await save({status:'placing',kind:'graphics',built,videoIndex:1,audioIndex:1});if(graphics.fail)throw new Error('placement interrupted');return {status:'delivered',kind:'graphics',built,videoIndex:1,audioIndex:1,cueCount:1,trackLabel:'V2'};}} : graphicsPlacement;
+      if (name === './reference-audio.js') return {referenceAudioExists:async()=>true,retainReferenceAudio:async()=>({sourcePath:'C:/persistent/selection.wav',token:'reference-token',durationSeconds:6,ranges:[]})};
       if (name === './bridge-config.json') throw new Error('Not installed in the fixture');
       if (name === './config.js') return { baseUrl: 'https://fixture.invalid/qa', version: '1.0.0' };
       throw new Error(`Unexpected module ${name}`);
