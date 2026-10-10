@@ -21,31 +21,26 @@ async function openEditor(page: Page, testSegments = segments, testWords = words
   await page.route('**/api/videos/load?**', route => route.fulfill({ json: { video: { id: 42, subtitle_json: testSegments, words_json: testWords, format: '.srt', stored_path: 'portrait.mp4' } } }));
   await page.goto('/?screen=edit&video=review-token');
   await expect.poll(() => page.locator('video').evaluate((v: HTMLVideoElement) => v.readyState)).toBeGreaterThan(0);
-  await page.getByRole('button', { name: 'עריכה', exact: true }).click();
+  await expect(page.getByTestId('mobile-timing-editor')).toBeVisible();
 }
 
-test('mobile loop visibly toggles and stops on every exit from editing', async ({ page }) => {
+test('mobile timing is the main view and caption editing uses a pencil popup', async ({ page }) => {
   await openEditor(page);
-  const off = page.getByRole('button', { name: 'לולאה כבויה · הפעלה' });
-  const on = page.getByRole('button', { name: 'לולאה פעילה · כיבוי' });
-  await expect(off).toHaveAttribute('aria-pressed', 'false');
-  await off.click();
-  await expect(on).toHaveAttribute('aria-pressed', 'true');
-  await on.click();
-  await expect(off).toBeVisible();
-  for (const destination of ['תזמון', 'עיצוב', 'עריכה', 'עוד']) {
-    await off.click();
-    await expect(on).toBeVisible();
-    await page.getByRole('button', { name: destination, exact: true }).click();
-    if (destination === 'עוד') await page.keyboard.press('Escape');
-    if (destination === 'עיצוב') await page.getByRole('button', { name: 'סגירת עיצוב' }).click();
-    await expect.poll(() => page.locator('video').evaluate((v: HTMLVideoElement) => v.readyState)).toBeGreaterThan(0);
-    await page.locator('video').evaluate((v: HTMLVideoElement) => { v.pause(); v.currentTime = 2.5; v.dispatchEvent(new Event('timeupdate')); });
-    await expect.poll(() => page.locator('video').evaluate((v: HTMLVideoElement) => v.currentTime)).toBeGreaterThan(2.4);
-    if (destination !== 'עוד') await page.getByRole('button', { name: 'עריכה', exact: true }).click();
-    await expect(off).toBeVisible();
-  }
+  await expect(page.getByRole('button', { name: 'עריכה', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('textbox')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'עריכת כתובית: שלום עולם', exact: true }).locator('[data-testid="EditRoundedIcon"]')).toBeVisible();
+  await page.getByRole('button', { name: 'תזמון', exact: true }).click();
+  await expect(page.getByTestId('mobile-timing-editor')).toBeVisible();
+  await page.getByRole('button', { name: 'צפייה', exact: true }).click();
+  await expect(page.getByTestId('mobile-timing-editor')).toHaveCount(0);
+  await page.getByRole('button', { name: 'תזמון', exact: true }).click();
+  await expect(page.getByTestId('mobile-timing-editor')).toBeVisible();
 });
+
+async function openCaption(page: Page) {
+  await page.getByRole('button', { name: 'עריכת כתובית: שלום עולם', exact: true }).click();
+  await expect(page.getByRole('dialog', { name: 'עריכת כתובית', exact: true })).toBeVisible();
+}
 
 async function dragBy(page: Page, control: Locator, pixels: number) {
   await control.scrollIntoViewIfNeeded();
@@ -92,8 +87,9 @@ test('mobile caption extension trims the next caption, previews one caption and 
   await expect(page.getByTestId('mobile-timing-clip').first()).toHaveAttribute('data-end', String(saved.segments[0].end));
 });
 
-test('inline word timeline drags, retains failed changes, saves and undoes without a popup', async ({ page }) => {
+test('caption popup drags words, retains failed changes, saves and undoes', async ({ page }) => {
   await openEditor(page);
+  await openCaption(page);
   let failSave = true;
   const saves: any[] = [];
   await page.route('**/api/videos/update-subtitles', async route => {
@@ -103,7 +99,7 @@ test('inline word timeline drags, retains failed changes, saves and undoes witho
   });
   const timeline = page.getByTestId('mobile-word-timeline');
   await expect(timeline).toBeVisible();
-  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(page.getByRole('dialog')).toHaveCount(1);
   await page.screenshot({ path: 'tmp/review/mobile-word-timeline-390.png' });
   await dragBy(page, timeline.getByRole('slider', { name: 'סיום המילה', exact: true }), -40);
   await expect(page.getByText('שמירת הכתובית נכשלה.', { exact: false })).toBeVisible();
@@ -128,15 +124,16 @@ test('inline word timeline drags, retains failed changes, saves and undoes witho
   await expect.poll(() => saves.at(-1).words.find((word: any) => word.word === 'שלום').end).toBe(1);
 });
 
-test('inline word timing follows edited text and stays within a narrow phone', async ({ page }) => {
+test('caption popup edits text, realigns words and fits a narrow phone', async ({ page }) => {
   await openEditor(page);
+  await openCaption(page);
   await page.setViewportSize({ width: 320, height: 568 });
   await page.route('**/api/videos/update-subtitles', route => route.fulfill({ json: { success: true } }));
-  await page.getByRole('textbox', { name: 'טקסט המקטע' }).fill('שלום עולם חדש');
+  await page.getByRole('textbox', { name: 'טקסט הכתובית' }).fill('שלום עולם חדש');
   const timeline = page.getByTestId('mobile-word-timeline');
   await expect(timeline.getByTestId('mobile-word-clip')).toHaveCount(3);
   await timeline.scrollIntoViewIfNeeded();
-  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(page.getByRole('dialog')).toHaveCount(1);
   expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBe(0);
   await timeline.getByRole('slider', { name: 'זום ציר המילים' }).focus();
   await page.keyboard.press('End');
@@ -144,23 +141,45 @@ test('inline word timing follows edited text and stays within a narrow phone', a
   await page.screenshot({ path: 'tmp/review/mobile-word-timeline-320.png' });
 });
 
+test('empty caption text stays in the popup until corrected or discarded', async ({ page }) => {
+  await openEditor(page);
+  await openCaption(page);
+  const dialog = page.getByRole('dialog', { name: 'עריכת כתובית', exact: true });
+  const field = dialog.getByRole('textbox', { name: 'טקסט הכתובית' });
+  let saves = 0;
+  await page.route('**/api/videos/update-subtitles', route => { saves++; return route.fulfill({ json: { success: true } }); });
+  await field.fill('');
+  await dialog.getByRole('button', { name: 'שמירה וסיום', exact: true }).click();
+  await expect(dialog.getByRole('alert')).toContainText('הכתובית ריקה');
+  await expect(field).toHaveValue('');
+  expect(saves).toBe(0);
+  await dialog.getByRole('button', { name: 'ביטול השינוי', exact: true }).click();
+  await expect(field).toHaveValue('שלום עולם');
+  await dialog.getByRole('button', { name: 'סיום', exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  expect(saves).toBe(0);
+});
+
 test('word changes finish saving before switching captions', async ({ page }) => {
   await openEditor(page);
+  await openCaption(page);
   let release!: () => void;
   const pending = new Promise<void>(resolve => { release = resolve; });
   let saves = 0;
   await page.route('**/api/videos/update-subtitles', async route => { saves++; await pending; await route.fulfill({ json: { success: true } }); });
   await dragBy(page, page.getByRole('slider', { name: 'סיום המילה', exact: true }), -40);
   await expect.poll(() => saves).toBe(1);
-  await page.getByRole('button', { name: 'המקטע הבא' }).click();
-  await expect(page.getByRole('textbox', { name: 'טקסט המקטע' })).toHaveValue('שלום עולם');
+  await expect(page.getByRole('button', { name: 'המקטע הבא' })).toBeDisabled();
+  await expect(page.getByRole('textbox', { name: 'טקסט הכתובית' })).toHaveValue('שלום עולם');
   release();
-  await expect(page.getByRole('textbox', { name: 'טקסט המקטע' })).toHaveValue('סרטון לבדיקה');
+  await page.getByRole('button', { name: 'המקטע הבא' }).click();
+  await expect(page.getByRole('textbox', { name: 'טקסט הכתובית' })).toHaveValue('סרטון לבדיקה');
   expect(saves).toBe(1);
 });
 
 test('touch dragging resizes a word and pointer cancellation leaves it unchanged', async ({ page, context }) => {
   await openEditor(page);
+  await openCaption(page);
   let saves = 0;
   await page.route('**/api/videos/update-subtitles', route => { saves++; return route.fulfill({ json: { success: true } }); });
   const handle = page.getByRole('slider', { name: 'סיום המילה', exact: true });
@@ -187,8 +206,8 @@ test('each timing card opens its own word timeline and saves without changing ca
   });
   await page.getByRole('button', { name: 'תזמון', exact: true }).click();
   await expect(page.locator('[data-word-timing-button]')).toHaveCount(2);
-  await page.getByRole('button', { name: 'תזמון מילים: שלום עולם', exact: true }).click();
-  const dialog = page.getByRole('dialog', { name: 'תזמון מילים בכתובית' });
+  await page.getByRole('button', { name: 'עריכת כתובית: שלום עולם', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'עריכת כתובית' });
   await expect(dialog).toBeVisible();
   await expect(dialog.getByTestId('mobile-word-clip')).toHaveCount(2);
   await expect(dialog.getByTestId('mobile-word-clip').first()).toHaveText('שלום');
@@ -202,15 +221,15 @@ test('each timing card opens its own word timeline and saves without changing ca
   await dialog.getByRole('button', { name: 'סיום', exact: true }).click();
   await expect(dialog).toHaveCount(0);
   await expect(page.getByTestId('mobile-timing-editor')).toBeVisible();
-  await page.getByRole('button', { name: 'תזמון מילים: שלום עולם', exact: true }).click();
+  await page.getByRole('button', { name: 'עריכת כתובית: שלום עולם', exact: true }).click();
   await expect(dialog.getByTestId('mobile-word-clip').first()).toHaveAttribute('data-end', String(firstEnd));
   await dialog.getByRole('button', { name: 'סיום', exact: true }).click();
-  await page.getByRole('button', { name: 'תזמון מילים: סרטון לבדיקה', exact: true }).click();
+  await page.getByRole('button', { name: 'עריכת כתובית: סרטון לבדיקה', exact: true }).click();
   await expect(dialog.getByTestId('mobile-word-clip').first()).toHaveText('סרטון');
   await expect(dialog.getByTestId('mobile-word-clip').first()).toHaveAttribute('data-start', '2');
   await dialog.getByRole('button', { name: 'סיום', exact: true }).click();
-  await page.getByRole('button', { name: 'עריכה', exact: true }).click();
-  await expect(page.getByTestId('mobile-word-timeline')).toBeVisible();
+  await page.getByRole('button', { name: 'צפייה', exact: true }).click();
+  await expect(page.getByTestId('mobile-word-timeline')).toHaveCount(0);
   await expect(dialog).toHaveCount(0);
 });
 
@@ -226,7 +245,7 @@ test('timing popup protects pending and failed saves and fits a narrow phone', a
     await route.fulfill({ status: fail ? 500 : 200, json: fail ? { error: 'failure' } : { success: true } });
   });
   await page.getByRole('button', { name: 'תזמון', exact: true }).click();
-  await page.getByRole('button', { name: 'תזמון מילים: שלום עולם', exact: true }).click();
+  await page.getByRole('button', { name: 'עריכת כתובית: שלום עולם', exact: true }).click();
   const dialog = page.getByRole('dialog');
   await expect(dialog.getByRole('button', { name: 'סיום', exact: true })).toBeInViewport();
   expect(await dialog.evaluate(el => el.scrollWidth > el.clientWidth)).toBe(false);
@@ -236,7 +255,7 @@ test('timing popup protects pending and failed saves and fits a narrow phone', a
   await page.keyboard.press('Escape');
   await expect(dialog).toBeVisible();
   release();
-  await expect(dialog.getByRole('alert')).toContainText('שמירת התזמון נכשלה');
+  await expect(dialog.getByRole('alert')).toContainText('שמירת הכתובית נכשלה');
   const draftEnd = await dialog.getByTestId('mobile-word-clip').first().getAttribute('data-end');
   expect(Number(draftEnd)).toBeLessThan(1);
   fail = false;
@@ -253,7 +272,7 @@ test('timing popup protects pending and failed saves and fits a narrow phone', a
 test('caption audio preview plays from the cursor, pauses at the boundary and stops on close', async ({ page }) => {
   await openEditor(page);
   await page.getByRole('button', { name: 'תזמון', exact: true }).click();
-  await page.getByRole('button', { name: 'תזמון מילים: שלום עולם', exact: true }).click();
+  await page.getByRole('button', { name: 'עריכת כתובית: שלום עולם', exact: true }).click();
   const dialog = page.getByRole('dialog');
   const video = page.locator('video');
   await expect.poll(() => video.evaluate((v: HTMLVideoElement) => v.readyState)).toBeGreaterThan(0);
@@ -277,7 +296,7 @@ test('caption audio preview plays from the cursor, pauses at the boundary and st
   await dialog.getByRole('button', { name: 'סיום', exact: true }).click();
   await expect(dialog).toHaveCount(0);
   expect(await video.evaluate((v: HTMLVideoElement) => v.paused)).toBe(true);
-  await page.getByRole('button', { name: 'תזמון מילים: סרטון לבדיקה', exact: true }).click();
+  await page.getByRole('button', { name: 'עריכת כתובית: סרטון לבדיקה', exact: true }).click();
   await dialog.getByRole('button', { name: 'מההתחלה', exact: true }).click();
   await expect.poll(() => video.evaluate((v: HTMLVideoElement) => v.currentTime)).toBeGreaterThan(2.1);
   await dialog.getByRole('button', { name: 'לבדיקה', exact: true }).click();
@@ -289,7 +308,7 @@ test('caption audio preview plays from the cursor, pauses at the boundary and st
 test('caption audio preview reports playback failure and can retry', async ({ page }) => {
   await openEditor(page);
   await page.getByRole('button', { name: 'תזמון', exact: true }).click();
-  await page.getByRole('button', { name: 'תזמון מילים: שלום עולם', exact: true }).click();
+  await page.getByRole('button', { name: 'עריכת כתובית: שלום עולם', exact: true }).click();
   const dialog = page.getByRole('dialog');
   await page.locator('video').evaluate((v: HTMLVideoElement) => {
     const play = v.play.bind(v);
@@ -352,7 +371,7 @@ for (const width of [320, 390]) test(`pinch zoom keeps video size and playback p
   await page.screenshot({ path: `tmp/review/timing-pinch-${width}.png` });
   await editor.getByRole('button', { name: 'התאמת זום לעריכה' }).click();
   await expect(editor.getByRole('button', { name: 'התאמת זום לעריכה' })).toHaveAttribute('aria-pressed', 'true');
-  await page.getByRole('button', { name: 'תזמון מילים: שלום עולם', exact: true }).click();
+  await page.getByRole('button', { name: 'עריכת כתובית: שלום עולם', exact: true }).click();
   const dialog = page.getByRole('dialog');
   const wordZoom = dialog.getByRole('slider', { name: 'זום ציר המילים', exact: true });
   const track = dialog.getByTestId('mobile-word-track');

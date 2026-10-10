@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { Alert, Box, Button, Checkbox, IconButton, Stack, Typography } from "@mui/material";
-import { DragIndicator, PauseRounded, PlayArrowRounded, RedoRounded, UndoRounded, TuneRounded } from "@mui/icons-material";
+import { DragIndicator, PauseRounded, PlayArrowRounded, RedoRounded, UndoRounded, EditRounded } from "@mui/icons-material";
 import type { Segment, Word } from "../types";
 import { useEditorPreferences } from "../contexts/EditorPreferences";
 import { formatTimecode } from "../utils/timecode";
@@ -21,7 +21,7 @@ type Preview = Segment[];
 export function MobileTimingTimeline({
   segments, words = [], disabled, duration, currentTime = 0, mediaUrl,
   selectedSegmentId, onSegmentSelect, onRequestTimeChange, onSegmentsChange,
-  isPlaying, onPlayPause, onUndo, onRedo, canUndo, canRedo, onEditWords,
+  isPlaying, onPlayPause, onUndo, onRedo, canUndo, canRedo, onEditCaption,
   checkedIds, onToggleChecked,
 }: {
   segments: Segment[];
@@ -40,7 +40,7 @@ export function MobileTimingTimeline({
   onRedo: () => void;
   canUndo: boolean;
   canRedo: boolean;
-  onEditWords: (id: Segment["id"]) => void;
+  onEditCaption: (id: Segment["id"]) => void;
   checkedIds: Segment["id"][];
   onToggleChecked: (id: Segment["id"]) => void;
 }) {
@@ -227,11 +227,11 @@ export function MobileTimingTimeline({
                 onPointerDown={event => event.stopPropagation()} onClick={event => event.stopPropagation()}
                 onChange={() => onToggleChecked(segment.id)}
                 sx={{ position: "absolute", top: 0, left: 0, width: "min(44px, 100%)", height: 44, p: 0, zIndex: 3 }} />
-              {!selecting && <IconButton data-word-timing-button size="small" aria-label={`תזמון מילים: ${segment.text}`} title="תזמון מילים" disabled={disabled}
+              {!selecting && <IconButton data-word-timing-button size="small" aria-label={`עריכת כתובית: ${segment.text}`} title="עריכת טקסט ותזמון" disabled={disabled}
                 onPointerDown={event => event.stopPropagation()}
-                onClick={event => { event.stopPropagation(); onEditWords(segment.id); }}
+                onClick={event => { event.stopPropagation(); onEditCaption(segment.id); }}
                 sx={{ position: "absolute", top: cardWidth >= 76 ? 2 : 44, right: 2, width: 32, height: 32, zIndex: 3, color: "primary.main", bgcolor: "#e8f1fc", "&:hover": { bgcolor: "#d7e8fc" } }}>
-                <TuneRounded sx={{ fontSize: 18 }} />
+                <EditRounded sx={{ fontSize: 20 }} />
               </IconButton>}
               <Box sx={{ height: "100%", px: showChrome ? 4.5 : 1.5, display: "flex", flexDirection: "column", justifyContent: "center", pt: 3.25, pb: showChrome ? "32px" : 0.5, overflow: "hidden" }}>
                 <Typography dir={preferences.direction} sx={{ flexShrink: 0, fontSize: 15, fontWeight: 600, lineHeight: 1.3, overflowWrap: "anywhere", display: "-webkit-box", WebkitLineClamp: 4, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{segment.text}</Typography>

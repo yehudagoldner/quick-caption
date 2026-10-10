@@ -21,10 +21,12 @@ async function prepareSession(page: Page, loading = false, failSignOut = false) 
     await route.fulfill({
       contentType: 'application/javascript',
       body: `import React from '${reactUrl}';
+      import { setApiUser } from '/src/client/api.ts';
       const { useState, useEffect } = React;
       const user = { uid: 'review-user', displayName: 'Review', getIdToken: async () => 'test-token' };
       let session = { user: ${loading ? 'null' : 'user'}, loading: ${loading} };
-      const publish = next => { session = next; window.dispatchEvent(new Event('test-auth')); };
+      setApiUser(session.user);
+      const publish = next => { session = next; setApiUser(next.user); window.dispatchEvent(new Event('test-auth')); };
       window.finishAuth = () => publish({ user, loading: false });
       export function useAuth() {
         const [state, setState] = useState(session);
@@ -119,18 +121,20 @@ test('mobile editor sign-out waits for a successful draft save', async ({ page }
     status: failSave ? 500 : 200, json: failSave ? { error: 'failed save' } : { success: true },
   }));
   await page.goto('/?screen=edit&video=review-token');
-  await page.getByRole('button', { name: 'עריכה', exact: true }).click();
-  const field = page.getByRole('textbox', { name: 'טקסט המקטע' });
+  await page.getByRole('button', { name: 'עריכת כתובית: שלום עולם', exact: true }).click();
+  const field = page.getByRole('textbox', { name: 'טקסט הכתובית' });
   await field.fill('טיוטה לפני התנתקות');
   const signOut = async () => {
     await page.getByRole('button', { name: 'תפריט', exact: true }).click();
     await page.getByRole('menuitem', { name: 'התנתקות' }).click();
   };
-  await signOut();
+  await page.getByRole('button', { name: 'שמירה וסיום', exact: true }).click();
   await expect(page.getByRole('alert').filter({ hasText: 'שמירת הכתובית נכשלה' })).toBeVisible();
   await expect(field).toHaveValue('טיוטה לפני התנתקות');
   expect(await page.evaluate(() => (window as any).signOutCalls ?? 0)).toBe(0);
   failSave = false;
+  await page.getByRole('button', { name: 'שמירה וסיום', exact: true }).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
   await signOut();
   await expect(page).toHaveURL(/\/$/);
   await expect(page.getByRole('button', { name: 'התחילו ליצור כתוביות' })).toBeVisible();
