@@ -1,12 +1,58 @@
 html, body { height: 100%; margin: 0; overflow: hidden; }
-body { background: #242424; color: #f4f4f4; font-family: Arial, sans-serif; font-size: 13px; }
+body { background: #181b21; color: #f1f3f8; font-family: "Segoe UI", Arial, sans-serif; font-size: 13px; }
 main { height: 100%; overflow: auto; padding: 16px; box-sizing: border-box; }
-h2 { font-size: 24px; margin: 0 0 4px; } h3 { font-size: 16px; margin: 0 0 12px; }
-section { padding: 14px 0; border-bottom: 1px solid #484848; }
-p { margin: 8px 0; } .muted { color: #bababa; font-size: 12px; }
-button { background: #3b68d6; color: white; border-radius: 5px; border: 0; padding: 9px; margin: 4px 0; width: 100%; }
-button:disabled { background: #454545; color: #999; }
-input, select { background: #353535; color: white; border: 1px solid #666; border-radius: 4px; width: 100%; margin: 5px 0 10px; padding: 7px; }
-label { display: block; margin-top: 8px; }
-#link-code { font-size: 24px; letter-spacing: 3px; text-align: center; }
-#status { color: #f2c06a; } .video { margin-bottom: 12px; padding: 8px; background: #303030; border-radius: 5px; }
+[hidden] { display: none !important; }
+p { margin: 0; line-height: 1.5; }
+.header { display: flex; flex-direction: row-reverse; align-items: center; justify-content: space-between; margin-bottom: 11px; }
+.brand { display: flex; align-items: center; }
+.brand-mark { display: flex; align-items: center; justify-content: center; width: 34px; height: 34px; margin-right: 9px; border-radius: 10px; background: #486eed; color: #fff; font-size: 12px; font-weight: 700; }
+.brand-name { font-size: 16px; font-weight: 700; line-height: 1.2; }
+.brand-subtitle { font-size: 10px; color: #969fad; margin-top: 3px; }
+.account-strip { display: flex; align-items: center; justify-content: space-between; padding-bottom: 13px; border-bottom: 1px solid #303642; color: #abb4c3; font-size: 11px; }
+#balance { color: #c3cff8; font-weight: 600; }
+.intro { margin: 16px 0 12px; }
+h1 { font-size: 21px; font-weight: 700; line-height: 1.25; margin: 0; }
+.muted { color: #a5afbf; font-size: 12px; }
+.card { background: #222732; border: 1px solid #343c4b; border-radius: 12px; padding: 12px; margin: 10px 0; }
+.card-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.card-title { font-size: 14px; font-weight: 600; margin-bottom: 7px; }
+.eyebrow { color: #aab5c8; font-size: 11px; }
+.badge { color: #b9c8ff; background: #303d61; border-radius: 6px; padding: 3px 6px; font-size: 10px; }
+.selection-summary { font-size: 14px; font-weight: 600; margin-bottom: 5px; }
+.language-row { display: flex; flex-direction: row-reverse; align-items: center; justify-content: space-between; margin-top: 12px; }
+label { color: #aab5c8; font-size: 11px; margin: 0; }
+select { width: 130px; margin: 0; }
+sp-button { display: block; width: 100%; margin-top: 10px; }
+#account-menu { width: 57px; min-width: 0; margin: 0; font-size: 11px; }
+.main-action { margin: 14px 0; }
+.price { font-size: 20px; font-weight: 700; color: #e0e7ff; }
+.quote-card .card-header { margin-bottom: 5px; }
+.billing-note { color: #a5afbf; font-size: 10px; margin-top: 7px; }
+#link-code { color: #cad5ff; font-size: 25px; font-weight: 600; letter-spacing: 4px; text-align: center; margin: 15px 0; }
+.notice { background: #293145; border: 1px solid #41516e; border-radius: 9px; padding: 11px; margin: 12px 0; color: #d0ddfa; font-size: 12px; }
+.notice.error { background: #382729; border-color: #765152; color: #f6c7c7; }
+.footer-note { color: #7d8797; font-size: 10px; text-align: center; margin: 16px 0 6px; }
+.caption-toolbar { height: 100%; box-sizing: border-box; padding: 8px; display: flex; flex-direction: column; align-items: center; overflow: auto; }
+.toolbar-action { width: 48px; height: 48px; min-width: 48px; padding: 0; margin: 0; border: 1px solid #536fdf; border-radius: 10px; background: #365bd9; color: #fff; display: flex; align-items: center; justify-content: center; cursor: pointer; }
+.toolbar-action:hover { background: #486eed; }
+.toolbar-action:focus { border: 2px solid #c3cff8; }
+.toolbar-action:disabled { opacity: 0.45; cursor: default; }
+#toolbar-caption { font-size: 15px; font-weight: 700; min-width: 0; }
+.toolbar-label { color: #abb4c3; font-size: 10px; margin-top: 6px; }
+.segmented { display: flex; flex-direction: row-reverse; margin: 6px 0 10px; }
+.segmented sp-button { flex: 1; min-width: 0; width: auto; margin: 0 2px; font-size: 11px; }
+.limit-controls { display: flex; flex-direction: row-reverse; align-items: center; margin: 10px 0 12px; }
+.limit-number { width: 84px; flex-shrink: 0; margin-left: 12px; }
+.limit-number sp-textfield { width: 100%; margin-top: 4px; }
+.limit-slider { flex: 1; min-width: 0; }
+.limit-slider sp-slider { width: 100%; }
+.setting-help { color: #a5afbf; font-size: 10px; margin: 6px 0; }
+.limit-slider .setting-help { text-align: center; }
+.setting-field { margin: 12px 0; }
+.setting-field label { display: block; margin-bottom: 5px; }
+.setting-field select { width: 100%; }
+.setting-label { font-size: 11px; font-weight: 600; margin: 14px 0 8px; }
+.additional-picker { margin-top: 10px; }
+#language-search { width: 100%; }
+.additional-options { max-height: 160px; overflow: auto; margin-top: 6px; display: flex; flex-direction: column; }
+.additional-options sp-checkbox { margin: 3px 0; flex-shrink: 0; }

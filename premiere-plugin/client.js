@@ -63,7 +63,8 @@ class PluginClient {
     try { state = await this.request(`/api/transcribe/jobs/${previous.id}`); }
     catch { throw new Error('מצב ההעלאה הקודמת עדיין אינו ידוע. בדקו את התמלול האחרון לפני שליחה חדשה.'); }
     if (!['completed', 'failed'].includes(state.status)) throw new Error('התמלול הקודם עדיין מתבצע. בדקו את התמלול האחרון לפני שליחה חדשה.');
-    return { ...previous, finished: true };
+    if (state.status === 'completed' && !state.result?.videoId) throw new Error('תוצאת התמלול הקודם עדיין אינה זמינה. בדקו את אותה משימה לפני שליחה חדשה.');
+    return state.status === 'completed' ? { ...previous, finished: true, result: state.result, delivery: previous.delivery || { status: 'pending' } } : { ...previous, finished: true };
   }
   async clear() {
     this.epoch++; this.session = null;

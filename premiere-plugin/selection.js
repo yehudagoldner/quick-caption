@@ -20,7 +20,7 @@ async function describe(item) {
   ]);
   return { media: guid(media), source: source.getId(), track, start: start.seconds, end: end.seconds,
     startTicks: start.ticks, endTicks: end.ticks, inTicks: input.ticks, outTicks: output.ticks,
-    name, speed, reversed, disabled };
+    name, speed, reversed: Boolean(reversed), disabled };
 }
 
 async function inventory(ppro, sequence) {
@@ -60,7 +60,7 @@ function transact(project, label, build) {
   if (!success) throw new Error('פרימייר לא השלים את הכנת הבחירה');
 }
 
-async function validateSelection(ppro, snapshot) {
+async function validateSelection(ppro, snapshot, { requireAudible = true } = {}) {
   const project = await ppro.Project.getActiveProject();
   if (!project || guid(project.guid) !== snapshot.projectId) throw new Error('הפרויקט השתנה. בחרו שוב את הקטעים');
   const original = (await project.getSequences()).find(sequence => guid(sequence.guid) === snapshot.sequenceId);
@@ -73,10 +73,10 @@ async function validateSelection(ppro, snapshot) {
       throw new Error('אחד הקטעים השתנה מאז הבחירה. בחרו שוב כדי לקבל תזמון נכון');
     }
   }
-  if (!beforeRows.some(row => selectedKeys.has(key(row)) && row.kind === 'Audio' && !row.muted && !row.disabled)) {
+  if (requireAudible && !beforeRows.some(row => selectedKeys.has(key(row)) && row.kind === 'Audio' && !row.muted && !row.disabled)) {
     throw new Error('קטעי האודיו שנבחרו הושתקו. בחרו שוב את הקטעים');
   }
-  return { project, original, selectedKeys };
+  return { project, original, selectedKeys, selectedRows: beforeRows.filter(row => selectedKeys.has(key(row))) };
 }
 
 async function isolatedSelection(ppro, snapshot) {

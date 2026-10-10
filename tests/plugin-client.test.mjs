@@ -84,5 +84,7 @@ test('an unresolved earlier upload blocks a second paid job until its outcome is
   state = response(200, { status: 'processing' });
   await assert.rejects(client.settlePreviousJob(job), /עדיין מתבצע/);
   state = response(200, { status: 'completed' });
-  assert.deepEqual(await client.settlePreviousJob(job), { ...job, finished: true });
+  await assert.rejects(client.settlePreviousJob(job), /עדיין אינה זמינה/);
+  state = response(200, { status: 'completed', result: { videoId: 42, creditsUsed: 3 } });
+  assert.deepEqual(await client.settlePreviousJob(job), { ...job, finished: true, result: { videoId: 42, creditsUsed: 3 }, delivery: { status: 'pending' } });
 });

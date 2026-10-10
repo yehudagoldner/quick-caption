@@ -2,27 +2,77 @@
 <html><head><meta charset="utf-8"><link rel="stylesheet" href="panel.css"></head>
 <body>
   <main id="plugin-main" dir="rtl">
-    <h2>Quick Caption</h2><p class="muted">סביבת בדיקות QA</p>
-    <p id="account">החשבון אינו מחובר</p><p id="balance">יתרה: —</p>
-    <section><button id="selected">קבלת כתוביות לקטעים שנבחרו</button>
-      <p id="selection-summary" class="muted">סמנו קטע אחד או כמה קטעים בטיימליין, יחד עם האודיו שלהם. האודיו יילקח מהבחירה אוטומטית. אם צריך, תיפתח התחברות והפעולה תמשיך לאחר אישור החשבון.</p>
-      <p id="status" role="status"></p></section>
-    <section><h3>תמלול הבחירה בטיימליין</h3>
-      <p id="file">האודיו יוכן מהקטעים שתבחרו בטיימליין.</p>
-      <label>שפת הדיבור <select id="language"><option value="he">עברית</option></select></label>
-      <button id="quote" disabled>בדיקת מחיר לפי הכללים העדכניים</button>
-      <p id="price">החיוב הסופי נקבע לפי עלות העיבוד בפועל. ההערכה תלויה במשך המדיה.</p>
-      <button id="send" disabled>אישור ושליחה לתמלול</button>
-      <p id="progress"></p><button id="resume" disabled>בדיקת התמלול האחרון</button>
-    </section>
-    <section><h3>החשבון</h3>
-      <button id="connect">חיבור לחשבון דרך הדפדפן</button><button id="logout" disabled>ניתוק</button>
-      <p id="link-code"></p><button id="cancel-link" hidden>ביטול החיבור</button>
-      <button id="refresh" disabled>רענון החשבון והסרטונים</button>
-      <button id="buy">רכישת קרדיטים באתר</button>
-    </section>
-    <section><h3>הסרטונים בחשבון</h3><div id="videos"></div><button id="more" hidden>עוד סרטונים</button></section>
-    <section><button id="local-srt">ייבוא SRT מקומי לפרויקט</button>
-      <p class="muted">הכתוביות יופיעו בחלון הפרויקט. גררו אותן לטיימליין ליצירת מסלול כתוביות.</p></section>
-  </main><script src="panel.js"></script>
+    <div class="header">
+      <div class="brand" dir="ltr"><span class="brand-mark">CC</span><div><p class="brand-name">Quick Caption</p><p class="brand-subtitle">כתוביות מתוך הטיימליין</p></div></div>
+      <sp-button id="account-menu" variant="secondary" quiet hidden>חשבון</sp-button>
+    </div>
+    <div class="account-strip"><span id="account">בודק חיבור…</span><span id="balance">—</span></div>
+    <div id="account-settings" class="card account-settings" hidden>
+      <p id="account-name"></p>
+      <sp-button id="refresh" variant="secondary" quiet>רענון היתרה</sp-button>
+      <sp-button id="logout" variant="secondary" quiet>ניתוק החשבון</sp-button>
+    </div>
+    <div id="login-section" class="card" hidden>
+      <p class="card-title">מחברים את החשבון פעם אחת</p>
+      <p class="muted">התמלול והקרדיטים ישויכו לחשבון Quick Caption שלכם.</p>
+      <sp-button id="connect" variant="secondary">חיבור החשבון</sp-button>
+    </div>
+    <div id="link-section" class="card" hidden>
+      <p class="card-title">מאשרים את החיבור בדפדפן</p>
+      <p class="muted">בדקו שזה הקוד שמופיע במסך האישור:</p>
+      <p id="link-code" dir="ltr"></p>
+      <sp-button id="cancel-link" variant="secondary" quiet>ביטול החיבור</sp-button>
+    </div>
+    <div id="intro" class="intro"><h1>כתוביות לקטעים שבחרתם</h1></div>
+    <div id="selection-section" class="card selection-card">
+      <div class="card-header"><span class="eyebrow">הבחירה בטיימליין</span><span id="selection-state" class="badge">מוכנים להתחיל</span></div>
+      <p id="selection-summary" class="selection-summary">סמנו קטעים יחד עם האודיו שלהם.</p>
+      <p id="file" class="muted">האודיו יוכן אוטומטית.</p>
+    </div>
+    <div id="transcription-settings" class="card settings-card">
+      <p class="card-title">אורך הכתובית</p>
+      <div class="segmented" role="group" aria-label="הגבלת אורך כתובית">
+        <sp-button id="limit-characters" variant="cta" aria-pressed="true">לפי תווים</sp-button>
+        <sp-button id="limit-words" variant="secondary" aria-pressed="false">לפי מילים</sp-button>
+        <sp-button id="limit-none" variant="secondary" aria-pressed="false">ללא הגבלה</sp-button>
+      </div>
+      <div id="limit-controls" class="limit-controls">
+        <div class="limit-number"><label id="limit-label" for="limit-value">מספר תווים</label><sp-textfield id="limit-value" type="number" value="20" aria-label="מספר תווים"></sp-textfield></div>
+        <div class="limit-slider"><sp-slider id="limit-slider" min="7" max="20" value="20" step="1" show-value="false" aria-label="מספר תווים בכתובית"></sp-slider><p id="limit-help" class="setting-help">כולל רווחים · מילים שלמות</p></div>
+      </div>
+      <p id="limit-unrestricted" class="setting-help" hidden>חלוקה טבעית לפי הדיבור, ללא הגבלת אורך.</p>
+      <div class="setting-field"><label for="language">שפת התמלול</label><select id="language"><option value="he">עברית · Hebrew</option></select></div>
+      <sp-button id="additional-toggle" variant="secondary" aria-expanded="false">שפות נוספות בסרטון</sp-button>
+      <div id="additional-picker" class="additional-picker" hidden>
+        <sp-textfield id="language-search" type="search" placeholder="חיפוש שפה" aria-label="חיפוש שפות נוספות"></sp-textfield>
+        <div id="additional-options" class="additional-options" role="group" aria-label="בחירת שפות נוספות"></div>
+        <p id="language-empty" class="setting-help" hidden>לא נמצאה שפה</p>
+      </div>
+      <p class="setting-label">הצגת השפות הלא ראשיות</p>
+      <div class="segmented" role="group" aria-label="הצגת השפות הלא ראשיות">
+        <sp-button id="mode-original" variant="cta" aria-pressed="true">מקור</sp-button>
+        <sp-button id="mode-translate" variant="secondary" aria-pressed="false">תרגום</sp-button>
+        <sp-button id="mode-transliterate" variant="secondary" aria-pressed="false">תעתיק</sp-button>
+      </div>
+      <p id="mode-help" class="setting-help">כל שפה מוצגת בכתב המקורי שלה.</p>
+    </div>
+    <sp-button id="selected" variant="cta" class="main-action">הכנת כתוביות לבחירה</sp-button>
+    <div id="quote-section" class="card quote-card" hidden>
+      <div class="card-header"><span class="eyebrow">עלות התמלול</span><span id="price" class="price">—</span></div>
+      <p id="price-detail" class="muted"></p>
+      <p class="billing-note">החיוב הסופי לפי עלות העיבוד בפועל.</p>
+      <sp-button id="quote" variant="cta">עדכון הערכת המחיר</sp-button>
+      <sp-button id="send" variant="cta" hidden>אישור ותמלול</sp-button>
+      <sp-button id="buy" variant="secondary" hidden>הוספת קרדיטים באתר</sp-button>
+    </div>
+    <div id="progress-section" class="card" hidden><p class="card-title">התמלול שלכם</p><p id="progress"></p></div>
+    <sp-button id="resume" variant="secondary" hidden>המשך התמלול הפעיל</sp-button>
+    <p id="status" class="notice" role="status" hidden></p>
+    <p id="footer-note" class="footer-note">רק הקטעים שנבחרו · המחיר מוצג לפני השליחה</p>
+  </main>
+  <div id="quick-caption-toolbar" class="caption-toolbar" dir="rtl">
+    <sp-button id="toolbar-caption" variant="cta" class="toolbar-action" title="קבלת כתוביות לקטעים שנבחרו" aria-label="קבלת כתוביות לקטעים שנבחרו" disabled>CC</sp-button>
+    <span class="toolbar-label">כתוביות</span>
+  </div>
+  <script src="panel.js"></script>
 </body></html>
