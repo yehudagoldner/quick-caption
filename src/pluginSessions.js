@@ -125,9 +125,9 @@ export function createPluginSessions(pool) {
 }
 
 export function pluginRouteAllowed(method, path) {
-  if (method === 'GET') return /^\/plugin\/(?:account|videos\/\d+\/subtitles)$/.test(path)
+  if (method === 'GET') return /^\/plugin\/(?:account|diagnostics|videos\/\d+\/subtitles)$/.test(path)
     || path === '/users/credits' || path === '/videos'
     || /^\/videos\/\d+(?:\/token)?$/.test(path)
     || /^\/transcribe\/jobs\/[0-9a-f-]{36}$/i.test(path);
-  return method === 'POST' && ['/plugin/quote', '/plugin/logout', '/transcribe'].includes(path);
+  return method === 'POST' && ['/plugin/quote', '/plugin/logout', '/plugin/diagnostics', '/transcribe'].includes(path);
 }

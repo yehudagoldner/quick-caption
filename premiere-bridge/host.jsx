@@ -5,7 +5,7 @@
     function fail(message, code) { var error = new Error(message); error.code = code; throw error; }
     function json(action, input) {
       try { return JSON.stringify(action(JSON.parse(input))); }
-      catch (error) { return JSON.stringify({ ok: false, error: error.message, code: error.code || 'host_error' }); }
+      catch (error) { return JSON.stringify({ ok: false, error: error.message, code: error.code || 'host_error', line: Number(error.line) || undefined }); }
     }
     function guid(value) { return String(value).replace(/[{}]/g, '').toLowerCase(); }
     function pathname(value) {
@@ -80,7 +80,9 @@
       if (!data) return null; // Existing saved deliveries retain their original format.
       var root = pathname(Folder.userData.fsName + '/Adobe/UXP/PluginsStorage/PPRO') + '/';
       var actual = pathname(data.sourcePath || ''), suffix = actual.substr(root.length);
-      if (actual.indexOf(root) !== 0 || !/^\d+\/(Developer|External)\/com\.quickcaption\.premiere\.qa\/PluginData\/reference-audio\/selection-[a-zA-Z0-9%:_-]+\.wav$/i.test(suffix)) fail('נתיב האודיו לעריכה אינו שייך לתוסף', 'invalid_reference_audio');
+      // Accept our development and release IDs, including dotted host-version
+      // folders. Keep the user-data root and exact owned WAV directory boundary.
+      if (actual.indexOf(root) !== 0 || !/^\d+(?:\.\d+)*\/(Developer|External)\/com\.quickcaption\.premiere(?:\.qa)?\/PluginData\/reference-audio\/selection-[a-zA-Z0-9%:_-]+\.wav$/i.test(suffix)) fail('נתיב האודיו לעריכה אינו שייך לתוסף', 'invalid_reference_audio');
       var file = new File(data.sourcePath), cursor = 0, previous = -1;
       if (!file.exists || !data.ranges || !data.ranges.length || !isFinite(data.durationSeconds) || data.durationSeconds <= 0) fail('האודיו לעריכה חסר. התמלול נשמר', 'missing_reference_audio');
       for (var i = 0; i < data.ranges.length; i++) {

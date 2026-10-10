@@ -5,6 +5,8 @@ const path = require('path');
 const crypto = require('crypto');
 const { buildActiveWordPlan } = require('./active-word-plan.js');
 const { installedTemplate, graphicAsset, scaffoldXml } = require('./native-graphic.js');
+const { runtimeDirectories } = require('./environment.js');
+const { errorDetails } = require('./diagnostics-schema.js');
 const MAX_BODY = 4 * 1024 * 1024;
 const hash = value => crypto.createHash('sha256').update(value).digest('hex');
 const failure = (message, code, status = 409) => Object.assign(new Error(message), { code, status });
@@ -23,7 +25,7 @@ function validateRequest(data) {
   if (!blocks.length || blocks.some(block => !/^\d+\n\d+:\d{2}:\d{2},\d{3} --> \d+:\d{2}:\d{2},\d{3}\n[^\0]+$/.test(block))) throw failure('Invalid SRT', 'invalid_subtitles', 400);
 }
 
-function createDeliveryService({ root, evalHost, loadTemplate = () => installedTemplate(process.env.APPDATA || path.join(require('os').homedir(), 'Library', 'Application Support')) }) {
+function createDeliveryService({ root, evalHost, loadTemplate = () => installedTemplate(runtimeDirectories().data) }) {
   fs.mkdirSync(path.join(root, 'captions'), { recursive: true });
   fs.mkdirSync(path.join(root, 'receipts'), { recursive: true });
   let queue = Promise.resolve();
@@ -50,9 +52,9 @@ function createDeliveryService({ root, evalHost, loadTemplate = () => installedT
     prepareGraphics: target => serialized(async () => {
       validateTarget(target);const info=await evalHost('prepare', {target});
       const signature=JSON.stringify([info.frameTicks,info.width,info.height]);
-      loadTemplate();
+      const template=loadTemplate();
       if(graphicsProof!==signature){await probeGraphics(false);graphicsProof=signature;}
-      return evalHost('prepare', {target});
+      return { ...await evalHost('prepare', {target}), environment: { templateCompatible: true, templateHash: template.templateHash, fontVerified: false } };
     }),
     buildGraphics: data => serialized(async () => {
       if(!data||!/^[a-zA-Z0-9:_-]{1,160}$/.test(data.id||''))throw failure('Invalid graphics ID','invalid_graphics',400);
@@ -119,7 +121,7 @@ function createDeliveryService({ root, evalHost, loadTemplate = () => installedT
   };
 }
 
-function startBridge({ root, token, evalHost, port = 37289 }) {
+function startBridge({ root, token, evalHost, port = 37289, diagnostics }) {
   if (!/^[a-f0-9]{64}$/.test(token || '')) throw new Error('Missing installation pairing key');
   const service = createDeliveryService({ root, evalHost });
   const server = http.createServer(async (request, response) => {
@@ -129,7 +131,7 @@ function startBridge({ root, token, evalHost, port = 37289 }) {
     // send this custom authenticated header. Reject browser origins and DNS rebinding.
     if (!expectedHosts.includes(request.headers.host) || request.headers.origin || request.headers['x-quick-caption-bridge'] !== token) { reply(403, { error: 'Forbidden', code: 'forbidden' }); return; }
     try {
-      if (request.method === 'GET' && request.url === '/health') { reply(200, await service.health()); return; }
+      if (request.method === 'GET' && request.url === '/health') { reply(200, { ...await service.health(), environment: { os: process.platform, arch: process.arch, runtimeVersion: process.versions.node }, diagnostics: diagnostics?.read() || [] }); return; }
       if (request.method !== 'POST' || !['/prepare', '/deliver', '/native-graphics-probe','/prepare-graphics','/build-graphics'].includes(request.url)) { reply(404, { error: 'Not found' }); return; }
       if (!/^application\/json(?:;|$)/i.test(request.headers['content-type'] || '')) throw failure('JSON required', 'invalid_request', 415);
       let size = 0; const chunks = [];
@@ -137,7 +139,7 @@ function startBridge({ root, token, evalHost, port = 37289 }) {
       let body; try { body = JSON.parse(Buffer.concat(chunks).toString('utf8')); } catch { throw failure('Invalid JSON', 'invalid_request', 400); }
       const routes={'/prepare':()=>service.prepare(body.target),'/deliver':()=>service.deliver(body),'/native-graphics-probe':()=>service.inspectNativeGraphics(),'/prepare-graphics':()=>service.prepareGraphics(body.target),'/build-graphics':()=>service.buildGraphics(body)};
       reply(200, await routes[request.url]());
-    } catch (error) { reply(error.status || 409, { error: error.message, code: error.code || 'host_error' }); }
+    } catch (error) { diagnostics?.record('placement', error); const details=errorDetails(error); reply(error.status || 409, { error: error.message, code: error.code || 'host_error', line: error.nativeLine, frames: details.frames, errorType: details.errorType }); }
   });
   server.listen(port, '127.0.0.1');
   return server;

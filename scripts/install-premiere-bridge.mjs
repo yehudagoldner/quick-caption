@@ -4,9 +4,10 @@ import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { randomBytes } from 'node:crypto';
+import environment from '../premiere-bridge/environment.js';
 
 const workspace = fileURLToPath(new URL('../', import.meta.url));
-const adobeRoot = process.platform === 'win32' ? process.env.APPDATA : path.join(os.homedir(), 'Library', 'Application Support');
+const adobeRoot = environment.runtimeDirectories().data;
 if (!adobeRoot) throw new Error('Missing user application-data directory');
 const destination = path.join(adobeRoot, 'Adobe', 'CEP', 'extensions', 'com.quickcaption.premiere.bridge.qa');
 const pluginConfiguration = path.join(workspace, 'premiere-plugin', 'bridge-config.json');

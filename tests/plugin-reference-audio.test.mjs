@@ -30,7 +30,7 @@ test('an incomplete WAV or invalid identity cannot become persistent reference m
 
 const hostSource=await readFile(new URL('../premiere-bridge/host.jsx',import.meta.url),'utf8');
 const TPS=254016000000,frameTicks='10160640000';
-function host() {
+function host({platform='Windows', userData='C:/Users/test/AppData/Roaming', pluginId='com.quickcaption.premiere.qa', hostFolder='25', mode='Developer'}={}) {
  function Time(){this.seconds=0;}Object.defineProperty(Time.prototype,'ticks',{get(){return String(Math.round(this.seconds*TPS));},set(value){this.seconds=Number(value)/TPS;}});
  const time=seconds=>{const value=new Time();value.seconds=seconds;return value;};
  // Array's count must remain dynamic when tracks are cleared between phrases.
@@ -47,12 +47,28 @@ function host() {
  };
  const original=sequence(),source=projectItem('C:/media.wav'),selected=makeClip(0,40,0,source);original.audioTracks[0].clips.push(selected);
  const project={path:'C:/original.prproj',rootItem:root,sequences,activeSequence:original,openSequence(){},deleteSequence(seq){sequences.splice(sequences.indexOf(seq),1);},importFiles(paths,quiet,bin){imports++;if(paths[0].endsWith('.xml'))sequence();else bin.children.push(projectItem(paths[0]));return true;}};
- const context=vm.createContext({$,app:{project},JSON,Time,File:function(value){this.fsName=value;this.exists=true;},Folder:{fs:'Windows',userData:{fsName:'C:/Users/test/AppData/Roaming'}},ProjectItemType:{BIN:2}});
+ const context=vm.createContext({$,app:{project},JSON,Time,File:function(value){this.fsName=value;this.exists=true;},Folder:{fs:platform,userData:{fsName:userData}},ProjectItemType:{BIN:2}});
  function $(){} // Only used as the ExtendScript namespace.
  vm.runInContext(hostSource,context);
  const data={id:'audio-job',target:{projectPath:project.path,sequenceId:original.sequenceID,clips:[{kind:'Audio',track:0,sourcePath:'C:/media.wav',startTicks:'0',endTicks:String(40*TPS),inTicks:'0',outTicks:String(40*TPS),speed:1,reversed:false,disabled:false}],referenceAudio:{sourcePath:'C:/Users/test/AppData/Roaming/Adobe/UXP/PluginsStorage/PPRO/25/Developer/com.quickcaption.premiere.qa/PluginData/reference-audio/selection-job.wav',durationSeconds:4,ranges:[{start:10,end:12,outputStart:0},{start:30,end:32,outputStart:2}]}},scaffoldPath:'C:/Users/test/AppData/Roaming/Quick Caption/Premiere Bridge QA/graphics/empty.xml',plan:{version:1,frameTicks,phrases:[{text:'first',startFrame:275,endFrame:300,states:[{assetPath:'C:/Users/test/AppData/Roaming/Quick Caption/Premiere Bridge QA/graphics/first.mogrt',startFrame:0,endFrame:25,word:'first'}]},{text:'second',startFrame:750,endFrame:775,states:[{assetPath:'C:/Users/test/AppData/Roaming/Quick Caption/Premiere Bridge QA/graphics/second.mogrt',startFrame:0,endFrame:25,word:'second'}]}]}};
+ data.target.referenceAudio.sourcePath=userData+'/Adobe/UXP/PluginsStorage/PPRO/'+hostFolder+'/'+mode+'/'+pluginId+'/PluginData/reference-audio/selection-job.wav';
+ data.scaffoldPath=userData+'/Quick Caption/Premiere Bridge QA/graphics/empty.xml';
+ for(const phrase of data.plan.phrases)for(const state of phrase.states)state.assetPath=userData+'/Quick Caption/Premiere Bridge QA/graphics/word.mogrt';
  return {data,original,project,imports:()=>imports,invoke:()=>JSON.parse(context.$._quickCaptionBridge.buildGraphics(JSON.stringify(data))),upgrade:delivery=>JSON.parse(context.$._quickCaptionBridge.prepare(JSON.stringify({target:{...data.target,operation:'attach-reference-audio',id:data.id,graphicsDelivery:delivery}}))),place(result){for(const phrase of result.phrases){const seq=sequences.find(s=>s.sequenceID===phrase.sequenceId);const duration=(phrase.endFrame-phrase.startFrame)*Number(frameTicks)/TPS;original.videoTracks[0].clips.push(makeClip(0,duration,phrase.startFrame*Number(frameTicks)/TPS,seq.projectItem));seq.audioTracks[0].clips.length=0;}}};
 }
+
+for(const platform of ['Windows','Macintosh'])for(const pluginId of ['com.quickcaption.premiere.qa','com.quickcaption.premiere'])for(const mode of ['Developer','External']) {
+ test(`reference audio host simulation: ${platform}, ${pluginId}, ${mode}, Unicode home and dotted host version`,()=>{
+  const userData=platform==='Windows'?'D:/משתמשים/Élodie Gold/AppData/Roaming':'/Users/Élodie שלום/Library/Application Support';
+  const fixture=host({platform,userData,pluginId,mode,hostFolder:'26.0'});
+  const result=fixture.invoke();assert.equal(result.ok,true,JSON.stringify(result));assert.equal(result.referenceAudio,true);
+  assert.equal(fixture.project.sequences.find(seq=>seq.sequenceID===result.phrases[0].sequenceId).audioTracks[0].clips.length,1);
+ });
+}
+test('release ID support does not allow an unrelated plugin to import reference audio',()=>{
+ const fixture=host({platform:'Macintosh',userData:'/Users/test/Library/Application Support',pluginId:'com.unrelated.plugin'});
+ assert.equal(fixture.invoke().code,'invalid_reference_audio');assert.equal(fixture.imports(),0);
+});
 test('native nests map disconnected timeline ranges into the compact WAV without inheriting audio from the preceding sentence',()=>{
  const fixture=host(),result=fixture.invoke();assert.equal(result.ok,true,JSON.stringify(result));
  assert.equal(result.referenceAudio,true);assert.equal(fixture.original.audioTracks[0].clips.length,1);

@@ -10,6 +10,7 @@ import settingsModule from '../premiere-plugin/transcription-settings.js';
 import captionPlacement from '../premiere-plugin/caption-placement.js';
 import graphicsPlacement from '../premiere-plugin/graphics-placement.js';
 import pricing from '../premiere-plugin/credit-estimate.js';
+import diagnosticsModule from '../premiere-plugin/diagnostics.js';
 import { pluginPolicy } from '../src/pluginPolicy.js';
 import { parseTranscriptionSettings } from '../src/transcriptionSettings.js';
 
@@ -36,6 +37,7 @@ async function openPanel({ connected = true, offline = false, finished = true, j
     calls.push(url);
     requests.push({ url, options });
     if (offline) throw new Error('אין חיבור לשרת');
+    if (url.endsWith('/api/plugin/diagnostics')) return { ok: true, status: 202, json: async () => ({ accepted: true, id: JSON.parse(options.body).id }) };
     if (url.includes('/api/transcribe/jobs/')) return { ok: true, status: 200, json: async () => ({ status: 'completed', result: { videoId: 42, creditsUsed: 3 } }) };
     if (url.endsWith('/subtitles')) return { ok: true, status: 200, json: async () => ({ srt: '1\n00:00:00,500 --> 00:00:02,000\nשלום\n\n2\n00:00:04,500 --> 00:00:05,500\nמעבר\n' }) };
     if (/\/api\/videos\/\d+$/.test(url)) return {ok:true,status:200,json:async()=>({video:{subtitle_json:[{id:1,start:0,end:1,text:'שלום עולם'}],words_json:[{word:'שלום',start:0,end:.5},{word:'עולם',start:.5,end:1}]}})};
@@ -68,6 +70,7 @@ async function openPanel({ connected = true, offline = false, finished = true, j
       if (name === './bridge.js') return placement ? { TimelineBridge: class { async prepare() {} async deliver(ppro, snapshot, id, srt) { return placement.deliver({ snapshot, id, srt }); } async buildGraphics(ppro,snapshot,id,video,color){graphics.builds.push({snapshot,id,video,color});return graphics.built;} } } : bridgeModule;
       if (name === './transcription-settings.js') return settingsModule;
       if (name === './credit-estimate.js') return pricing;
+      if (name === './diagnostics.js') return diagnosticsModule;
       if (name === './language-labels.json') return {};
       if (name === './caption-placement.js') return captionPlacement;
       if (name === './graphics-placement.js') return graphics ? {async placeGraphics(ppro,snapshot,built,journal,save){graphics.placements.push({snapshot,built,journal});await save({status:'placing',kind:'graphics',built,videoIndex:1,audioIndex:1});if(graphics.fail)throw new Error('placement interrupted');return {status:'delivered',kind:'graphics',built,videoIndex:1,audioIndex:1,cueCount:1,trackLabel:'V2'};}} : graphicsPlacement;

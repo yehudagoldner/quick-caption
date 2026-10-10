@@ -39,10 +39,27 @@ function writeZip(entries){
   const index=Buffer.concat(central),end=Buffer.alloc(22);end.writeUInt32LE(0x06054b50);end.writeUInt16LE(entries.size,8);end.writeUInt16LE(entries.size,10);end.writeUInt32LE(index.length,12);end.writeUInt32LE(offset,16);
   return Buffer.concat([...local,index,end]);
 }
-function installedTemplate(adobeData) {
-  const filename=path.join(adobeData,'Adobe','Common','Motion Graphics Templates','Captions and Subtitles','Classic Web Caption.mogrt');
-  if(!fs.existsSync(filename))unsupported('תבנית הטקסט המובנית חסרה. התקינו את Classic Web Caption מתוך Graphics Templates.');
-  const outer=readZip(fs.readFileSync(filename));let definition;
+function installedTemplate(adobeData, { io = fs, paths = path } = {}) {
+  const directory=paths.join(adobeData,'Adobe','Common','Motion Graphics Templates');
+  let filename=paths.join(directory,'Captions and Subtitles','Classic Web Caption.mogrt');
+  if(!io.existsSync(filename)) {
+    // Adobe's category folder may be localized or the template moved by the
+    // user. Search only the known template, bounded to two category levels.
+    const candidates=[]; let inspected=0;
+    const scan=(folder,depth)=>{ for(const entry of io.readdirSync(folder,{withFileTypes:true})) {
+      if(++inspected>500)unsupported('Too many templates to locate the caption template safely');
+      if(entry.isSymbolicLink())continue;
+      const value=paths.join(folder,entry.name);
+      if(entry.isFile() && entry.name.toLowerCase()==='classic web caption.mogrt')candidates.push(value);
+      else if(entry.isDirectory() && depth<2)scan(value,depth+1);
+    }};
+    if(io.existsSync(directory))scan(directory,0);
+    if(candidates.length!==1)unsupported('תבנית הטקסט המובנית חסרה או אינה חד משמעית. התקינו את Classic Web Caption מתוך Graphics Templates.');
+    filename=candidates[0];
+  }
+  if(io.statSync(filename).size>32*1024*1024)unsupported('Unexpected installed template size');
+  const bytesOnDisk=io.readFileSync(filename);
+  const outer=readZip(bytesOnDisk);let definition;
   try { definition=JSON.parse(outer.get('definition.json').toString('utf8')); }catch{unsupported('Invalid caption template definition');}
   if(definition.authorApp!=='ppro'||!outer.has('project.prgraphic'))unsupported('A native Premiere caption template is required');
   const inner=readZip(outer.get('project.prgraphic'));
@@ -57,7 +74,7 @@ function installedTemplate(adobeData) {
   if(bytes.length<8||bytes.readUInt32LE(0)!==bytes.length-8)unsupported('Unknown native text encoding');
   try { doc=JSON.parse(bytes.subarray(8).toString('utf16le')); }catch{unsupported('Unknown native text format');}
   if(doc.mVersion!==1||!doc.mTextParam?.mStyleSheet||typeof doc.mTextParam.mStyleSheet.mText!=='string')unsupported('Unknown native text schema');
-  return { definition, xml, node, doc };
+  return { definition, xml, node, doc, templateHash: crypto.createHash('sha256').update(bytesOnDisk).digest('hex') };
 }
 function graphicAsset(template,{text,offset=0,length=0,color='#FFD45A',name='Quick Caption',font='ArialMT'}) {
   if(typeof text!=='string'||!text.trim()||text.length>2000||/[\x00-\x08\x0b\x0c\x0e-\x1f]/.test(text)||!Number.isInteger(offset)||!Number.isInteger(length)||offset<0||length<0||offset+length>text.length||!/^#[0-9a-f]{6}$/i.test(color))unsupported('Invalid native caption text');

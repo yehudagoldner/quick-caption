@@ -4,10 +4,17 @@
   var node = window.cep_node;
   var path = node.require('path');
   var os = node.require('os');
-  var extensionPath = decodeURI(window.__adobe_cep__.getSystemPath('extension'));
-  extensionPath = node.process.platform === 'win32' ? extensionPath.replace(/^file:\/\/\//, '') : extensionPath.replace(/^file:\/\//, '');
-  var config = node.require(path.join(extensionPath, 'bridge-config.json'));
-  var root = path.join(node.process.env.APPDATA || path.join(os.homedir(), 'Library', 'Application Support'), 'Quick Caption', 'Premiere Bridge QA');
+  var extensionPath = window.__adobe_cep__.getSystemPath('extension');
+  if (/^file:\/\//i.test(extensionPath)) {
+    extensionPath = decodeURIComponent(extensionPath.replace(/^file:\/\//i, ''));
+    if (node.process.platform === 'win32') extensionPath = /^\/[a-z]:/i.test(extensionPath) ? extensionPath.slice(1) : extensionPath.startsWith('/') ? extensionPath : '//' + extensionPath;
+  }
+  var environment = node.require(path.join(extensionPath, 'environment.js'));
+  extensionPath = environment.extensionDirectory(window.__adobe_cep__.getSystemPath('extension'), node.process.platform);
+  var root = environment.runtimeDirectories({ platform: node.process.platform, env: node.process.env, home: os.homedir() }).root;
+  var diagnostics = node.require(path.join(extensionPath, 'diagnostics.js')).createBridgeDiagnostics({ root: root });
+  diagnostics.sweep();
+  setInterval(function () { diagnostics.sweep(); }, 15 * 60000);
   var evalHost = function (method, payload) {
     return new Promise(function (resolve, reject) {
       // The method comes only from our server's fixed whitelist; data is quoted twice.
@@ -19,16 +26,16 @@
       window.__adobe_cep__.evalScript(script, function (result) {
         try {
           var data = JSON.parse(result);
-          if (!data.ok) throw Object.assign(new Error(data.error), { code: data.code });
+          if (!data.ok) throw Object.assign(new Error(data.error), { code: data.code, nativeLine: data.line });
           resolve(data);
         } catch (error) { reject(error); }
       });
     });
   };
-  var logError = function (error) {
-    var fs = node.require('fs'); fs.mkdirSync(root, { recursive: true });
-    fs.appendFileSync(path.join(root, 'bridge.log'), new Date().toISOString() + ' ' + error.message + '\n');
-  };
-  try { node.require(path.join(extensionPath, 'server.js')).startBridge({ root: root, token: config.token, port: config.port, evalHost: evalHost }).on('error', logError); }
+  var logError = function (error) { diagnostics.record('bridge-start', error); };
+  try {
+    var config = node.require(path.join(extensionPath, 'bridge-config.json'));
+    node.require(path.join(extensionPath, 'server.js')).startBridge({ root: root, token: config.token, port: config.port, evalHost: evalHost, diagnostics: diagnostics }).on('error', logError);
+  }
   catch (error) { logError(error); }
 }());

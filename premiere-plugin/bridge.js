@@ -4,7 +4,7 @@ const UNAVAILABLE = 'רכיב ההצבה האוטומטית לא נטען בפר
 const unavailable = () => Object.assign(new Error(UNAVAILABLE), { code: 'bridge_unavailable' });
 
 class TimelineBridge {
-  constructor({ configuration, fetcher = fetch }) { this.configuration = configuration; this.fetcher = fetcher; }
+  constructor({ configuration, fetcher = fetch, diagnostics }) { this.configuration = configuration; this.fetcher = fetcher; this.diagnostics = diagnostics; }
   async request(route, body) {
     if (!this.configuration?.token) throw unavailable();
     let response;
@@ -21,14 +21,20 @@ class TimelineBridge {
       if (/Permission denied|Manifest entry not found/i.test(error.message || '')) throw Object.assign(new Error('פרימייר לא טען את הרשאות החיבור המעודכנות. טענו מחדש את התוסף בכלי הפיתוח ונסו שוב.'), { code: 'bridge_permissions' });
       throw unavailable();
     } finally { clearTimeout(timer); }
-    const result = await response.json();
+    let result;
+    try { result = await response.json(); } catch { throw Object.assign(new Error('רכיב ההצבה החזיר תשובה לא תקינה'), { code: 'invalid_response' }); }
+    if (this.diagnostics && result.environment) Object.assign(this.diagnostics.environment, result.environment);
+    if (route === '/health' && this.diagnostics) {
+      Object.assign(this.diagnostics.environment, { hostVersion: result.hostVersion, bridgeVersion: result.version });
+      for (const event of (result.diagnostics || []).slice(-4)) this.diagnostics.step(event.stage, { outcome: event.outcome, code: event.code, errorType: event.errorType, frames: event.frames });
+    }
     const explanation = {
       delivery_uncertain: 'ייתכן שהכתוביות כבר הוצבו. בדקו את הטיימליין לפני שחזור; לא ייווצר ערוץ נוסף ולא יהיה חיוב נוסף.',
       delivery_conflict: 'התמלול השתנה אחרי ניסיון ההצבה. נדרש לבדוק את הערוץ הקיים לפני עדכון.',
       invalid_subtitles: 'לא נמצאו כתוביות תקינות להצבה בקטעים שנבחרו.',
       invalid_graphics: 'תזמון הכתוביות אינו מאפשר הצבה בטוחה. התמלול נשמר בחשבון, ללא צורך בתמלול או חיוב נוסף.',
     }[result.code];
-    if (!response.ok || !result.ok) throw Object.assign(new Error(explanation || result.error || UNAVAILABLE), { code: result.code });
+    if (!response.ok || !result.ok) throw Object.assign(new Error(explanation || result.error || UNAVAILABLE), { code: result.code, status: response.status, nativeLine: result.line, diagnosticFrames: result.frames, nativeType: result.errorType });
     return result;
   }
   async target(ppro, snapshot) {

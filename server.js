@@ -31,6 +31,7 @@ import { estimateTranscriptionCredits, creditsToDollars, transcriptionCredits, w
 import { getDevAuthUid, isDevAuthBypassEnabled } from "./src/devAuth.js";
 import { createPluginSessions, ensurePluginSchema, isPluginToken, pluginRouteAllowed } from './src/pluginSessions.js';
 import { createPluginPublicRouter, createPluginPrivateRouter } from './routes/plugin.js';
+import { createDiagnosticStore, startDiagnosticCleanup } from './src/pluginDiagnostics.js';
 import { createConnectionStore, createConnectionIdentityVerifier, connectionBinding } from './src/accountConnections.js';
 import { createConnectionsRouter } from './routes/connections.js';
 import { currentTranscriptionModels, pluginPolicy, pluginVersionSupported } from './src/pluginPolicy.js';
@@ -60,6 +61,10 @@ await fsp.mkdir(videosStorageDir, { recursive: true });
 await ensureSchema();
 await ensurePluginSchema(pool);
 const pluginSessions = createPluginSessions(pool);
+// Resolve the shared media symlink: logs survive an in-place QA update, remain
+// private, and do not accumulate inside release directories or public assets.
+const pluginDiagnostics = createDiagnosticStore({ directory: path.join(path.dirname(await fsp.realpath(videosStorageDir)), 'plugin-diagnostics') });
+startDiagnosticCleanup(pluginDiagnostics);
 const verifyIdentity = createFirebaseVerifier({ projectId: process.env.FIREBASE_PROJECT_ID || process.env.VITE_FIREBASE_PROJECT_ID });
 const connectionStore = createConnectionStore(pool);
 const authenticate = createIdentityMiddleware(createConnectionIdentityVerifier(verifyIdentity, connectionStore));
@@ -116,7 +121,7 @@ app.use('/api', async (req, res, next) => {
 });
 const upload = createMediaUpload(uploadDir);
 app.use('/api/connections', createConnectionsRouter({ store: connectionStore }));
-app.use('/api/plugin', createPluginPrivateRouter({ sessions: pluginSessions, getUserCredits, getVideoById }));
+app.use('/api/plugin', createPluginPrivateRouter({ sessions: pluginSessions, getUserCredits, getVideoById, diagnostics: pluginDiagnostics }));
 app.post('/api/client-errors', createClientErrorHandler(errorRecorder));
 app.use('/api/downloads', createDownloadsRouter({ store: downloadStore }));
 app.use("/api/burn-subtitles", createBurnSubtitlesRouter(upload, {

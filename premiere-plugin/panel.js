@@ -11,11 +11,16 @@ const { captionPlacementInfo, savedPlacementInfo } = require('./caption-placemen
 const { placeGraphics } = require('./graphics-placement.js');
 const { retainReferenceAudio, referenceAudioExists } = require('./reference-audio.js');
 const { estimateCreditsFromRules } = require('./credit-estimate.js');
+const { Diagnostics } = require('./diagnostics.js');
 let bridgeConfiguration = null;
 try { bridgeConfiguration = require('./bridge-config.json'); } catch { /* QA installer pairs both local components. */ }
 const bridge = new TimelineBridge({ configuration: bridgeConfiguration });
 const fs = uxp.storage.localFileSystem;
 const client = new PluginClient({ baseUrl, version, storage: uxp.storage.secureStorage });
+let diagnosticEnvironment = { pluginVersion: version, paired: !!bridgeConfiguration?.token, fontVerified: false, hostVersion: uxp.host?.version };
+try { const os = require('os'); Object.assign(diagnosticEnvironment, { os: os.platform(), arch: os.arch() }); } catch { /* Older host: explicit unknown environment. */ }
+const diagnostics = new Diagnostics({ storage: uxp.storage.secureStorage, client, environment: diagnosticEnvironment });
+bridge.diagnostics = diagnostics;
 // Both panels share one document; retain references while their roots are detached.
 const ui = new Map(Array.from(document.querySelectorAll('[id]'), node => [node.id, node]));
 const $ = id => ui.get(id);
@@ -117,6 +122,12 @@ const message = (text, error = false) => {
   $('status').textContent = text; $('status').hidden = !text;
   $('status').className = error ? 'notice error' : 'notice';
 };
+const reportedErrors = new WeakMap();
+function reportFailure(error, text) {
+  let id = error && typeof error === 'object' ? reportedErrors.get(error) : null;
+  if (!id) { id = diagnostics.failure(error); if (id && error && typeof error === 'object') reportedErrors.set(error, id); }
+  message((text || error?.message || 'הפעולה נכשלה') + (id ? ` · קוד אבחון: ${id}` : ''), true);
+}
 const progress = (text, complete = false) => {
   $('progress').textContent = text; $('progress-section').hidden = !text;
   $('progress-bar').hidden = !text || complete;
@@ -205,6 +216,7 @@ async function updateAccount() {
       if (!compatible(next.policy)) throw new Error('נדרש עדכון לתוסף לפני תמלול');
       if (account?.policy.version !== next.policy.version) invalidateQuote();
       account = next;
+      void diagnostics.flush();
       const job = await pendingJob(); hasPending = needsResume(job);
       canAddReference = false;
       if (job?.style?.activeWord && ['delivered','placing'].includes(job.delivery?.status) && job.delivery.built && !job.delivery.built.referenceAudio) {
@@ -227,7 +239,7 @@ async function updateAccount() {
       timer = setInterval(() => { if (shown) void updateAccount(); }, next.policy.balanceRefreshSeconds * 1000);
     } catch (error) {
       account = null; invalidateQuote();
-      $('balance').textContent = 'היתרה לא זמינה'; message(error.message, true);
+      $('balance').textContent = 'היתרה לא זמינה'; diagnostics.step('account'); reportFailure(error);
       $('account').textContent = client.session ? 'מחובר · ללא עדכון' : 'נדרשת התחברות מחדש';
     } finally { accountPending = null; controls(); }
   })();
@@ -262,6 +274,7 @@ async function captionTrackIds(sequence) {
   return ids;
 }
 async function deliverJob(job) {
+  diagnostics.step('placement');
   if (job.uid !== client.session?.user.uid) throw new Error('יש להתחבר לחשבון שבו נשלח התמלול הזה');
   if (!job.selection || !job.result?.videoId) throw new Error('מפת התזמון של התמלול אינה זמינה. לא ניתן להציב בבטחה את הכתוביות');
   if (job.delivery?.status === 'delivered') return;
@@ -273,9 +286,11 @@ async function deliverJob(job) {
       job = await ensureReferenceAudio(job);
       const data = await client.request(`/api/videos/${job.result.videoId}`);
       if (!data.video) throw new Error('נתוני הכתוביות אינם זמינים. התמלול נשמר; לא יבוצע תמלול נוסף.');
+      diagnostics.step('graphics', { captionCount: data.video.subtitle_json?.length });
       built = await bridge.buildGraphics(ppro, job.selection, `${job.id}:${job.result.videoId}`, data.video, job.style.activeWordColor, job.referenceAudio);
       await saveJob({...job,delivery:{kind:'graphics',status:'built',built}});
     }
+    diagnostics.step('placement');
     const delivery = await placeGraphics(ppro,job.selection,built,job.delivery?.status==='placing'?job.delivery:null,async delivery=>saveJob({...job,delivery}));
     await saveJob({...job,delivery}); hasPending=false;
     if(file){await file.delete();file=null;selectionContext=null;invalidateQuote();}
@@ -300,8 +315,10 @@ async function deliverJob(job) {
   placementMessage({ ...placed, sequenceName: job.selection.sequenceName }, job.result);
 }
 async function audioPreset(sequence) {
+  diagnostics.step('preset');
   let preset = null;
   try { preset = await fs.getEntryForPersistentToken(readStoredJson(await uxp.storage.secureStorage.getItem('audio-preset'))); } catch { /* First use or revoked file permission. */ }
+  diagnostics.environment.presetSaved = !!preset;
   if (!preset) {
     message('בהפעלה הראשונה בחרו preset של Waveform Audio מסוג EPR. הבחירה תישמר לפעמים הבאות.');
     preset = await fs.getFileForOpening({ types: ['epr'] });
@@ -314,6 +331,7 @@ async function audioPreset(sequence) {
 }
 
 async function ensureReferenceAudio(job) {
+  diagnostics.step('reference-audio');
   if (await referenceAudioExists(uxp, job.referenceAudio)) return job;
   await validateSelection(ppro, job.selection);
   let output, isolated;
@@ -374,6 +392,7 @@ async function waitForWave(entry, maxMediaBytes) {
 async function captionSelection() {
   if (ready) await ready;
   if (busy || preparing || uploading || watching) return;
+  diagnostics.begin({ activeWord: settings.activeWord });
   if (hasPending) { await run(async () => { const job = await pendingJob(); if (job) await watchJob(job); }); return; }
   const approved = quote, approvedSnapshot = selectionContext;
   preparing = true;
@@ -384,6 +403,7 @@ async function captionSelection() {
     // Retry the local connection before repeating account work or audio preparation.
     if (bridgeBlocked) { await bridge.request('/health'); bridgeBlocked = false; }
     const snapshot = await captureSelection(ppro);
+    diagnostics.step('selection', { clipCount: snapshot.rows?.length, rangeCount: snapshot.ranges?.length, durationSeconds: snapshot.duration });
     if (selectionKey(snapshot) !== approved.selectionKey) {
       selectionContext = snapshot; invalidateQuote();
       throw new Error('הבחירה השתנתה. המחיר עודכן; לחצו שוב כדי לאשר את הבחירה החדשה.');
@@ -391,7 +411,7 @@ async function captionSelection() {
     if (file) await file.delete();
     file = null; selectionContext = snapshot;
     $('plugin-main').scrollTop = 0;
-    await updateAccount();
+    diagnostics.step('account'); await updateAccount();
     if (!account) throw new Error('נדרש חיבור עדכני לחשבון לפני התמלול');
     if (approved.policyVersion !== account.policy.version || approved.settingsKey !== settingsKey()) throw new Error('כללי המחיר או ההגדרות השתנו. בדקו את המחיר המעודכן ולחצו שוב.');
     const previous = await client.settlePreviousJob(await pendingJob());
@@ -413,6 +433,7 @@ async function captionSelection() {
     try {
       isolated = await isolatedSelection(ppro, snapshot);
       progress('מכין אודיו מהקטעים שסימנתם…');
+      diagnostics.step('export');
       const accepted = await ppro.EncoderManager.getManager().exportSequence(isolated.sequence, ppro.Constants.ExportType.IMMEDIATELY, output.nativePath, preset.nativePath, true);
       if (!accepted) throw new Error('פרימייר לא התחיל את הייצוא. לא בוצע חיוב');
       await waitForWave(output, account.policy.maxMediaBytes);
@@ -429,6 +450,7 @@ async function captionSelection() {
   }
 }
 async function getQuote(approved) {
+  diagnostics.step('admission');
   if (!selectionContext || !account || !approved) throw new Error('נדרשת בחירה עם הערכת מחיר עדכנית');
   const previous = await client.settlePreviousJob(await pendingJob());
   if (previous) await saveJob(previous);
@@ -447,6 +469,7 @@ async function pendingJob() {
 }
 async function saveJob(job) { await uxp.storage.secureStorage.setItem(`pending-job:${job.uid}`, JSON.stringify(job)); }
 async function watchJob(job, allowMissing = false) {
+  diagnostics.step('transcription');
   if (job.uid !== client.session?.user.uid) throw new Error('יש להתחבר לחשבון שבו נשלח התמלול הזה');
   watching = true; controls();
   try {
@@ -504,6 +527,7 @@ async function send(approved) {
   await saveJob(job);
   hasPending = true; invalidateQuote();
   progress('מעלה את האודיו ומתחיל תמלול…');
+  diagnostics.step('upload');
   // Never repeat a paid POST automatically, including after a timeout or a 401.
   let submissionError = null;
   uploading = true;
@@ -518,21 +542,21 @@ async function send(approved) {
   }).finally(() => { uploading = false; controls(); });
   await sleep(3000);
   try { await watchJob(job, true); }
-  catch (error) { $('progress-bar').hidden = true; message(submissionError?.message || `${error.message}. נסיון חוזר ישלים את אותה משימה ללא חיוב נוסף.`, true); }
+  catch (error) { $('progress-bar').hidden = true; reportFailure(error, submissionError?.message || `${error.message}. נסיון חוזר ישלים את אותה משימה ללא חיוב נוסף.`); }
   // Attach a handler now; do not wait indefinitely for the upload response to close.
-  void submission.catch(error => message(error.message));
+  void submission.catch(error => reportFailure(error));
 }
 async function run(action) {
   if (busy) return;
   busy = true; controls(); message('');
   try { await action(); } catch (error) {
     if (['bridge_unavailable', 'bridge_permissions'].includes(error.code)) bridgeBlocked = true;
-    message(error.message || 'הפעולה נכשלה', true);
+    reportFailure(error);
     $('progress-bar').hidden = true;
   }
   finally { busy = false; controls(); }
 }
-async function preparePlacement(snapshot) { return settings.activeWord ? bridge.prepareGraphics(ppro,snapshot) : bridge.prepare(ppro,snapshot); }
+async function preparePlacement(snapshot) { diagnostics.step('preflight'); return settings.activeWord ? bridge.prepareGraphics(ppro,snapshot) : bridge.prepare(ppro,snapshot); }
 $('active-word').addEventListener('change',()=>{
   if(busy||preparing||uploading||watching||hasPending||booting)return;
   settings.activeWord=Boolean($('active-word').checked);settingsChanged();
@@ -541,7 +565,7 @@ $('active-word-color').addEventListener('change',()=>{
   if(busy||preparing||uploading||watching||hasPending||booting)return;
   settings.activeWordColor=$('active-word-color').value;settingsChanged();
 });
-$('connect').addEventListener('click', () => { if (!busy) void connect().catch(error => message(error.message, true)); });
+$('connect').addEventListener('click', () => { if (!busy) void connect().catch(error => reportFailure(error)); });
 $('account-menu').addEventListener('click', () => { $('account-settings').hidden = !$('account-settings').hidden; });
 $('selected').addEventListener('click', () => void captionSelection());
 $('toolbar-caption').addEventListener('click', () => void openTimelineAction().catch(error => message(error.message, true)));
@@ -603,11 +627,13 @@ uxp.entrypoints.setup({
 });
 let settingsPolicyVersion = null;
 ready = (async () => {
+  await diagnostics.restore(); diagnostics.step('startup');
   await client.restore();
   try { settings = { ...settings, ...readStoredJson(await uxp.storage.secureStorage.getItem('transcription-settings')) }; } catch { /* First use. */ }
   await updateAccount();
   if (!account) { settings = normalizeSettings(settings, { languages: Object.keys(languageLabels) }); renderSettings(); }
-})().catch(error => message(error.message, true)).finally(async () => {
+})().catch(error => reportFailure(error)).finally(async () => {
   booting = false; controls(); await refreshSelection();
   selectionTimer = setInterval(() => { if (shown) void refreshSelection(); }, 1000);
+  setInterval(() => { void diagnostics.flush(); }, 30000);
 });
