@@ -1,4 +1,4 @@
-import { useContext, useEffect, useMemo, useRef, useState, type ChangeEvent, type ReactNode } from "react";
+import { useContext, useEffect, useRef, useState, type ChangeEvent, type ReactNode } from "react";
 import { DownloadContext } from "../contexts/DownloadContext";
 import { VideoSeekBar } from "./VideoSeekBar";
 import { CaptionFontPicker } from "./CaptionFontPicker";
@@ -35,18 +35,14 @@ import {
   AddRounded,
   AutoFixHighRounded,
   CheckRounded,
-  ChevronLeftRounded,
   ChevronRightRounded,
   CloseRounded,
   ContentCutRounded,
   DownloadRounded,
-  EditOutlined,
   MovieFilterRounded,
-  RepeatRounded,
   SaveRounded,
   SettingsRounded,
   ShareRounded,
-  UndoRounded,
   SubtitlesRounded,
   DeleteOutlineRounded,
   JoinFullRounded,
@@ -56,14 +52,12 @@ import { wordsForSegment } from "../../timelineEditing.js";
 import { canMergeCaptions, canSplitCaptionAtTime, type CaptionBatchAction } from "../../captionBatchEditing.js";
 import { AUTO_CAPTION_FONT_SIZE, CAPTION_FONT_SIZES, type CaptionFontSizeSetting } from "../../captionStyle.js";
 import type { CaptionMotion, PopIntensity } from "../../captionMotion.js";
-import { synchronizeWords } from "../../wordAlignment.js";
 import { formatTimecode } from "../utils/timecode";
 import { useEditorPreferences } from "../contexts/EditorPreferences";
 import { VideoPlayer } from "./VideoPlayer";
 import { type CaptionDraft, type SubtitleTimelineProps } from "./SubtitleTimeline";
 import { MobileTimingTimeline } from "./MobileTimingTimeline";
-import { MobileWordTimeline } from "./MobileWordTimeline";
-import { MobileWordTimelineDialog } from "./MobileWordTimelineDialog";
+import { MobileCaptionEditDialog } from "./MobileCaptionEditDialog";
 import { useEditorHeaderActions } from "../contexts/EditorHeaderContext";
 import { useVideoSharing } from "../hooks/useVideoSharing";
 import { VideoShareDialog } from "./VideoShareDialog";
@@ -72,7 +66,7 @@ import { MOBILE_APP_HEADER_HEIGHT, MOBILE_EDITOR_NAV_HEIGHT } from "../utils/app
 import { serializeSubtitles } from "../utils/subtitleExport";
 
 type SaveState = "idle" | "saving" | "success" | "error";
-type MobileMode = "watch" | "edit" | "timing";
+type MobileMode = "watch" | "timing";
 
 type BurnedVideo = { url: string; name: string };
 
@@ -192,9 +186,6 @@ export function MobileCaptionEditor({
   onBurnVideo,
   onAddSubtitle,
   onCaptionBatch,
-  onSplitSegment,
-  onUndoSplit,
-  canUndoSplit,
   onToggleActiveWord,
   onAIEdit,
   isPlaying,
@@ -205,7 +196,7 @@ export function MobileCaptionEditor({
 }: MobileCaptionEditorProps) {
   const downloads = useContext(DownloadContext);
   const { preferences } = useEditorPreferences();
-  const [mode, setMode] = useState<MobileMode>("watch");
+  const [mode, setMode] = useState<MobileMode>("timing");
   const [styleOpen, setStyleOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
   const [downloadOpen, setDownloadOpen] = useState(false);
@@ -218,9 +209,6 @@ export function MobileCaptionEditor({
   const [newText, setNewText] = useState("");
   const [newStart, setNewStart] = useState(0);
   const [newEnd, setNewEnd] = useState(0);
-  const [draftText, setDraftText] = useState("");
-  const [draftError, setDraftError] = useState<string | null>(null);
-  const [wordDraft, setWordDraft] = useState<Word[] | null>(null);
   const [timingWordsId, setTimingWordsId] = useState<Segment["id"] | null>(null);
   const [checkedIds, setCheckedIds] = useState<Segment["id"][]>([]);
   const [batchBusy, setBatchBusy] = useState(false);
@@ -274,8 +262,6 @@ export function MobileCaptionEditor({
       timelineEditing.onDraftStateChange(false);
     }
   };
-  const wordDraftRef = useRef<Word[] | null>(null);
-  const [savingDraft, setSavingDraft] = useState(false);
   const [leaving, setLeaving] = useState(false);
   const [chromeTop, setChromeTop] = useState(MOBILE_APP_HEADER_HEIGHT);
   const captionStripRef = useRef<HTMLDivElement | null>(null);
@@ -283,15 +269,10 @@ export function MobileCaptionEditor({
   const captionScrollTimer = useRef(0);
   const captionScrollFromCode = useRef(false);
   const captionScrollFromUser = useRef(false);
-  const draftTextRef = useRef("");
-  const savedTextRef = useRef("");
-  const saveFlight = useRef<{ key: string; promise: Promise<boolean> } | null>(null);
   const saveSegmentRef = useRef(timelineEditing.onSaveSegment);
   saveSegmentRef.current = timelineEditing.onSaveSegment;
   const destinationsRef = useRef({ onMyVideos, onBack });
   destinationsRef.current = { onMyVideos, onBack };
-  const splitSegmentRef = useRef(onSplitSegment);
-  splitSegmentRef.current = onSplitSegment;
   const loopChangeRef = useRef(timelineEditing.onLoopChange);
   loopChangeRef.current = timelineEditing.onLoopChange;
 
@@ -301,33 +282,7 @@ export function MobileCaptionEditor({
   useEffect(() => { setTimingWordsId(null); }, [mode, mediaUrl]);
 
   const duration = videoDuration && Number.isFinite(videoDuration) ? videoDuration : Math.max(1, ...editableSegments.map(s => s.end), 1);
-  const selectedIndex = editableSegments.findIndex(s => s.id === selectedSegmentId);
-  const selected = selectedIndex >= 0 ? editableSegments[selectedIndex] : null;
   const timingWordsSegment = editableSegments.find(segment => segment.id === timingWordsId);
-  const captionWords = useMemo(() => selected ? wordsForSegment(words, selected) : [], [words, selected]);
-  const editingWords = wordDraft ?? captionWords;
-  draftTextRef.current = draftText;
-
-  useEffect(() => {
-    wordDraftRef.current = null;
-    setWordDraft(null);
-    if (!selected) {
-      setDraftText("");
-      savedTextRef.current = "";
-      return;
-    }
-    setDraftText(selected.text);
-    savedTextRef.current = selected.text;
-  }, [selected?.id]);
-
-  useEffect(() => {
-    if (!selected) return;
-    // Optimistic parent updates and their rollback must not overwrite the local draft.
-    if (saveFlight.current) return;
-    setDraftText(current => current.trim() === savedTextRef.current ? selected.text : current);
-    savedTextRef.current = selected.text;
-  }, [selected?.text]);
-
   useEffect(() => {
     const html = document.documentElement;
     const body = document.body;
@@ -361,60 +316,15 @@ export function MobileCaptionEditor({
       return;
     }
     setStyleOpen(false);
-    if (next === mode) {
-      setMode("watch");
-      return;
-    }
-    if (next === "edit") {
-      const target = selectedSegmentId ?? activeSegmentId ?? editableSegments[0]?.id ?? null;
-      if (target != null) onSegmentSelect(target);
-    }
     setMode(next);
   };
 
-  const persistCaption = async (segment: Segment, text: string, segmentWords: Word[]): Promise<boolean> => {
-    const nextText = text.trim();
-    if (!isEditable) return true;
-    if (!nextText) { setDraftError("הכתובית ריקה. הקלידו טקסט לפני היציאה."); return false; }
-    // Text saves regenerate word alignment optimistically. Only explicit timing
-    // drafts belong in the key, so blur and navigation still await one save.
-    const flightKey = `${segment.id}:${nextText}:${wordDraftRef.current ? JSON.stringify(segmentWords) : ""}`;
-    while (saveFlight.current) {
-      const flight = saveFlight.current;
-      const saved = await flight.promise;
-      if (flight.key === flightKey) return saved;
-    }
-    if (nextText === segment.text.trim() && !wordDraftRef.current && !draftError) return true;
-    setSavingDraft(true);
-    setDraftError(null);
-    const promise = (async () => {
-      try {
-        await saveSegmentRef.current({ ...segment, text: nextText }, synchronizeWords([{ ...segment, text: nextText }], segmentWords));
-        savedTextRef.current = nextText;
-        if (wordDraftRef.current === segmentWords) { wordDraftRef.current = null; setWordDraft(null); }
-        return true;
-      } catch {
-        setDraftError("שמירת הכתובית נכשלה. השינויים נשארו כאן; נסו לשמור שוב.");
-        return false;
-      } finally {
-        saveFlight.current = null;
-        setSavingDraft(false);
-      }
-    })();
-    saveFlight.current = { key: flightKey, promise };
-    return promise;
-  };
-
-  const flushDraft = () => mode === "edit" && selected
-    ? persistCaption(selected, draftTextRef.current, wordDraftRef.current ?? captionWords)
-    : Promise.resolve(true);
+  const captionFlush = useRef<(() => Promise<boolean>) | null>(null);
+  const flushDraft = () => captionFlush.current?.() ?? Promise.resolve(true);
   const leave = async (destination: "onMyVideos" | "onBack") => {
     setLeaving(true);
     try { if (await flushDraft()) { loopChangeRef.current(false); destinationsRef.current[destination]?.(); } }
     finally { setLeaving(false); }
-  };
-  const selectCaption = async (id: Segment["id"]) => {
-    if (await flushDraft()) onSegmentSelect(id);
   };
   const openMore = async () => {
     if (await flushDraft()) { loopChangeRef.current(false); setMoreOpen(true); }
@@ -431,18 +341,6 @@ export function MobileCaptionEditor({
       window.setTimeout(() => URL.revokeObjectURL(url), 1000);
     }
   };
-
-  useEffect(() => {
-    if (mode !== "edit" || !selected || !isEditable || draftError) return;
-    const segment = selected;
-    const text = draftText;
-    const segmentWords = wordDraftRef.current ?? captionWords;
-    if (!text.trim() || text.trim() === segment.text.trim()) return;
-    const timer = window.setTimeout(() => {
-      void persistCaption(segment, text, segmentWords);
-    }, 1000);
-    return () => window.clearTimeout(timer);
-  }, [draftText, selected?.id, selected?.text, mode, isEditable, draftError]);
 
   const focusedSegment = editableSegments.find(segment => currentTime >= segment.start && currentTime < segment.end)
     ?? editableSegments.find(segment => segment.id === (selectedSegmentId ?? activeSegmentId))
@@ -500,10 +398,10 @@ export function MobileCaptionEditor({
     />
   );
 
-  const playerSlot = (kind: "watch" | "edit") => (
+  const playerSlot = () => (
     <Box sx={{
       flex: 1,
-      minHeight: kind === "edit" ? 120 : 0,
+      minHeight: 0,
       width: "100%",
       maxHeight: "100%",
       display: "flex",
@@ -513,13 +411,12 @@ export function MobileCaptionEditor({
     </Box>
   );
 
-  const hasCaptionDraft = mode === "edit" && selected !== null && (draftText.trim() !== selected.text.trim() || wordDraft !== null);
-  const shareAllowed = canBurn && fontReady && Boolean(mediaUrl) && !hasTimelineDrafts && !hasCaptionDraft && !savingDraft && saveState !== "saving" && !isBurning;
+  const shareAllowed = canBurn && fontReady && Boolean(mediaUrl) && !hasTimelineDrafts && saveState !== "saving" && !isBurning;
   const videoSharing = useVideoSharing(shareAllowed, onBurnVideo);
   const { sharing, shareVideo } = videoSharing;
   const canShareVideo = shareAllowed && !sharing;
   const registerNavigation = useContext(EditorNavigationContext);
-  const navigationBlocked = Boolean(backDisabled || leaving || sharing || savingDraft);
+  const navigationBlocked = Boolean(backDisabled || leaving || sharing);
   const navigationRef = useRef<EditorNavigationGuard>(async () => {});
   navigationRef.current = async destination => {
     if (navigationBlocked) return;
@@ -575,7 +472,7 @@ export function MobileCaptionEditor({
       }}>
         {mode === "watch" && (
           <Stack spacing={1} alignItems="center" sx={{ flex: 1, minHeight: 0, height: "100%" }}>
-            {playerSlot("watch")}
+            {playerSlot()}
             {!styleOpen && <Typography variant="caption" color="text.secondary" sx={{ flexShrink: 0 }}>{formatTimecode(currentTime, preferences.fps)}</Typography>}
             {!styleOpen && <>
             <VideoSeekBar compact currentTime={currentTime} duration={duration} fps={preferences.fps} mediaUrl={mediaUrl} onSeek={onTimelineTimeChange} />
@@ -622,7 +519,7 @@ export function MobileCaptionEditor({
                       onClick={() => {
                         onSegmentSelect(segment.id);
                         onTimelineTimeChange(segment.start);
-                        if (segment.id === focusedSegment?.id) setMode("edit");
+                        if (segment.id === focusedSegment?.id) { setMode("timing"); setTimingWordsId(segment.id); }
                       }}
                       sx={{
                         scrollSnapAlign: "center",
@@ -664,52 +561,6 @@ export function MobileCaptionEditor({
           </Stack>
         )}
 
-        {mode === "edit" && (
-          <Stack spacing={1} sx={{ minWidth: 0, width: "100%", flex: 1, minHeight: 0, height: "100%", overflow: "hidden" }}>
-            {playerSlot("edit")}
-            {selected && <Stack spacing={1} sx={{ flexShrink: 0, minHeight: 0, maxHeight: "64%", overflow: "auto" }}>
-            <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ flexShrink: 0 }}>
-              <IconButton aria-label="המקטע הקודם" disabled={selectedIndex <= 0 || leaving} onClick={() => void selectCaption(editableSegments[selectedIndex - 1].id)}><ChevronLeftRounded /></IconButton>
-              <Typography variant="body2" color="text.secondary">מקטע {selectedIndex + 1} מתוך {editableSegments.length}</Typography>
-              <IconButton aria-label="המקטע הבא" disabled={selectedIndex >= editableSegments.length - 1 || leaving} onClick={() => void selectCaption(editableSegments[selectedIndex + 1].id)}><ChevronRightRounded /></IconButton>
-            </Stack>
-            <TextField
-              label="טקסט המקטע"
-              multiline
-              minRows={1}
-              maxRows={3}
-              fullWidth
-              value={draftText}
-              disabled={!isEditable || leaving}
-              onBlur={() => { if (selected) void persistCaption(selected, draftText, wordDraftRef.current ?? captionWords); }}
-              onChange={event => { setDraftText(event.target.value); setDraftError(null); }}
-              inputProps={{ dir: preferences.direction, "aria-label": "טקסט המקטע" }}
-              sx={{ maxWidth: "100%" }}
-            />
-            {draftError && <Alert severity="error" action={<Button onClick={() => void flushDraft()}>שמירה חוזרת</Button>}>{draftError}</Alert>}
-            {editingWords.length > 0 && <MobileWordTimeline key={selected.id}
-              segment={selected} words={editingWords} fps={preferences.fps} currentTime={currentTime} activeWordEnabled={activeWordEnabled}
-              disabled={!isEditable || leaving || savingDraft || saveState === "saving" || draftText.trim() !== selected.text.trim()} saving={savingDraft}
-              onInteract={() => { loopChangeRef.current(false); if (isPlaying) onPlayPause?.(); }}
-              onSeek={onTimelineTimeChange}
-              onChange={nextWords => {
-                wordDraftRef.current = nextWords;
-                setWordDraft(nextWords);
-                void persistCaption(selected, draftTextRef.current, nextWords);
-              }}
-              onUndo={timelineEditing.onUndo} onRedo={timelineEditing.onRedo}
-              canUndo={timelineEditing.canUndo && !wordDraft} canRedo={timelineEditing.canRedo && !wordDraft}
-            />}
-            <Stack direction="row" useFlexGap flexWrap="wrap" gap={1}>
-              <Button variant={timelineEditing.loopEnabled ? "contained" : "outlined"} startIcon={<RepeatRounded />} aria-pressed={timelineEditing.loopEnabled} onClick={() => timelineEditing.onLoopChange(!timelineEditing.loopEnabled)}>{timelineEditing.loopEnabled ? "לולאה פעילה · כיבוי" : "לולאה כבויה · הפעלה"}</Button>
-              <Button variant="outlined" startIcon={<ContentCutRounded />} disabled={!isEditable || savingDraft || saveState === "saving" || draftText.trim().split(/\s+/).length < 2 || currentTime <= selected.start || currentTime >= selected.end} onClick={() => { void flushDraft().then(saved => { if (saved) return splitSegmentRef.current(selected.id, currentTime); }); }}>פצל</Button>
-              {canUndoSplit && <Button variant="outlined" startIcon={<UndoRounded />} disabled={!isEditable || saveState === "saving"} onClick={() => void onUndoSplit()}>בטל פיצול</Button>}
-            </Stack>
-            </Stack>}
-            {!selected && <Typography color="text.secondary" sx={{ flexShrink: 0 }}>אין מקטעים לעריכה.</Typography>}
-          </Stack>
-        )}
-
         {mode === "timing" && (
           <Stack spacing={0.5} sx={{ flex: 1, minHeight: 0, height: "100%" }}>
             <Box sx={{ flex: 1, minWidth: 0, minHeight: 0, width: "100%", display: "flex", overflow: "hidden" }}>
@@ -737,7 +588,7 @@ export function MobileCaptionEditor({
               onRedo={timelineEditing.onRedo}
               canUndo={timelineEditing.canUndo}
               canRedo={timelineEditing.canRedo}
-              onEditWords={id => {
+              onEditCaption={id => {
                 setBatchNotice(null);
                 loopChangeRef.current(false);
                 if (isPlaying) onPlayPause?.();
@@ -775,14 +626,14 @@ export function MobileCaptionEditor({
         {[
           { id: "timing" as const, label: "תזמון", icon: <AccessTimeRounded /> },
           { id: "style" as const, label: "עיצוב", icon: <SettingsRounded /> },
-          { id: "edit" as const, label: "עריכה", icon: <EditOutlined /> },
+          { id: "watch" as const, label: "צפייה", icon: <MovieFilterRounded /> },
         ].map(item => (
           <Button key={item.id} onClick={() => goMode(item.id)} sx={{ flex: 1, flexDirection: "column", color: (item.id === "style" ? styleOpen : mode === item.id) ? "primary.main" : "text.secondary", height: MOBILE_EDITOR_NAV_HEIGHT, minHeight: MOBILE_EDITOR_NAV_HEIGHT, py: 0, fontSize: 11, lineHeight: 1.2 }}>
             {item.icon}
             {item.label}
           </Button>
         ))}
-        <Button onClick={() => void openDownload()} disabled={hasTimelineDrafts || savingDraft || saveState === "saving"}
+        <Button onClick={() => void openDownload()} disabled={hasTimelineDrafts || saveState === "saving"}
           aria-haspopup="dialog" aria-expanded={downloadOpen} aria-controls={downloadOpen ? "mobile-download-dialog" : undefined}
           sx={{ flex: 1, minWidth: 0, flexDirection: "column", color: "primary.main", height: MOBILE_EDITOR_NAV_HEIGHT, minHeight: MOBILE_EDITOR_NAV_HEIGHT, py: 0, fontSize: 11, lineHeight: 1.2 }}>
           <SaveRounded />
@@ -798,10 +649,18 @@ export function MobileCaptionEditor({
         sx={{ bottom: `calc(${MOBILE_EDITOR_NAV_HEIGHT + 8}px + env(safe-area-inset-bottom, 0px)) !important` }} message={batchNotice}
         action={<Button color="inherit" disabled={saveState === "saving" || !timelineEditing.canUndo} onClick={() => { setBatchNotice(null); timelineEditing.onUndo(); }}>ביטול</Button>} />
 
-      {mode === "timing" && timingWordsSegment && <MobileWordTimelineDialog key={timingWordsSegment.id}
+      {mode === "timing" && timingWordsSegment && <MobileCaptionEditDialog key={timingWordsSegment.id}
         segment={timingWordsSegment} words={wordsForSegment(words, timingWordsSegment)} fps={preferences.fps} currentTime={currentTime}
         activeWordEnabled={activeWordEnabled} disabled={!isEditable || saveState === "saving"}
-        onSave={nextWords => saveSegmentRef.current(timingWordsSegment, nextWords)}
+        onSave={(segment, nextWords) => saveSegmentRef.current(segment, nextWords)}
+        registerFlush={flush => { captionFlush.current = flush; }}
+        previousDisabled={editableSegments.findIndex(item => item.id === timingWordsSegment.id) <= 0}
+        nextDisabled={editableSegments.findIndex(item => item.id === timingWordsSegment.id) >= editableSegments.length - 1}
+        onSelectAdjacent={delta => {
+          const index = editableSegments.findIndex(item => item.id === timingWordsSegment.id);
+          const next = editableSegments[index + delta];
+          if (next) { onSegmentSelect(next.id); onTimelineTimeChange(next.start); setTimingWordsId(next.id); }
+        }}
         onClose={() => setTimingWordsId(null)} onSeek={onTimelineTimeChange}
         onInteract={() => loopChangeRef.current(false)}
         onUndo={timelineEditing.onUndo} onRedo={timelineEditing.onRedo} canUndo={timelineEditing.canUndo} canRedo={timelineEditing.canRedo}
