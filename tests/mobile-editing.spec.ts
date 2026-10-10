@@ -473,16 +473,27 @@ test('mobile batch deletion retains selection after failure, locks pending actio
   expect(saves[2].segments).toEqual(segments);
 });
 
-test('nonadjacent mobile selection allows deletion, blocks merge and can be cancelled', async ({ page }) => {
+test('mobile selection offers merge only for exactly two adjacent captions without a selection hint', async ({ page }) => {
   const clips = [{ id: 1, start: 0, end: 1, text: 'ראשונה' }, { id: 2, start: 1, end: 2, text: 'שנייה' }, { id: 3, start: 2, end: 4, text: 'שלישית' }];
   await openEditor(page, clips, []);
   await page.getByRole('button', { name: 'תזמון', exact: true }).click();
   await page.getByRole('checkbox', { name: 'בחירת כתובית: ראשונה', exact: true }).check();
   await page.getByRole('checkbox', { name: 'בחירת כתובית: שלישית', exact: true }).check();
   const toolbar = page.getByRole('toolbar', { name: 'פעולות על כתוביות נבחרות' });
-  await expect(toolbar.getByRole('button', { name: 'חיבור כתוביות נבחרות' })).toBeDisabled();
+  const merge = toolbar.getByRole('button', { name: 'חיבור כתוביות נבחרות' });
+  await expect(merge).toHaveCount(0);
   await expect(toolbar.getByRole('button', { name: 'מחיקת כתוביות נבחרות' })).toBeEnabled();
-  await expect(page.getByText('לחיבור בחרו כתוביות רצופות. אפשר למחוק כל בחירה.')).toBeVisible();
+  await expect(page.getByRole('alert')).toHaveCount(0);
+  await page.getByRole('checkbox', { name: 'בחירת כתובית: שנייה', exact: true }).check();
+  await expect(toolbar.getByRole('status')).toHaveText('3 נבחרו');
+  await expect(merge).toHaveCount(0);
+  await expect(page.getByRole('alert')).toHaveCount(0);
+  await page.getByRole('checkbox', { name: 'בחירת כתובית: שלישית', exact: true }).uncheck();
+  await expect(toolbar.getByRole('status')).toHaveText('2 נבחרו');
+  await expect(merge).toBeEnabled();
+  await page.getByRole('checkbox', { name: 'בחירת כתובית: שנייה', exact: true }).uncheck();
+  await expect(merge).toHaveCount(0);
+  await expect(toolbar.getByRole('button', { name: 'פיצול כתובית בנקודת הקו' })).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(toolbar).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'תזמון', exact: true })).toBeVisible();
