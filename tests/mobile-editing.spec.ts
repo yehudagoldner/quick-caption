@@ -93,6 +93,58 @@ async function dragBy(page: Page, control: Locator, pixels: number) {
   await page.mouse.up();
 }
 
+test('holding a timing card moves it with a live range, and an edge drag scrolls only after a pause', async ({ page }) => {
+  await openEditor(page);
+  const saves: any[] = [];
+  await page.route('**/api/videos/update-subtitles', route => {
+    saves.push(JSON.parse(route.request().postDataJSON().subtitleJson));
+    return route.fulfill({ json: { success: true } });
+  });
+  const editor = page.getByTestId('mobile-timing-editor');
+  const track = page.getByTestId('mobile-timing-track');
+  const readout = page.getByTestId('mobile-timing-readout');
+  const card = page.getByTestId('mobile-timing-clip').first();
+  const pps = (await track.evaluate(el => el.clientWidth)) / Number(await editor.getAttribute('data-window-seconds'));
+  const box = (await card.boundingBox())!;
+  const x = box.x + box.width / 2;
+  const y = box.y + box.height / 2;
+
+  // Dragging straight away pans the track rather than moving the caption.
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  await page.mouse.move(x + 0.75 * pps, y, { steps: 6 });
+  await page.mouse.up();
+  await expect(readout).toHaveCount(0);
+  await expect(card).toHaveAttribute('data-start', '0');
+
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  await page.mouse.move(x + 3, y);
+  await page.waitForTimeout(450);
+  await page.mouse.move(x + 0.75 * pps, y, { steps: 8 });
+  await expect(readout).toHaveText(/–/);
+  await page.mouse.up();
+  await expect(readout).toHaveCount(0);
+  await expect.poll(() => saves.length).toBe(1);
+  expect(saves[0][0].start).toBeCloseTo(0.75, 1);
+  expect(saves[0][0].end - saves[0][0].start).toBeCloseTo(2, 5);
+  expect(saves[0][1].start).toBe(saves[0][0].end);
+  await editor.getByRole('button', { name: 'ביטול פעולה', exact: true }).click();
+  await expect(card).toHaveAttribute('data-start', '0');
+
+  const handle = (await card.getByRole('slider', { name: 'הזזת סיום', exact: true }).boundingBox())!;
+  const edge = (await track.boundingBox())!;
+  const before = await track.evaluate(el => el.scrollLeft);
+  await page.mouse.move(handle.x + handle.width / 2, handle.y + handle.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(edge.x + edge.width - 6, handle.y + handle.height / 2, { steps: 6 });
+  await expect(readout).toContainText('סיום');
+  expect(await track.evaluate(el => el.scrollLeft)).toBe(before);
+  await expect.poll(() => track.evaluate(el => el.scrollLeft)).toBeGreaterThan(before + 10);
+  await page.mouse.up();
+  await expect(readout).toHaveCount(0);
+});
+
 test('mobile caption extension trims the next caption, previews one caption and survives reload', async ({ page }) => {
   await openEditor(page);
   const saves: any[] = [];
