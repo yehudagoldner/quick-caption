@@ -118,7 +118,7 @@ function hostFixture() {
   } };
   const context = vm.createContext({ JSON: undefined, $: {}, app: { project, version: '25.6.6' }, Folder: { fs: 'Windows' }, File: function (value) { this.fsName = value; }, ProjectItemType: { BIN: 2 } });
   vm.runInContext(jsonSource, context); vm.runInContext(hostSource, context);
-  return { original, other, av, project, invoke(method, data) { return JSON.parse(context.$._quickCaptionBridge[method](JSON.stringify(data))); } };
+  return { original, other, av, project, reload() { vm.runInContext(hostSource,context); }, invoke(method, data) { return JSON.parse(context.$._quickCaptionBridge[method](JSON.stringify(data))); } };
 }
 test('the real JSX targets the original sequence, identifies the exact SRT and places mapped cues from zero', () => {
   const host = hostFixture();
@@ -127,6 +127,7 @@ test('the real JSX targets the original sequence, identifies the exact SRT and p
   assert.equal(host.original.created.length, 1); assert.equal(host.other.created.length, 0);
   assert.equal(host.original.created[0].item.nodeId, 'captions'); assert.equal(host.original.created[0].start, 0);
   assert.equal(host.av.start.ticks, clip.startTicks);
+  host.reload();
   assert.equal(host.invoke('deliver', data).ok, true); assert.equal(host.original.created.length, 1);
 });
 test('changed clips or another project are rejected by the JSX before import or track creation', () => {

@@ -8,13 +8,14 @@ import storageJson from '../premiere-plugin/storage-json.js';
 import bridgeModule from '../premiere-plugin/bridge.js';
 import settingsModule from '../premiere-plugin/transcription-settings.js';
 import captionPlacement from '../premiere-plugin/caption-placement.js';
+import graphicsPlacement from '../premiere-plugin/graphics-placement.js';
 import { pluginPolicy } from '../src/pluginPolicy.js';
 import { parseTranscriptionSettings } from '../src/transcriptionSettings.js';
 
 const source = await readFile(new URL('../premiere-plugin/panel.js', import.meta.url), 'utf8');
 const html = await readFile(new URL('../premiere-plugin/index.html', import.meta.url), 'utf8');
 
-async function openPanel({ connected = true, offline = false, finished = true, job = null, placement = null, selectionSnapshot = null, policy = pluginPolicy(), savedSettings = null } = {}) {
+async function openPanel({ connected = true, offline = false, finished = true, job = null, placement = null, graphics = null, selectionSnapshot = null, policy = pluginPolicy(), savedSettings = null } = {}) {
   const makeNode = () => ({ children: [], handlers: new Map(), appendChild(child) { this.children.push(child); }, addEventListener(name, callback) { this.handlers.set(name, callback); } });
   const nodes = new Map([...html.matchAll(/<[\w-]+\b[^>]*\bid="([^"]+)"[^>]*>/g)].map(([tag, id]) => [id, {
     id, hidden: /\bhidden\b/.test(tag), textContent: '', value: id === 'language' ? 'he' : '', attributes: new Map(), handlers: new Map(),
@@ -36,6 +37,7 @@ async function openPanel({ connected = true, offline = false, finished = true, j
     if (offline) throw new Error('אין חיבור לשרת');
     if (url.includes('/api/transcribe/jobs/')) return { ok: true, status: 200, json: async () => ({ status: 'completed', result: { videoId: 42, creditsUsed: 3 } }) };
     if (url.endsWith('/subtitles')) return { ok: true, status: 200, json: async () => ({ srt: '1\n00:00:00,500 --> 00:00:02,000\nשלום\n\n2\n00:00:04,500 --> 00:00:05,500\nמעבר\n' }) };
+    if (/\/api\/videos\/\d+$/.test(url)) return {ok:true,status:200,json:async()=>({video:{subtitle_json:[{id:1,start:0,end:1,text:'שלום עולם'}],words_json:[{word:'שלום',start:0,end:.5},{word:'עולם',start:.5,end:1}]}})};
     if (url.endsWith('/api/plugin/quote')) return { ok: true, status: 200, json: async () => ({ jobId: 'quoted-job', estimatedCredits: 3, credits: 64, canStart: true, policyVersion: policy.version, expiresAt: new Date(Date.now() + 60000).toISOString() }) };
     return { ok: true, status: 200, json: async () => url.endsWith('/logout') ? {} : ({
       user: { uid: 'fixture-user', displayName: 'Fixture account' }, credits: 64,
@@ -61,10 +63,11 @@ async function openPanel({ connected = true, offline = false, finished = true, j
       } }) } : selection;
       if (name === './storage-json.js') return storageJson;
       if (name === './bridge.js' && selectionSnapshot) return { TimelineBridge: class extends bridgeModule.TimelineBridge { async target() { return {}; } } };
-      if (name === './bridge.js') return placement ? { TimelineBridge: class { async prepare() {} async deliver(ppro, snapshot, id, srt) { return placement.deliver({ snapshot, id, srt }); } } } : bridgeModule;
+      if (name === './bridge.js') return placement ? { TimelineBridge: class { async prepare() {} async deliver(ppro, snapshot, id, srt) { return placement.deliver({ snapshot, id, srt }); } async buildGraphics(ppro,snapshot,id,video,color){graphics.builds.push({snapshot,id,video,color});return graphics.built;} } } : bridgeModule;
       if (name === './transcription-settings.js') return settingsModule;
       if (name === './language-labels.json') return {};
       if (name === './caption-placement.js') return captionPlacement;
+      if (name === './graphics-placement.js') return graphics ? {async placeGraphics(ppro,snapshot,built,journal,save){graphics.placements.push({snapshot,built,journal});await save({status:'placing',kind:'graphics',built,videoIndex:1,audioIndex:1});if(graphics.fail)throw new Error('placement interrupted');return {status:'delivered',kind:'graphics',built,videoIndex:1,audioIndex:1,cueCount:1,trackLabel:'V2'};}} : graphicsPlacement;
       if (name === './bridge-config.json') throw new Error('Not installed in the fixture');
       if (name === './config.js') return { baseUrl: 'https://fixture.invalid/qa', version: '1.0.0' };
       throw new Error(`Unexpected module ${name}`);
@@ -180,6 +183,47 @@ test('an empty newly created track does not report success or erase the paid res
   assert.equal(saved.delivery.status, 'placing');
   assert.equal(panel.node('resume').hidden, false);
   assert.equal(panel.calls.some(url => url.endsWith('/api/transcribe')), false);
+});
+
+test('active words deliver native graphics with the approved style and existing word timings, without another paid POST',async()=>{
+  const graphics={builds:[],placements:[],built:{ok:true,frameTicks:'10160640000',phrases:[{sequenceId:'nested',startFrame:250,endFrame:275}]}};
+  const job={...selectedJob,style:{activeWord:true,activeWordColor:'#63D8FF'}};
+  const panel=await openPanel({job,placement:{trackIds:[]},graphics,savedSettings:{activeWord:false}});
+  await vm.runInContext('pendingJob().then(watchJob)',panel.context);
+  assert.equal(graphics.builds.length,1);assert.equal(graphics.builds[0].color,'#63D8FF');
+  assert.equal(graphics.builds[0].video.words_json.length,2);
+  assert.equal(panel.calls.some(url=>url.endsWith('/subtitles')||url.endsWith('/api/transcribe')),false);
+  const saved=JSON.parse(panel.stored.get('pending-job:fixture-user'));
+  assert.equal(saved.delivery.kind,'graphics');assert.equal(saved.delivery.status,'delivered');
+  assert.match(panel.node('status').textContent,/V2.*ציר הזמן הפנימי/);
+});
+
+test('interrupted graphic placement restores its built sequences and journal without rebuilding or transcribing',async()=>{
+  const graphics={builds:[],placements:[],fail:true,built:{ok:true,frameTicks:'10160640000',phrases:[{sequenceId:'nested',startFrame:250,endFrame:275}]}};
+  const job={...selectedJob,style:{activeWord:true,activeWordColor:'#FFD45A'}};
+  const panel=await openPanel({job,placement:{trackIds:[]},graphics});
+  await assert.rejects(vm.runInContext('pendingJob().then(watchJob)',panel.context),/placement interrupted/);
+  const saved=JSON.parse(panel.stored.get('pending-job:fixture-user'));
+  assert.equal(saved.delivery.status,'placing');assert.ok(saved.delivery.built);
+  graphics.fail=false;
+  const resumed=await openPanel({job:saved,placement:{trackIds:[]},graphics});
+  await vm.runInContext('pendingJob().then(watchJob)',resumed.context);
+  assert.equal(graphics.builds.length,1);assert.equal(graphics.placements[1].journal.videoIndex,1);
+  assert.equal(resumed.calls.some(url=>url.includes('/api/videos/')||url.includes('/api/transcribe')),false);
+});
+
+test('active-word controls reprice the approval, persist the choice and lock during paid work',async()=>{
+  const panel=await openPanel();
+  await vm.runInContext('quote={expiresAt:new Date(Date.now()+60000).toISOString(),canStart:true,estimatedCredits:3};file={};controls()',panel.context);
+  panel.node('active-word').checked=true;panel.node('active-word').handlers.get('change')();
+  await vm.runInContext('settingsSaving',panel.context);
+  assert.equal(panel.node('send').hidden,true);assert.equal(panel.node('active-word-options').hidden,false);
+  panel.node('active-word-color').value='#78E6A5';panel.node('active-word-color').handlers.get('change')();
+  await vm.runInContext('settingsSaving',panel.context);
+  const saved=JSON.parse(panel.stored.get('transcription-settings'));
+  assert.equal(saved.activeWord,true);assert.equal(saved.activeWordColor,'#78E6A5');
+  await vm.runInContext('hasPending=true;controls()',panel.context);
+  assert.equal(panel.node('active-word').disabled,true);assert.equal(panel.node('active-word-color').disabled,true);
 });
 
 test('placement failure survives a reload and retries only the same completed subtitles', async () => {

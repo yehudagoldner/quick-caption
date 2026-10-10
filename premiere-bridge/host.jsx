@@ -1,7 +1,7 @@
-/* Only documented Premiere ExtendScript APIs; no QE or keyboard automation. */
-if (!$._quickCaptionBridge) {
+/* Documented Premiere ExtendScript APIs; no QE or keyboard automation. */
+{
   $._quickCaptionBridge = (function () {
-    var completed = {};
+    var completed = $._quickCaptionCompleted || ($._quickCaptionCompleted = {});
     function fail(message, code) { var error = new Error(message); error.code = code; throw error; }
     function json(action, input) {
       try { return JSON.stringify(action(JSON.parse(input))); }
@@ -50,9 +50,129 @@ if (!$._quickCaptionBridge) {
       }
       return null;
     }
+    function sequenceInfo(sequence) {
+      return { ok: true, frameTicks: String(sequence.timebase), width: Number(sequence.frameSizeHorizontal), height: Number(sequence.frameSizeVertical), sequenceId: String(sequence.sequenceID), projectPath: app.project.path };
+    }
+    function ownedFile(value, extension) {
+      var root = pathname(Folder.userData.fsName + '/Quick Caption/Premiere Bridge QA') + '/';
+      var actual = pathname(value || '');
+      if (actual.indexOf(root) !== 0 || actual.substr(actual.length - extension.length) !== extension) fail('נתיב הגרפיקה אינו שייך לתוסף', 'invalid_graphics');
+      return new File(value);
+    }
+    function emptySequence(original, sourcePath, bin) {
+      var known = {}, result = null;
+      for (var i = 0; i < app.project.sequences.numSequences; i++) known[guid(app.project.sequences[i].sequenceID)] = true;
+      if (!app.project.importFiles([ownedFile(sourcePath, '.xml').fsName], true, bin, false)) fail('ייבוא הסיקוונס הפנימי נכשל', 'graphics_import_failed');
+      for (i = 0; i < app.project.sequences.numSequences; i++) {
+        var candidate = app.project.sequences[i];
+        if (!known[guid(candidate.sequenceID)]) { if (result) fail('ייבוא סיקוונס אינו חד משמעי', 'graphics_import_failed'); result = candidate; }
+      }
+      if (!result) fail('הסיקוונס הפנימי לא נוצר', 'graphics_import_failed');
+      if (!result.videoTracks.numTracks) fail('לא נוצר ערוץ גרפיקה', 'graphics_import_failed');
+      result.setSettings(original.getSettings());
+      result.projectItem.moveBin(bin);
+      app.project.openSequence(result.sequenceID);
+      return result;
+    }
+    function frameTime(frame, ticks) { var value = new Time(); value.ticks = String(frame * Number(ticks)); return value; }
+    function graphic(sequence, state, frameTicks, bin, label) {
+      var asset = ownedFile(state.assetPath, '.mogrt');
+      if (!asset.exists) fail('קובץ הגרפיקה חסר', 'missing_graphics');
+      var clip = sequence.importMGT(asset.fsName.replace(/\\/g, '/'), frameTime(state.startFrame, frameTicks).ticks, 0, 0);
+      if (!clip || !clip.components || !clip.components.numItems) fail('ייבוא הטקסט נכשל', 'graphics_import_failed');
+      // Native Premiere graphics are timeline objects without a ProjectItem.
+      if (clip.projectItem) clip.projectItem.moveBin(bin);
+      clip.inPoint = frameTime(0, frameTicks);
+      clip.outPoint = frameTime(state.endFrame - state.startFrame, frameTicks);
+      clip.end = frameTime(state.endFrame, frameTicks);
+      clip.name = label;
+      if (String(clip.start.ticks) !== frameTime(state.startFrame, frameTicks).ticks || String(clip.end.ticks) !== frameTime(state.endFrame, frameTicks).ticks) fail('פרימייר לא אישר את תזמון המילה', 'graphics_timing_failed');
+      return clip;
+    }
+    function inspectNativeGraphics(data) {
+      var original = app.project && app.project.activeSequence;
+      if (!original) fail('פתחו סיקוונס לפני בדיקת הגרפיקה', 'missing_sequence');
+      var scratch = null, probeNested = null, bin = app.project.rootItem.createBin('Quick Caption compatibility check');
+      try {
+        scratch = emptySequence(original, data.scaffoldPath, bin);
+        var clip = graphic(scratch, { assetPath: data.assetPath, startFrame: 0, endFrame: 50 }, String(original.timebase), bin, 'Quick Caption compatibility check');
+        var components = [];
+        for (var i = 0; i < clip.components.numItems; i++) {
+          var component = clip.components[i], properties = [];
+          for (var p = 0; p < component.properties.numItems; p++) {
+            var prop = component.properties[p], value = null;
+            try { value = prop.getValue(); } catch (ignored) {}
+            if (typeof value === 'string' && value.length > 16000) value = value.substr(0, 16000);
+            properties.push({ name: prop.displayName, value: value });
+          }
+          components.push({ name: component.displayName, matchName: component.matchName, properties: properties });
+        }
+        var projectOutput = ownedFile(data.projectOutput, '.prproj');
+        scratch.exportAsProject(projectOutput.fsName);
+        var imageOutput = ownedFile(data.imageOutput, '.png');
+        // Adobe's installed PNG preset; only this probe renders, never production delivery.
+        var pngPreset = new File(Folder.startup.fsName + '/MediaIO/systempresets/3F3F3F3F_504E4720/PNG Sequence with Alpha (Match Source).epr');
+        if (!pngPreset.exists) pngPreset = new File('C:/Program Files/Adobe/Adobe Media Encoder 2026/MediaIO/systempresets/3F3F3F3F_504E4720/PNG Sequence with Alpha (Match Source).epr');
+        var rendered = false;
+        if (data.render !== false && pngPreset.exists) { scratch.setInPoint(0); scratch.setOutPoint(Number(original.timebase) / 254016000000); rendered = scratch.exportAsMediaDirect(imageOutput.fsName, pngPreset.fsName, 1); }
+        clip.outPoint = frameTime(25, String(original.timebase)); clip.end = frameTime(25, String(original.timebase));
+        graphic(scratch, {assetPath:data.assetPath,startFrame:25,endFrame:50},String(original.timebase),bin,'Second word state');
+        scratch.setInPoint(0);scratch.setOutPoint(frameTime(50,String(original.timebase)).seconds);
+        probeNested=scratch.createSubsequence(true);
+        if(!probeNested || probeNested.sequenceID===original.sequenceID || probeNested.videoTracks[0].clips.numItems!==2)fail('יצירת ציר זמן פנימי נכשלה','unsupported_graphics');
+        return { ok: true, compatible: true, nestedStateCount:probeNested.videoTracks[0].clips.numItems, hostVersion: app.version, components: components, projectOutput: projectOutput.fsName, rendered: rendered, frameTicks: String(original.timebase), width: Number(original.frameSizeHorizontal), height: Number(original.frameSizeVertical) };
+      } finally {
+        if (probeNested && probeNested.sequenceID !== original.sequenceID) app.project.deleteSequence(probeNested);
+        if (scratch) app.project.deleteSequence(scratch);
+        if (bin) bin.deleteBin();
+        app.project.openSequence(original.sequenceID);
+      }
+    }
+    function buildGraphics(data) {
+      var key = 'graphics:' + data.id;
+      if (completed[key]) return completed[key];
+      var original = resolveTarget(data.target), plan = data.plan;
+      if (!plan || plan.version !== 1 || plan.frameTicks !== String(original.timebase) || !plan.phrases || !plan.phrases.length) fail('מבנה גרפיקה לא תקין', 'invalid_graphics');
+      var bin = app.project.rootItem.createBin('Quick Caption · active words · ' + data.id), scratch = null, nested = [], failed = true;
+      try {
+        scratch = emptySequence(original, data.scaffoldPath, bin);
+        for (var p = 0; p < plan.phrases.length; p++) {
+          var phrase = plan.phrases[p];
+          for (var c = scratch.videoTracks[0].clips.numItems - 1; c >= 0; c--) scratch.videoTracks[0].clips[c].remove(false, false);
+          for (var s = 0; s < phrase.states.length; s++) {
+            var state = phrase.states[s];
+            graphic(scratch, state, plan.frameTicks, bin, state.word ? 'הדגשה: ' + state.word : 'ללא הדגשה');
+          }
+          scratch.setInPoint(0);
+          scratch.setOutPoint(frameTime(phrase.endFrame - phrase.startFrame, plan.frameTicks).seconds);
+          var sequence = scratch.createSubsequence(true);
+          if (!sequence || sequence.sequenceID === original.sequenceID) fail('יצירת ציר הזמן הפנימי נכשלה', 'graphics_import_failed');
+          nested.push({ sequenceId: String(sequence.sequenceID), startFrame: phrase.startFrame, endFrame: phrase.endFrame, stateCount: phrase.states.length });
+          sequence.name = 'QC ' + (p + 1) + ' · ' + phrase.text.substr(0, 70);
+          sequence.projectItem.moveBin(bin);
+          sequence.projectItem.setInPoint(0, 1);
+          sequence.projectItem.setOutPoint(frameTime(phrase.endFrame - phrase.startFrame, plan.frameTicks).seconds, 1);
+          if (sequence.videoTracks[0].clips.numItems !== phrase.states.length) fail('לא כל ההדגשות נכנסו לסיקוונס', 'graphics_import_failed');
+        }
+        resolveTarget(data.target);
+        var result = { ok: true, frameTicks: plan.frameTicks, phrases: nested, binId: String(bin.nodeId) };
+        completed[key] = result; failed = false; return result;
+      } finally {
+        if (scratch) app.project.deleteSequence(scratch);
+        if (failed) {
+          for (var n = 0; n < nested.length; n++) for (var i = app.project.sequences.numSequences - 1; i >= 0; i--) if (String(app.project.sequences[i].sequenceID) === nested[n].sequenceId) app.project.deleteSequence(app.project.sequences[i]);
+          if (bin) bin.deleteBin();
+        }
+        app.project.openSequence(original.sequenceID);
+      }
+    }
     return {
-      health: function (input) { return json(function () { return { ok: true, protocolVersion: 1, version: '1.0.0', hostVersion: app.version }; }, input); },
-      prepare: function (input) { return json(function (data) { var sequence = resolveTarget(data.target); return { ok: true, sequenceId: String(sequence.sequenceID) }; }, input); },
+      graphicsInfo: function (input) { return json(function () { if (!app.project || !app.project.activeSequence) fail('פתחו סיקוונס לפני בדיקת הגרפיקה', 'missing_sequence'); return sequenceInfo(app.project.activeSequence); }, input); },
+      inspectNativeGraphics: function (input) { return json(inspectNativeGraphics, input); },
+      buildGraphics: function (input) { return json(buildGraphics, input); },
+      lookupGraphics: function (input) { return json(function (data) { return { ok: true, result: completed['graphics:' + data.id] || null }; }, input); },
+      health: function (input) { return json(function () { return { ok: true, protocolVersion: 1, version: '1.1.0', nativeGraphics: true, hostVersion: app.version }; }, input); },
+      prepare: function (input) { return json(function (data) { return sequenceInfo(resolveTarget(data.target)); }, input); },
       lookup: function (input) { return json(function (data) { return { ok: true, result: completed['delivery:' + data.id] || null }; }, input); },
       deliver: function (input) { return json(function (data) {
         if (completed['delivery:' + data.id]) return completed['delivery:' + data.id];

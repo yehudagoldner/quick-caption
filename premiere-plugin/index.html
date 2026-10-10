@@ -55,6 +55,12 @@
         <sp-button id="mode-transliterate" variant="secondary" aria-pressed="false">תעתיק</sp-button>
       </div>
       <p id="mode-help" class="setting-help">כל שפה מוצגת בכתב המקורי שלה.</p>
+      <sp-checkbox id="active-word">הדגשת המילה הפעילה</sp-checkbox>
+      <div id="active-word-options" class="setting-field" hidden>
+        <label for="active-word-color">צבע ההדגשה</label>
+        <select id="active-word-color"><option value="#FFD45A">צהוב</option><option value="#63D8FF">תכלת</option><option value="#78E6A5">ירוק</option><option value="#FF9DBB">ורוד</option></select>
+      </div>
+      <p id="active-word-help" class="setting-help" hidden>כל כתובית תהיה קליפ גרפי. לחיצה כפולה פותחת את ציר הזמן הפנימי; מזיזים את הגבול בין ההדגשות כדי לתקן תזמון.</p>
     </div>
     <sp-button id="selected" variant="cta" class="main-action">הכנת כתוביות לבחירה</sp-button>
     <div id="quote-section" class="card quote-card" hidden>

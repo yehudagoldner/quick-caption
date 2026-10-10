@@ -12,7 +12,10 @@
     return new Promise(function (resolve, reject) {
       // The method comes only from our server's fixed whitelist; data is quoted twice.
       var argument = JSON.stringify(JSON.stringify(payload || {})).replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
-      var script = '$._quickCaptionBridge.' + method + '(' + argument + ')';
+      // Reload only our installed source. Preserve delivery receipts in the host
+      // across reloads so development updates cannot repeat timeline mutations.
+      var loader = JSON.stringify(path.join(extensionPath, 'loader.jsx').replace(/\\/g, '/'));
+      var script = '$.evalFile(' + loader + '); $._quickCaptionBridge.' + method + '(' + argument + ')';
       window.__adobe_cep__.evalScript(script, function (result) {
         try {
           var data = JSON.parse(result);

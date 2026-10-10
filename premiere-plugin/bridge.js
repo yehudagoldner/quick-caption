@@ -40,6 +40,10 @@ class TimelineBridge {
     return { projectPath: project.path, sequenceId: original.guid.toString(), clips };
   }
   async prepare(ppro, snapshot) { return this.request('/prepare', { target: await this.target(ppro, snapshot) }); }
+  async prepareGraphics(ppro, snapshot) { return this.request('/prepare-graphics', { target: await this.target(ppro, snapshot) }); }
+  async buildGraphics(ppro, snapshot, id, video, color) {
+    return this.request('/build-graphics', {target:await this.target(ppro,snapshot),id,segments:video.subtitle_json,words:video.words_json,ranges:snapshot.ranges,color});
+  }
   async deliver(ppro, snapshot, id, srt) { return this.request('/deliver', { target: await this.target(ppro, snapshot), id, srt }); }
 }
 module.exports = { TimelineBridge };

@@ -14,6 +14,8 @@ function normalizeSettings(saved = {}, policy = {}) {
     words: bounded(saved.words, 'words', 5),
     languages: languages.length ? languages : [fallback],
     secondaryLanguageMode: modes.includes(saved.secondaryLanguageMode) ? saved.secondaryLanguageMode : (modes.includes('original') ? 'original' : modes[0]),
+    activeWord: saved.activeWord === true,
+    activeWordColor: /^#[0-9a-f]{6}$/i.test(saved.activeWordColor || '') ? saved.activeWordColor.toUpperCase() : '#FFD45A',
   };
 }
 function transcriptionFields(settings, policy) {

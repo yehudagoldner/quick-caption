@@ -3,6 +3,8 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const { buildActiveWordPlan } = require('./active-word-plan.js');
+const { installedTemplate, graphicAsset, scaffoldXml } = require('./native-graphic.js');
 const MAX_BODY = 4 * 1024 * 1024;
 const hash = value => crypto.createHash('sha256').update(value).digest('hex');
 const failure = (message, code, status = 409) => Object.assign(new Error(message), { code, status });
@@ -21,7 +23,7 @@ function validateRequest(data) {
   if (!blocks.length || blocks.some(block => !/^\d+\n\d+:\d{2}:\d{2},\d{3} --> \d+:\d{2}:\d{2},\d{3}\n[^\0]+$/.test(block))) throw failure('Invalid SRT', 'invalid_subtitles', 400);
 }
 
-function createDeliveryService({ root, evalHost }) {
+function createDeliveryService({ root, evalHost, loadTemplate = () => installedTemplate(process.env.APPDATA || path.join(require('os').homedir(), 'Library', 'Application Support')) }) {
   fs.mkdirSync(path.join(root, 'captions'), { recursive: true });
   fs.mkdirSync(path.join(root, 'receipts'), { recursive: true });
   let queue = Promise.resolve();
@@ -31,9 +33,56 @@ function createDeliveryService({ root, evalHost }) {
     fs.writeFileSync(temporary, JSON.stringify(receipt), { encoding: 'utf8', mode: 0o600 });
     fs.renameSync(temporary, filename);
   };
+  let graphicsProof = null;
+  const probeGraphics = async (render = true) => {
+    const info=await evalHost('graphicsInfo',{});
+    const template = loadTemplate();
+    const directory = path.join(root, 'probe');fs.mkdirSync(directory, { recursive: true });
+    const assetPath = path.join(directory, 'native-word.mogrt');
+    fs.writeFileSync(assetPath, graphicAsset(template,{text:'אני רוצה כתוביות',offset:4,length:4,name:'Quick Caption compatibility check'}));
+    const scaffoldPath=path.join(directory,'native-word.xml');fs.writeFileSync(scaffoldPath,scaffoldXml({...info,name:'QC-probe-'+crypto.randomBytes(8).toString('hex')}));
+    return evalHost('inspectNativeGraphics', {render,assetPath,scaffoldPath,projectOutput:path.join(directory,'native-word.prproj'),imageOutput:path.join(directory,'native-word.png')});
+  };
   return {
     health: () => serialized(() => evalHost('health', {})),
+    inspectNativeGraphics: () => serialized(() => probeGraphics(true)),
     prepare: target => serialized(() => { validateTarget(target); return evalHost('prepare', { target }); }),
+    prepareGraphics: target => serialized(async () => {
+      validateTarget(target);const info=await evalHost('prepare', {target});
+      const signature=JSON.stringify([info.frameTicks,info.width,info.height]);
+      loadTemplate();
+      if(graphicsProof!==signature){await probeGraphics(false);graphicsProof=signature;}
+      return evalHost('prepare', {target});
+    }),
+    buildGraphics: data => serialized(async () => {
+      if(!data||!/^[a-zA-Z0-9:_-]{1,160}$/.test(data.id||''))throw failure('Invalid graphics ID','invalid_graphics',400);
+      validateTarget(data.target);
+      const identity=hash(data.id),fingerprint=hash(JSON.stringify({target:data.target,segments:data.segments,words:data.words,ranges:data.ranges,color:data.color}));
+      const receiptPath=path.join(root,'receipts','graphics-'+identity+'.json');
+      let receipt;try{receipt=JSON.parse(fs.readFileSync(receiptPath,'utf8'));}catch(error){if(error.code!=='ENOENT')throw error;}
+      if(receipt?.fingerprint!==undefined&&receipt.fingerprint!==fingerprint)throw failure('Graphics ID belongs to different captions','delivery_conflict');
+      if(receipt?.status==='built')return {...receipt.result,replay:true};
+      if(receipt?.status==='building') {
+        const cached=await evalHost('lookupGraphics',{id:data.id});
+        if(cached.result){writeReceipt(receiptPath,{fingerprint,status:'built',result:cached.result});return {...cached.result,replay:true};}
+        throw failure('Graphics may already exist. Recover the existing sequences before retrying.','delivery_uncertain');
+      }
+      const info=await evalHost('prepare',{target:data.target});
+      const plan=buildActiveWordPlan({...data,frameTicks:info.frameTicks});
+      const template=loadTemplate();
+      const directory=path.join(root,'graphics',identity);fs.mkdirSync(directory,{recursive:true});
+      const scaffoldPath=path.join(directory,'empty.xml');fs.writeFileSync(scaffoldPath,scaffoldXml({...info,name:'QC-build-'+identity}));
+      for(let i=0;i<plan.phrases.length;i++)for(let j=0;j<plan.phrases[i].states.length;j++) {
+        const phrase=plan.phrases[i],state=phrase.states[j],assetPath=path.join(directory,`${i}-${j}.mogrt`);
+        fs.writeFileSync(assetPath,graphicAsset(template,{text:phrase.text,offset:state.offset,length:state.length,color:plan.color,name:`Quick Caption ${i+1} · ${state.word||'ללא הדגשה'}`}));
+        state.assetPath=assetPath;
+      }
+      writeReceipt(receiptPath,{fingerprint,status:'building'});
+      try {
+        const result=await evalHost('buildGraphics',{id:data.id,target:data.target,plan,scaffoldPath});
+        writeReceipt(receiptPath,{fingerprint,status:'built',result});return result;
+      }catch(error){if(['wrong_project','missing_sequence','changed_clip','unsupported_host'].includes(error.code))writeReceipt(receiptPath,{fingerprint,status:'retryable'});throw error;}
+    }),
     deliver: data => serialized(async () => {
       validateRequest(data);
       const identity = hash(data.id);
@@ -81,12 +130,13 @@ function startBridge({ root, token, evalHost, port = 37289 }) {
     if (!expectedHosts.includes(request.headers.host) || request.headers.origin || request.headers['x-quick-caption-bridge'] !== token) { reply(403, { error: 'Forbidden', code: 'forbidden' }); return; }
     try {
       if (request.method === 'GET' && request.url === '/health') { reply(200, await service.health()); return; }
-      if (request.method !== 'POST' || !['/prepare', '/deliver'].includes(request.url)) { reply(404, { error: 'Not found' }); return; }
+      if (request.method !== 'POST' || !['/prepare', '/deliver', '/native-graphics-probe','/prepare-graphics','/build-graphics'].includes(request.url)) { reply(404, { error: 'Not found' }); return; }
       if (!/^application\/json(?:;|$)/i.test(request.headers['content-type'] || '')) throw failure('JSON required', 'invalid_request', 415);
       let size = 0; const chunks = [];
       for await (const chunk of request) { size += chunk.length; if (size > MAX_BODY) throw failure('Request too large', 'invalid_request', 413); chunks.push(chunk); }
       let body; try { body = JSON.parse(Buffer.concat(chunks).toString('utf8')); } catch { throw failure('Invalid JSON', 'invalid_request', 400); }
-      reply(200, request.url === '/prepare' ? await service.prepare(body.target) : await service.deliver(body));
+      const routes={'/prepare':()=>service.prepare(body.target),'/deliver':()=>service.deliver(body),'/native-graphics-probe':()=>service.inspectNativeGraphics(),'/prepare-graphics':()=>service.prepareGraphics(body.target),'/build-graphics':()=>service.buildGraphics(body)};
+      reply(200, await routes[request.url]());
     } catch (error) { reply(error.status || 409, { error: error.message, code: error.code || 'host_error' }); }
   });
   server.listen(port, '127.0.0.1');

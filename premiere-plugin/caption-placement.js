@@ -14,7 +14,9 @@ async function savedPlacementInfo(ppro, job) {
   if (!project || String(project.guid) !== job.selection.projectId) return null;
   const sequence = (await project.getSequences()).find(item => String(item.guid) === job.selection.sequenceId);
   if (!sequence) return null;
-  const info = await captionPlacementInfo(ppro, sequence, job.delivery.trackId);
+  const info = job.delivery.kind === 'graphics'
+    ? await require('./graphics-placement.js').graphicsPlacementInfo(ppro,sequence,job.delivery)
+    : await captionPlacementInfo(ppro, sequence, job.delivery.trackId);
   return info?.cueCount ? { ...info, sequenceName: sequence.name || job.selection.sequenceName } : null;
 }
 module.exports = { captionPlacementInfo, savedPlacementInfo };

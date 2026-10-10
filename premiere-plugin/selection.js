@@ -18,7 +18,7 @@ async function describe(item) {
     item.getMediaType(), item.getTrackIndex(), item.getStartTime(), item.getEndTime(),
     item.getInPoint(), item.getOutPoint(), item.getName(), item.getSpeed(), item.isSpeedReversed(), item.isDisabled(), item.getProjectItem(),
   ]);
-  return { media: guid(media), source: source.getId(), track, start: start.seconds, end: end.seconds,
+  return { media: guid(media), source: source ? source.getId() : null, track, start: start.seconds, end: end.seconds,
     startTicks: start.ticks, endTicks: end.ticks, inTicks: input.ticks, outTicks: output.ticks,
     name, speed, reversed: Boolean(reversed), disabled };
 }
