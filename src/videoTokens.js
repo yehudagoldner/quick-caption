@@ -28,11 +28,11 @@ export async function loadVideoSigningKey({ configuredKey, keyPath = path.join(p
 export function createVideoTokens(secret = crypto.randomBytes(32), now = Date.now) {
   const sign = payload => crypto.createHmac('sha256', secret).update(payload).digest('base64url');
   return {
-    issue(videoId, userUid, purpose, lifetime = 24 * 60 * 60 * 1000) {
+    issue(videoId, userUid, purpose, lifetime = 24 * 60 * 60 * 1000, binding = {}) {
       // Covers keep the same signed URL within an hour, so private browser
       // caching works. Do not change edit/media lifetimes or short test grants.
       const issuedAt = purpose === 'thumbnail' && lifetime === 24 * 3600000 ? Math.floor(now() / 3600000) * 3600000 : now();
-      const payload = Buffer.from(JSON.stringify({ videoId, userUid, purpose, exp: issuedAt + lifetime })).toString('base64url');
+      const payload = Buffer.from(JSON.stringify({ videoId, userUid, purpose, exp: issuedAt + lifetime, ...binding })).toString('base64url');
       return `${payload}.${sign(payload)}`;
     },
     verify(token, purpose) {

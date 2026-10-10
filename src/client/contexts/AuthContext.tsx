@@ -1,4 +1,4 @@
-import { setApiUser } from "../api";
+import { setApiUser, apiFetch, apiAuthEpoch } from "../api";
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { GoogleAuthProvider, onAuthStateChanged, signInWithPopup, signOut } from "firebase/auth";
 import type { User } from "firebase/auth";
@@ -8,6 +8,7 @@ type AuthContextValue = {
   user: User | null;
   loading: boolean;
   isDevBypass: boolean;
+  connectionNotice: string | null;
   signIn: () => Promise<void>;
   signOut: () => Promise<void>;
 };
@@ -16,10 +17,9 @@ const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
 async function syncUser(user: User) {
   try {
-    const idToken = await user.getIdToken();
-    await fetch(`${(import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '')}/api/users/sync`, {
+    await apiFetch(`${(import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '')}/api/users/sync`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         uid: user.uid,
         email: user.email,
@@ -44,6 +44,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   });
   const setUser = (next: User | null) => { setApiUser(next); setUserState(next); };
   const [loading, setLoading] = useState(!isDevAuthBypass);
+  const [connectionNotice, setConnectionNotice] = useState<string | null>(null);
+
+  useEffect(() => {
+    const revoked = async (event: Event) => {
+      if (isDevAuthBypass) return;
+      const uid = (event as CustomEvent).detail?.uid;
+      const epoch = (event as CustomEvent).detail?.epoch ?? apiAuthEpoch();
+      const { auth } = await import('../firebase');
+      if (auth.currentUser?.uid !== uid || epoch !== apiAuthEpoch()) return;
+      setConnectionNotice('החיבור במכשיר הזה נותק. יש להתחבר מחדש כדי להמשיך.');
+      setUser(null);
+      await signOut(auth);
+    };
+    const listener = (event: Event) => { void revoked(event).catch(() => {}); };
+    window.addEventListener('qc-connection-revoked', listener);
+    return () => window.removeEventListener('qc-connection-revoked', listener);
+  }, []);
 
   useEffect(() => {
     if (isDevAuthBypass) {
@@ -73,6 +90,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const handleSignIn = async () => {
+    setConnectionNotice(null);
     if (isDevAuthBypass) {
       setUser(createDevAuthUser());
       return;
@@ -84,6 +102,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const provider = new GoogleAuthProvider();
       provider.setCustomParameters({ prompt: "select_account" });
       const credential = await signInWithPopup(auth, provider);
+      setUser(credential.user);
       await syncUser(credential.user);
     } finally {
       setLoading(false);
@@ -96,12 +115,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return;
     }
     const { auth } = await import("../firebase");
+    const response = await apiFetch(`${(import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '')}/api/connections/logout`, { method: 'POST' });
+    if (!response.ok && response.status !== 401) throw new Error('לא ניתן לנתק את החיבור כרגע. נסו שוב.');
     await signOut(auth);
   };
 
   const value = useMemo<AuthContextValue>(
-    () => ({ user, loading, isDevBypass: isDevAuthBypass, signIn: handleSignIn, signOut: handleSignOut }),
-    [user, loading],
+    () => ({ user, loading, isDevBypass: isDevAuthBypass, connectionNotice, signIn: handleSignIn, signOut: handleSignOut }),
+    [user, loading, connectionNotice],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

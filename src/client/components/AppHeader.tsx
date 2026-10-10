@@ -27,6 +27,7 @@ export type AppHeaderProps = {
   navigationBlocked?: boolean;
   isAdmin?: boolean;
   onAdmin?: () => void;
+  onConnections?: () => void;
   onReportIssue?: () => void;
   editorActions?: EditorHeaderActions | null;
 };
@@ -37,7 +38,7 @@ export function AppHeader(props: AppHeaderProps) {
 }
 
 function MobileEditorHeader({ user, authLoading, profileAnchorEl, currentPage, credits, onProfileClick, onProfileClose,
-  onSignIn, onSignOut, onNavigate, onBuyCredits, navigationBlocked = false, isAdmin = false, onAdmin, onReportIssue, editorActions,
+  onSignIn, onSignOut, onNavigate, onBuyCredits, navigationBlocked = false, isAdmin = false, onAdmin, onConnections, onReportIssue, editorActions,
 }: AppHeaderProps) {
   const { isDevBypass } = useAuth();
   const headerHeight = MOBILE_APP_HEADER_HEIGHT;
@@ -88,6 +89,7 @@ function MobileEditorHeader({ user, authLoading, profileAnchorEl, currentPage, c
             <MenuItem disabled={navigationBlocked} onClick={() => { onProfileClose(); onBuyCredits(); }}>
               <AccountBalanceWalletRounded sx={{ ml: 1.5 }} />רכישת קרדיטים
             </MenuItem>
+            {onConnections && <MenuItem disabled={navigationBlocked} onClick={() => { onProfileClose(); onConnections(); }}>החיבורים שלי</MenuItem>}
             {isAdmin && <MenuItem disabled={navigationBlocked} onClick={() => { onProfileClose(); onAdmin?.(); }}>ניהול</MenuItem>}
             {onReportIssue && <MenuItem onClick={() => { onProfileClose(); onReportIssue(); }}>דיווח על תקלה</MenuItem>}
             <Divider />

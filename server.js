@@ -31,6 +31,8 @@ import { estimateTranscriptionCredits, creditsToDollars, transcriptionCredits, w
 import { getDevAuthUid, isDevAuthBypassEnabled } from "./src/devAuth.js";
 import { createPluginSessions, ensurePluginSchema, isPluginToken, pluginRouteAllowed } from './src/pluginSessions.js';
 import { createPluginPublicRouter, createPluginPrivateRouter } from './routes/plugin.js';
+import { createConnectionStore, createConnectionIdentityVerifier, connectionBinding } from './src/accountConnections.js';
+import { createConnectionsRouter } from './routes/connections.js';
 import { currentTranscriptionModels, pluginPolicy, pluginVersionSupported } from './src/pluginPolicy.js';
 
 const app = express();
@@ -59,7 +61,8 @@ await ensureSchema();
 await ensurePluginSchema(pool);
 const pluginSessions = createPluginSessions(pool);
 const verifyIdentity = createFirebaseVerifier({ projectId: process.env.FIREBASE_PROJECT_ID || process.env.VITE_FIREBASE_PROJECT_ID });
-const authenticate = createIdentityMiddleware(verifyIdentity);
+const connectionStore = createConnectionStore(pool);
+const authenticate = createIdentityMiddleware(createConnectionIdentityVerifier(verifyIdentity, connectionStore));
 app.use('/api/plugin/link', createPluginPublicRouter({ sessions: pluginSessions, authenticate, upsertUser, getUserCredits }));
 configureUsageRecorder(row => adminStore.recordUsage(row));
 app.use(usageContext);
@@ -79,7 +82,7 @@ const privateAuthenticate = async (req, res, next) => {
   if (isPluginToken(token)) {
     try {
       const identity = await pluginSessions.verify(token);
-      if (!identity) return res.status(401).json({ error: 'נדרשת התחברות מחדש' });
+      if (!identity) return res.status(401).json({ error: 'החיבור פג או נותק. יש להתחבר מחדש', code: 'CONNECTION_REVOKED' });
       if (!pluginRouteAllowed(req.method, req.path)) return res.status(403).json({ error: 'הפעולה אינה זמינה לתוסף' });
       req.identity = identity;
       return next();
@@ -91,17 +94,17 @@ const privateAuthenticate = async (req, res, next) => {
   }
   return authenticate(req, res, next);
 };
-app.use('/api', (req, res, next) => {
+app.use('/api', async (req, res, next) => {
   if (req.method === 'GET' && req.path === '/payments/config') return next();
   const media = ['GET', 'HEAD'].includes(req.method) && req.path.match(/^\/videos\/(\d+)\/media$/);
   const grant = media && videoTokens.verify(req.query.mediaToken, 'media');
-  if (grant && grant.videoId === Number(media[1])) {
+  if (grant && grant.videoId === Number(media[1]) && await connectionStore.grantActive(grant)) {
     req.identity = { uid: grant.userUid };
     return next();
   }
   const thumbnail = ['GET', 'HEAD'].includes(req.method) && req.path.match(/^\/videos\/(\d+)\/thumbnail$/);
   const thumbnailGrant = thumbnail && videoTokens.verify(req.query.thumbnailToken, 'thumbnail');
-  if (thumbnailGrant && thumbnailGrant.videoId === Number(thumbnail[1])) {
+  if (thumbnailGrant && thumbnailGrant.videoId === Number(thumbnail[1]) && await connectionStore.grantActive(thumbnailGrant)) {
     req.identity = { uid: thumbnailGrant.userUid };
     return next();
   }
@@ -112,6 +115,7 @@ app.use('/api', (req, res, next) => {
   });
 });
 const upload = createMediaUpload(uploadDir);
+app.use('/api/connections', createConnectionsRouter({ store: connectionStore }));
 app.use('/api/plugin', createPluginPrivateRouter({ sessions: pluginSessions, getUserCredits, getVideoById }));
 app.post('/api/client-errors', createClientErrorHandler(errorRecorder));
 app.use('/api/downloads', createDownloadsRouter({ store: downloadStore }));
@@ -205,7 +209,7 @@ app.get("/api/videos", async (req, res) => {
   try {
     const videos = await getUserVideos({ userUid, limit: limit + 1, offset });
     res.setHeader('Content-Type', 'application/json; charset=utf-8');
-    res.json({ videos: videos.slice(0, limit).map(video => withVideoThumbnail(video, userUid, videoTokens)), hasMore: videos.length > limit });
+    res.json({ videos: videos.slice(0, limit).map(video => withVideoThumbnail(video, userUid, videoTokens, connectionBinding(req.identity))), hasMore: videos.length > limit });
     if (offset === 0) thumbnailCache.warm(videos);
   } catch (error) {
     console.error('Failed to fetch videos:', error);
@@ -241,7 +245,7 @@ app.get("/api/videos/load", async (req, res) => {
     }
 
     res.setHeader('Content-Type', 'application/json; charset=utf-8');
-    res.json({ video, mediaToken: videoTokens.issue(video.id, userUid, 'media') });
+    res.json({ video, mediaToken: videoTokens.issue(video.id, userUid, 'media', undefined, connectionBinding(req.identity)) });
   } catch (error) {
     console.error('Failed to load video with token:', error);
     res.status(500).json({ error: 'Failed to load video' });
@@ -262,7 +266,7 @@ app.get("/api/videos/:id", async (req, res) => {
       return res.status(404).json({ error: 'Video not found' });
     }
     res.setHeader('Content-Type', 'application/json; charset=utf-8');
-    res.json({ video, mediaToken: videoTokens.issue(video.id, userUid, 'media') });
+    res.json({ video, mediaToken: videoTokens.issue(video.id, userUid, 'media', undefined, connectionBinding(req.identity)) });
   } catch (error) {
     console.error('Failed to fetch video:', error);
     res.status(500).json({ error: 'Failed to fetch video' });
@@ -342,7 +346,7 @@ app.get("/api/videos/:id/token", async (req, res) => {
     }
 
     const token = videoTokens.issue(videoId, userUid, 'edit');
-    res.json({ token, mediaToken: videoTokens.issue(videoId, userUid, 'media') });
+    res.json({ token, mediaToken: videoTokens.issue(videoId, userUid, 'media', undefined, connectionBinding(req.identity)) });
   } catch (error) {
     console.error('Failed to generate video token:', error);
     res.status(500).json({ error: 'Failed to generate video token' });
@@ -437,7 +441,7 @@ app.get("/api/transcribe/jobs/:jobId", async (req, res) => {
       creditsRemaining: await getUserCredits(userUid),
       result: job.status === "completed" ? (() => {
         const result = JSON.parse(job.result_json);
-        return { ...result, mediaToken: result.videoId ? videoTokens.issue(result.videoId, userUid, 'media') : undefined };
+        return { ...result, mediaToken: result.videoId ? videoTokens.issue(result.videoId, userUid, 'media', undefined, connectionBinding(req.identity)) : undefined };
       })() : undefined,
       error: job.status === "failed" ? job.error_message : undefined,
       stages: typeof job.stages_json === 'string' ? JSON.parse(job.stages_json) : job.stages_json ?? [],

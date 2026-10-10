@@ -33,6 +33,7 @@ export function LegacyAppHeader({
   navigationBlocked = false,
   isAdmin = false,
   onAdmin,
+  onConnections,
   onReportIssue,
 }: AppHeaderProps) {
   const { isDevBypass } = useAuth();
@@ -131,6 +132,7 @@ export function LegacyAppHeader({
                 <AccountBalanceWalletRounded sx={{ ml: 1 }} />
                 רכישת קרדיטים
               </MenuItem>
+              {onConnections && <MenuItem disabled={navigationBlocked} onClick={() => { onProfileClose(); onConnections(); }}>החיבורים שלי</MenuItem>}
               {isAdmin && <MenuItem disabled={navigationBlocked} onClick={() => { onProfileClose(); onAdmin?.(); }}>ניהול</MenuItem>}
               {onReportIssue && <MenuItem onClick={() => { onProfileClose(); onReportIssue(); }}>דיווח על תקלה</MenuItem>}
               <MenuItem disabled={navigationBlocked} onClick={onSignOut}>התנתקות</MenuItem>

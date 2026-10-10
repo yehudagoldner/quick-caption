@@ -2,12 +2,22 @@ import type { User } from 'firebase/auth';
 import { clearVideoLibrary } from './videoLibrary';
 
 let currentUser: User | null = null;
+let authEpoch = 0;
 export function setApiUser(user: User | null) {
+  if (currentUser !== user) authEpoch++;
   if (currentUser?.uid !== user?.uid) clearVideoLibrary();
   currentUser = user;
   if (user) void import('./errorReporting').then(module => module.flushErrorReports()).catch(() => {});
 }
 export function apiUserUid() { return currentUser?.uid ?? 'guest'; }
+export function apiAuthEpoch() { return authEpoch; }
+export async function handleConnectionResponse(response: Response, requestUid: string, requestEpoch = authEpoch) {
+  if (response.status !== 401) return;
+  const data = await response.clone().json().catch(() => null);
+  if (data?.code === 'CONNECTION_REVOKED' && apiUserUid() === requestUid && requestEpoch === authEpoch) {
+    window.dispatchEvent(new CustomEvent('qc-connection-revoked', { detail: { uid: requestUid, epoch: requestEpoch } }));
+  }
+}
 export async function apiHeaders(initial?: HeadersInit): Promise<Headers> {
   const headers = new Headers(initial);
   const user = currentUser;
@@ -20,6 +30,7 @@ export async function apiHeaders(initial?: HeadersInit): Promise<Headers> {
 }
 export async function apiFetch(input: RequestInfo | URL, init: RequestInit = {}) {
   const requestUid = apiUserUid();
+  const requestEpoch = authEpoch;
   const url = typeof input === 'string' ? input : input instanceof URL ? input.pathname : input.url;
   const savingSubtitles = init.method?.toUpperCase() === 'PUT' && /\/api\/videos\/(?:update-subtitles|\d+\/subtitles)(?:$|\?)/.test(url);
   const reportSaveFailure = (code: 'save-network-error' | 'save-invalid-response', status?: number) => {
@@ -34,6 +45,7 @@ export async function apiFetch(input: RequestInfo | URL, init: RequestInit = {})
     if (savingSubtitles) reportSaveFailure('save-network-error');
     throw error;
   }
+  await handleConnectionResponse(response, requestUid, requestEpoch);
   if (savingSubtitles && response.ok) {
     const acknowledgment = await response.clone().json().catch(() => null);
     if (acknowledgment?.status !== 'ok' && acknowledgment?.success !== true) {

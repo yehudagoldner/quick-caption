@@ -3,10 +3,10 @@ import { pipeline } from 'node:stream/promises';
 import { parseBunnyReference } from './bunnyStreamStorage.js';
 import { thumbnailVersion } from './thumbnailCache.js';
 
-export function withVideoThumbnail(video, userUid, tokens) {
+export function withVideoThumbnail(video, userUid, tokens, binding = {}) {
   const { stored_path, ...summary } = video;
   return { ...summary, thumbnail_url: video.media_type !== 'audio' && stored_path
-    ? `/api/videos/${video.id}/thumbnail?v=${thumbnailVersion(stored_path)}&thumbnailToken=${encodeURIComponent(tokens.issue(video.id, userUid, 'thumbnail'))}` : null };
+    ? `/api/videos/${video.id}/thumbnail?v=${thumbnailVersion(stored_path)}&thumbnailToken=${encodeURIComponent(tokens.issue(video.id, userUid, 'thumbnail', undefined, binding))}` : null };
 }
 
 export function createVideoThumbnailHandler({ getVideoById, bunny, cache }) {

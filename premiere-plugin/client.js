@@ -52,6 +52,7 @@ class PluginClient {
       return this.request(path, options, false);
     }
     const data = await response.json();
+    if (response.status === 401 && data.code === 'CONNECTION_REVOKED' && epoch === this.epoch) await this.clear();
     if (!response.ok) throw Object.assign(new Error(data.error || 'הבקשה נכשלה'), { status: response.status, code: data.code });
     return data;
   }

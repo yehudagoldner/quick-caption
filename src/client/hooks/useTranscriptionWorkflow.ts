@@ -1,4 +1,4 @@
-import { apiFetch, apiHeaders } from "../api";
+import { apiFetch, apiHeaders, apiAuthEpoch } from "../api";
 import { requestBurn } from '../utils/burnRequest';
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type MouseEvent } from "react";
 import { io } from "socket.io-client";
@@ -417,6 +417,7 @@ export function useTranscriptionWorkflow(): TranscriptionWorkflow {
 
       requestRef.current?.abort();
 
+      const requestAuthEpoch = apiAuthEpoch();
       const xhr = new XMLHttpRequest();
       requestRef.current = xhr;
       const isCurrentRequest = () => currentJobRef.current?.jobId === jobId && requestRef.current === xhr;
@@ -466,6 +467,9 @@ export function useTranscriptionWorkflow(): TranscriptionWorkflow {
         let recoverThroughJob = false;
         try {
           const payload: ApiResponse = xhr.response && typeof xhr.response === "object" ? xhr.response : {} as ApiResponse;
+          if (xhr.status === 401 && (payload as any)?.code === 'CONNECTION_REVOKED' && requestAuthEpoch === apiAuthEpoch()) {
+            window.dispatchEvent(new CustomEvent('qc-connection-revoked', { detail: { uid: user?.uid, epoch: requestAuthEpoch } }));
+          }
           if (!xhr.response || (xhr.status >= 200 && xhr.status < 300 &&
               (!Array.isArray(payload.segments) || typeof payload.subtitle?.content !== 'string'))) {
             recoverThroughJob = true;

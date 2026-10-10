@@ -1,4 +1,5 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
+import { ensureConnectionSchema, lockConnectionState, connectionRevoked } from './accountConnections.js';
 
 export const ACCESS_SECONDS = 15 * 60;
 export const REFRESH_SECONDS = 30 * 24 * 60 * 60;
@@ -11,6 +12,7 @@ const validSecret = value => typeof value === 'string' && /^[A-Za-z0-9_-]{43,70}
 export const isPluginToken = value => typeof value === 'string' && value.startsWith('qc_plugin_');
 
 export async function ensurePluginSchema(pool) {
+  await ensureConnectionSchema(pool);
   await pool.execute(`CREATE TABLE IF NOT EXISTS plugin_links (
     id CHAR(36) CHARACTER SET ascii COLLATE ascii_bin PRIMARY KEY,
     device_hash CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
@@ -61,7 +63,9 @@ export function createPluginSessions(pool) {
         const [rows] = await connection.execute(`SELECT * FROM plugin_links WHERE id = ? AND user_code = ? AND expires_at > NOW() AND consumed = 0 FOR UPDATE`, [id, userCode]);
         if (!rows.length) throw failure(410, 'בקשת החיבור פגה או כבר נוצלה');
         if (rows[0].user_uid) throw failure(409, 'בקשת החיבור כבר אושרה');
-        const profile = { uid: identity.uid, email: identity.email, displayName: identity.displayName };
+        const cutoff = await lockConnectionState(connection, identity.uid);
+        if (cutoff && (!identity.authTime || identity.authTime <= cutoff)) throw connectionRevoked();
+        const profile = { uid: identity.uid, email: identity.email, displayName: identity.displayName, authTime: identity.authTime };
         await connection.execute('UPDATE plugin_links SET user_uid = ?, identity_json = ? WHERE id = ?', [identity.uid, JSON.stringify(profile), id]);
         return { status: 'approved' };
       });
@@ -73,10 +77,15 @@ export function createPluginSessions(pool) {
         if (!rows.length) throw failure(410, 'בקשת החיבור פגה או כבר נוצלה');
         const row = rows[0];
         if (!row.user_uid) return { status: 'pending' };
+        const cutoff = await lockConnectionState(connection, row.user_uid);
+        const profile = parse(row.identity_json);
+        if (cutoff && (!profile.authTime || profile.authTime <= cutoff)) throw connectionRevoked();
         const issued = tokens();
+        const sessionId = randomUUID();
         await connection.execute(`INSERT INTO plugin_sessions (id, user_uid, identity_json, access_hash, refresh_hash, access_expires_at, refresh_expires_at)
           VALUES (?, ?, ?, ?, ?, DATE_ADD(NOW(), INTERVAL ? SECOND), DATE_ADD(NOW(), INTERVAL ? SECOND))`,
-        [randomUUID(), row.user_uid, JSON.stringify(parse(row.identity_json)), digest(issued.accessToken), digest(issued.refreshToken), ACCESS_SECONDS, REFRESH_SECONDS]);
+        [sessionId, row.user_uid, JSON.stringify(profile), digest(issued.accessToken), digest(issued.refreshToken), ACCESS_SECONDS, REFRESH_SECONDS]);
+        await connection.execute('INSERT INTO plugin_connection_details (id) VALUES (?)', [sessionId]);
         await connection.execute('UPDATE plugin_links SET consumed = 1 WHERE id = ?', [id]);
         return { status: 'approved', ...issued, user: parse(row.identity_json) };
       });
@@ -96,9 +105,18 @@ export function createPluginSessions(pool) {
     async verify(accessToken) {
       if (!validSecret(accessToken) || !isPluginToken(accessToken)) return null;
       const [rows] = await pool.execute(`SELECT id, user_uid, identity_json FROM plugin_sessions WHERE access_hash = ? AND access_expires_at > NOW() AND refresh_expires_at > NOW()`, [digest(accessToken)]);
+      if (rows.length) {
+        await pool.execute('INSERT IGNORE INTO plugin_connection_details (id) VALUES (?)', [rows[0].id]);
+        await pool.execute('UPDATE plugin_connection_details SET last_seen_at = NOW() WHERE id = ? AND last_seen_at < DATE_SUB(NOW(), INTERVAL 1 MINUTE)', [rows[0].id]);
+      }
       return rows.length ? { ...parse(rows[0].identity_json), uid: rows[0].user_uid, pluginSessionId: rows[0].id } : null;
     },
-    async revoke(id) { await pool.execute('DELETE FROM plugin_sessions WHERE id = ?', [id]); },
+    async revoke(id) {
+      return transaction(async connection => {
+        await connection.execute('DELETE FROM plugin_sessions WHERE id = ?', [id]);
+        await connection.execute('DELETE FROM plugin_connection_details WHERE id = ?', [id]);
+      });
+    },
   };
 }
 

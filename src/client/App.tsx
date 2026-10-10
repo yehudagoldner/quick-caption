@@ -8,6 +8,8 @@ import { VideoEditPage } from "./components/VideoEditPage";
 import { VideosPage } from "./components/VideosPage";
 import { BuyCreditsPage } from "./components/BuyCreditsPage";
 import { AdminPage } from "./components/AdminPage";
+import { ConnectionsPage } from './components/ConnectionsPage';
+import { useAuth } from './contexts/AuthContext';
 import { adminRequest } from "./adminApi";
 import { warmVideoLibrary } from './videoLibrary';
 import { useTranscriptionWorkflow } from "./hooks/useTranscriptionWorkflow";
@@ -31,7 +33,7 @@ const RAW_API_BASE = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.
 const API_BASE_URL = RAW_API_BASE.replace(/\/?$/, "");
 const APP_BASE_PATH = import.meta.env.BASE_URL;
 
-type AppScreen = "home" | "transcription" | "videos" | "edit" | "buy-credits" | "admin";
+type AppScreen = "home" | "transcription" | "videos" | "edit" | "buy-credits" | "admin" | "connections";
 
 function getScreenFromUrl(): { screen: AppScreen; videoToken?: string } {
   if (window.location.pathname.replace(/\/$/, '') === `${APP_BASE_PATH}admin`) return { screen: 'admin' };
@@ -43,7 +45,7 @@ function getScreenFromUrl(): { screen: AppScreen; videoToken?: string } {
     return { screen: "edit", videoToken };
   }
 
-  if (["transcription", "videos", "buy-credits"].includes(screen)) {
+  if (["transcription", "videos", "buy-credits", "connections"].includes(screen)) {
     return { screen };
   }
 
@@ -65,6 +67,7 @@ function updateUrl(screen: AppScreen, videoToken?: string) {
 }
 
 function App() {
+  const { connectionNotice } = useAuth();
   const workflow = useTranscriptionWorkflow();
   const desktopHome = useMediaQuery(theme.breakpoints.up("md"));
   const narrowViewport = useNarrowViewport();
@@ -254,6 +257,11 @@ function App() {
             else navigate();
           }}
           onBuyCredits={handleBuyCredits}
+          onConnections={() => {
+            const navigate = () => navigateToScreen('connections');
+            if (editorNavigation.current) void editorNavigation.current(navigate);
+            else navigate();
+          }}
           isAdmin={Boolean(workflow.user && adminUid === workflow.user.uid)}
           onAdmin={() => {
             const navigate = () => navigateToScreen('admin');
@@ -274,6 +282,7 @@ function App() {
             </Stack>
           ) : <>
           {projectError && <Alert severity="error" onClose={() => setProjectError(null)} sx={{ mb: 2 }}>{projectError}</Alert>}
+          {connectionNotice && <Alert severity="info" sx={{ mb: 2 }}>{connectionNotice}</Alert>}
           {currentScreen === "home" && workflow.error && (
             <Alert severity="error" sx={{ mb: 3 }}>
               {workflow.error}
@@ -319,6 +328,7 @@ function App() {
           )}
 
           {currentScreen === 'admin' && <AdminPage key={workflow.user?.uid ?? 'guest'} />}
+          {currentScreen === 'connections' && <ConnectionsPage key={workflow.user?.uid ?? 'guest'} />}
 
           {currentScreen === "edit" && videoToken && (
             <VideoEditPage
