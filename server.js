@@ -1,5 +1,6 @@
 ﻿import express from "express";
 import { createVideoTokens, loadVideoSigningKey } from "./src/videoTokens.js";
+import { createPremiereDownloadsRouter } from './routes/premiereDownloads.js';
 import cors from "cors";
 import { createMediaUpload, mediaUploadError } from "./src/mediaUpload.js";
 import path from "path";
@@ -150,6 +151,11 @@ io.on("connection", (socket) => {
 app.get("/health", (req, res) => {
   res.json({ status: "ok" });
 });
+
+app.use('/downloads/premiere', createPremiereDownloadsRouter({
+  enabled: process.env.VITE_APP_ENV === 'qa',
+  directory: process.env.PREMIERE_DOWNLOAD_DIR || '/home/quick-caption-qa/shared/plugin-downloads',
+}));
 
 app.post("/api/users/sync", async (req, res) => {
   const {

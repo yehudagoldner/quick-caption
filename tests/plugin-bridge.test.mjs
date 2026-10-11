@@ -123,6 +123,25 @@ test('a host permission rejection is distinct from a disconnected companion', as
   const client = new bridgeClient.TimelineBridge({ configuration: { token: 'a'.repeat(64), port: 37289 }, fetcher: async () => { throw new Error('Permission denied to the url. Manifest entry not found.'); } });
   await assert.rejects(client.request('/health'), { code: 'bridge_permissions' });
 });
+
+test('UXP preflight and delivery use the manifest localhost permission rather than an IPv4 literal', async () => {
+  const manifest = JSON.parse(await readFile(new URL('../premiere-plugin/manifest.json', import.meta.url), 'utf8'));
+  const urls = [];
+  const token = 'a'.repeat(64);
+  const client = new bridgeClient.TimelineBridge({ configuration: { token, port: 37289 }, fetcher: async (url, options) => {
+    const parsed = new URL(url);
+    if (!manifest.requiredPermissions.network.domains.includes(parsed.origin) || parsed.hostname !== 'localhost') {
+      throw new Error('Permission denied to the url. Manifest entry not found.');
+    }
+    assert.equal(options.headers['X-Quick-Caption-Bridge'], token);
+    urls.push(url);
+    return { ok: true, json: async () => ({ ok: true }) };
+  } });
+  await client.request('/health');
+  await client.request('/prepare', { target: {} });
+  await client.request('/deliver', { id: 'fixture', srt: 'fixture' });
+  assert.deepEqual(urls, ['http://localhost:37289/health', 'http://localhost:37289/prepare', 'http://localhost:37289/deliver']);
+});
 test('active word preparation rejects an older silent bridge before preparing media or paid processing', async () => {
   const routes=[];
   const client=new bridgeClient.TimelineBridge({configuration:{token:'a'.repeat(64),port:37289},fetcher:async url=>{routes.push(new URL(url).pathname);return {ok:true,json:async()=>({ok:true,nativeGraphics:true})};}});

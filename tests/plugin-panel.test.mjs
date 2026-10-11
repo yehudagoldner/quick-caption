@@ -87,19 +87,21 @@ async function openPanel({ connected = true, offline = false, finished = true, j
   return { node: id => nodes.get(id), calls, requests, context, stored, openedPanels, entrypoints };
 }
 
-test('the compact panel mounts only its icon and launches the existing selection flow without a paid request', async () => {
+test('the single panel mounts main controls and the command reopens it without a paid request', async () => {
   const panel = await openPanel({ selectionSnapshot: { sequenceName: 'Selected clips', duration: 24 } });
-  const toolbar = [], main = [];
-  panel.entrypoints.panels.quickCaptionToolbar.show({ appendChild: node => toolbar.push(node.id) });
+  const main = [];
+  const manifest = JSON.parse(await readFile(new URL('../premiere-plugin/manifest.json', import.meta.url), 'utf8'));
+  assert.deepEqual(manifest.entrypoints.filter(item => item.type === 'panel').map(item => item.id), ['quickCaption']);
+  assert.deepEqual(Object.keys(panel.entrypoints.panels), ['quickCaption']);
   panel.entrypoints.panels.quickCaption.show({ appendChild: node => main.push(node.id) });
-  assert.deepEqual(toolbar, ['quick-caption-toolbar']); assert.deepEqual(main, ['plugin-main']);
+  assert.deepEqual(main, ['plugin-main']);
   await vm.runInContext('openTimelineAction()', panel.context);
   assert.deepEqual(panel.openedPanels, ['quickCaption'], 'the same panel entrypoint is brought forward');
   assert.match(panel.node('selection-summary').textContent, /Selected clips/);
   assert.equal(panel.calls.some(url => url.endsWith('/api/transcribe')), false);
 });
 
-test('the icon opens a pending job for recovery without recapturing clips or starting another job', async () => {
+test('the command opens a pending job for recovery without recapturing clips or starting another job', async () => {
   const panel = await openPanel({ job: { ...selectedJob, finished: true, result: { videoId: 42 }, delivery: { status: 'pending' } } });
   await vm.runInContext('openTimelineAction()', panel.context);
   assert.deepEqual(panel.openedPanels, ['quickCaption']);
@@ -107,16 +109,33 @@ test('the icon opens a pending job for recovery without recapturing clips or sta
   assert.equal(panel.calls.some(url => url.includes('/api/transcribe') || url.endsWith('/api/plugin/quote')), false);
 });
 
-test('the icon rejects overlapping preparation clicks and keeps the shared account timer active for the visible panel', async () => {
+test('the command rejects overlapping preparation and a reopened panel resumes visibility', async () => {
   const panel = await openPanel();
   vm.runInContext('preparing = true; controls();', panel.context);
-  assert.equal(panel.node('toolbar-caption').disabled, true);
+  assert.equal(panel.node('selected').disabled, true);
   await vm.runInContext('openTimelineAction()', panel.context);
   assert.equal(panel.openedPanels.length, 0);
-  panel.entrypoints.panels.quickCaptionToolbar.show({ appendChild() {} });
   panel.entrypoints.panels.quickCaption.show({ appendChild() {} });
   panel.entrypoints.panels.quickCaption.hide();
+  assert.equal(vm.runInContext('shown', panel.context), false);
+  panel.entrypoints.panels.quickCaption.show({ appendChild() {} });
   assert.equal(vm.runInContext('shown', panel.context), true);
+});
+
+test('language details and docking help expand without an upload or changing transcription settings', async () => {
+  const panel = await openPanel();
+  const before = vm.runInContext('settingsKey()', panel.context);
+  for (const [button, section] of [['advanced-toggle', 'advanced-settings'], ['layout-toggle', 'layout-help']]) {
+    assert.equal(panel.node(section).hidden, true);
+    panel.node(button).handlers.get('click')();
+    assert.equal(panel.node(section).hidden, false);
+    assert.equal(panel.node(button).attributes.get('aria-expanded'), 'true');
+    panel.node(button).handlers.get('click')();
+    assert.equal(panel.node(section).hidden, true);
+    assert.equal(panel.node(button).attributes.get('aria-expanded'), 'false');
+  }
+  assert.equal(vm.runInContext('settingsKey()', panel.context), before);
+  assert.equal(panel.calls.some(url => url.endsWith('/api/transcribe')), false);
 });
 
 test('a restored account opens directly on the timeline action without login, history or finished jobs', async () => {
@@ -259,7 +278,7 @@ test('a new quote cannot replace a completed job that is still awaiting caption 
 test('an unavailable placement component leaves an actionable retry, no stale audio preparation or paid request', async () => {
   const panel = await openPanel({ selectionSnapshot: { sequenceName: 'Selected clips', duration: 24 } });
   await vm.runInContext('captionSelection()', panel.context);
-  assert.match(panel.node('status').textContent, /קובץ הגדרת הפיתוח/);
+  assert.match(panel.node('status').textContent, /חבילת Quick Caption/);
   assert.equal(panel.node('selection-state').textContent, 'נדרשת הפעלה');
   assert.equal(panel.node('selected').disabled, false);
   assert.match(panel.node('selected').textContent, /קרדיטים/);
@@ -403,4 +422,14 @@ test('a long export renews an expired admission quote within the original approv
   await vm.runInContext('getQuote(quote).then(value=>{value.expiresAt=new Date(0).toISOString();return send(value);})',panel.context);
   assert.equal(panel.calls.filter(url=>url.endsWith('/api/plugin/quote')).length,2);
   assert.equal(panel.calls.filter(url=>url.endsWith('/api/transcribe')).length,1);
+});
+
+test('a new installation discovers an Adobe WAV preset without a file picker or transcription',async()=>{
+  const fixture=audioExportFixture();let picked=0;
+  fixture.fs.getFileForOpening=async()=>{picked++;throw Error('must not open picker');};
+  fixture.fs.getEntryWithUrl=async url=>{assert.equal(url,'file:/Applications/Premiere.app/Waveform 48kHz 16-bit.epr');return {nativePath:'/Applications/Premiere.app/Waveform 48kHz 16-bit.epr'};};
+  const panel=await openPanel({exportFixture:fixture});
+  vm.runInContext("bridge.request=async()=>({audioPresets:['/Applications/Premiere.app/Waveform 48kHz 16-bit.epr']});",panel.context);
+  const preset=await vm.runInContext('audioPreset({})',panel.context);
+  assert.match(preset.nativePath,/Waveform/);assert.equal(picked,0);assert.equal(panel.calls.some(url=>url.endsWith('/api/transcribe')),false);
 });

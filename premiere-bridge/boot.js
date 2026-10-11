@@ -34,7 +34,9 @@
   };
   var logError = function (error) { diagnostics.record('bridge-start', error); };
   try {
-    var config = node.require(path.join(extensionPath, 'bridge-config.json'));
+    var development;
+    try { development = node.require(path.join(extensionPath, 'bridge-config.json')); } catch (missingDevelopmentConfig) { /* Signed distribution contains no pairing secret. */ }
+    var config = node.require(path.join(extensionPath, 'pairing.js')).loadPairing({home:os.homedir(), development:development});
     node.require(path.join(extensionPath, 'server.js')).startBridge({ root: root, token: config.token, port: config.port, evalHost: evalHost, diagnostics: diagnostics }).on('error', logError);
   }
   catch (error) { logError(error); }
