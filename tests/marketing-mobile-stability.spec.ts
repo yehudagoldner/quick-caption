@@ -140,6 +140,14 @@ test('repeated vertical scrolling suspends playback, preserves layout and resume
     // Changing only the viewport height approximates toolbar expansion/collapse.
     // It does not emulate Safari's native toolbar or its GPU compositor.
     await page.setViewportSize({ width: 390, height });
+    // Finish the button's smooth navigation and viewport adjustment before
+    // measuring our own scrolls; otherwise its last frame can move the first sample.
+    await page.evaluate(() => new Promise<void>(resolve => {
+      const finish = () => { window.removeEventListener('scroll', onScroll); resolve(); };
+      let timer = setTimeout(finish, 220);
+      const onScroll = () => { clearTimeout(timer); timer = setTimeout(finish, 220); };
+      window.addEventListener('scroll', onScroll, { passive: true });
+    }));
     const samples = await page.evaluate(async () => {
       const root = document.querySelector('.marketing')!;
       const demo = document.querySelector('#caption-demo')!;

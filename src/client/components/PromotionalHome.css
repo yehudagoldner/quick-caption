@@ -354,6 +354,15 @@
 .marketing.is-motion-paused *, .marketing.is-motion-paused *::before, .marketing.is-motion-paused *::after {
   animation-play-state: paused !important;
 }
+/* iPhone: retain all artwork and geometry, without decorative motion or
+   animated style changes (including the demo's moving caption strip). */
+.marketing.is-static-motion *, .marketing.is-static-motion *::before, .marketing.is-static-motion *::after {
+  animation: none !important;
+  transition: none !important;
+  scroll-behavior: auto !important;
+}
+.marketing.is-static-motion .marketing-primary:hover, .marketing.is-static-motion .marketing-look:hover { transform: none; }
+.marketing.is-static-motion .marketing-primary::after { display: none; }
 @media (prefers-reduced-motion: reduce) {
   .marketing *, .marketing *::before, .marketing *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 }

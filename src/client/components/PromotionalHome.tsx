@@ -106,6 +106,10 @@ function CarouselDots({ target, count, label, behavior }: { target: RefObject<HT
 
 export function PromotionalHome({ authLoading, onSignIn, isAuthenticated, onStart, onMyVideos }: PromotionalHomeProps) {
   const reducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)", { noSsr: true });
+  // Includes Safari and Chrome on iPhone. Keep the same layout, but require
+  // explicit playback so scrolling never starts a background demo clock.
+  const [iphoneMotion] = useState(() => /iPhone|iPod/.test(navigator.userAgent));
+  const autoplay = !reducedMotion && !iphoneMotion;
   const wide = useMediaQuery("(min-width: 760px)", { noSsr: true });
   const motionActive = usePageMotionActive();
   const demoRef = useRef<HTMLElement>(null);
@@ -116,34 +120,34 @@ export function PromotionalHome({ authLoading, onSignIn, isAuthenticated, onStar
   const looksRef = useRef<HTMLDivElement>(null);
   const bentoRef = useRef<HTMLDivElement>(null);
   const demoVisible = useInView(demoRef);
-  const demo = useCaptionDemo({ autoplay: !reducedMotion, visible: demoVisible && motionActive });
+  const demo = useCaptionDemo({ autoplay, visible: demoVisible && motionActive });
   const stylesVisible = useInView(stylesRef);
   const featuresVisible = useInView(featuresRef);
-  const gallery = useCaptionDemo({ autoplay: !reducedMotion, visible: (stylesVisible || (wide && featuresVisible)) && motionActive });
+  const gallery = useCaptionDemo({ autoplay, visible: (stylesVisible || (wide && featuresVisible)) && motionActive });
   const heroActionsVisible = useInView(actionsRef, 0, true);
   const finalVisible = useInView(finalRef);
   const dockVisible = isAuthenticated || (!heroActionsVisible && !finalVisible);
   const start = useCallback(() => { if (isAuthenticated) onStart(); else void onSignIn(); }, [isAuthenticated, onStart, onSignIn]);
-  const behavior: ScrollBehavior = reducedMotion ? "instant" : "smooth";
+  const behavior: ScrollBehavior = reducedMotion || iphoneMotion ? "instant" : "smooth";
   const scrollTo = (id: string) => document.getElementById(id)?.scrollIntoView({ behavior, block: "start" });
   const jump = (id: string) => (event: MouseEvent<HTMLAnchorElement>) => {
     if (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
     event.preventDefault();
     scrollTo(id);
   };
-  const showDemo = () => {
-    demo.setPlaying(true);
+  const revealDemo = () => {
     demoRef.current?.scrollIntoView({ behavior, block: "center" });
     demoRef.current?.focus({ preventScroll: true });
   };
+  const showDemo = () => { demo.setPlaying(true); revealDemo(); };
   const applyLook = (look: CaptionLook) => {
     demo.setLook(look);
-    demo.setPlaying(true);
-    showDemo();
+    if (!iphoneMotion) demo.setPlaying(true);
+    revealDemo();
   };
 
   return (
-    <main className={`marketing ${wide ? "" : "has-dock"} ${motionActive ? "" : "is-motion-paused"}`} dir="rtl">
+    <main className={`marketing ${wide ? "" : "has-dock"} ${motionActive ? "" : "is-motion-paused"} ${iphoneMotion ? "is-static-motion" : ""}`} dir="rtl">
       <section className="marketing-hero" aria-labelledby="marketing-title">
         <div className="marketing-aurora" aria-hidden="true"><i /><i /><i /></div>
         <div className="marketing-wrap">

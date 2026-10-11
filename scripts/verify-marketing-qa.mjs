@@ -17,6 +17,13 @@ for (const [name, engine] of [['chromium', chromium], ['webkit', webkit]]) {
     assert.equal(response.status(), 200);
     await page.locator('.marketing h1').waitFor();
     await page.evaluate(() => document.fonts.ready);
+    assert(await page.locator('.marketing').evaluate(el => el.classList.contains('is-static-motion')));
+    const restingTime = await page.locator('#caption-demo [role="slider"]').getAttribute('aria-valuenow');
+    await page.locator('#caption-demo').scrollIntoViewIfNeeded();
+    await page.waitForTimeout(800);
+    assert.equal(await page.locator('#caption-demo [role="slider"]').getAttribute('aria-valuenow'), restingTime);
+    assert.equal(await page.locator('.marketing').evaluate(el => el.getAnimations({ subtree: true }).filter(a => a.playState === 'running').length), 0);
+    await page.evaluate(() => scrollTo({ top: 0, behavior: 'instant' }));
     assert.equal(await page.locator('.marketing-aurora i').first().evaluate(el => getComputedStyle(el).display), 'none');
     assert.equal(await page.locator('.marketing-dock').evaluate(el => getComputedStyle(el).backdropFilter), 'none');
     await page.screenshot({ path: `${output}/${name}-hero.png` });
