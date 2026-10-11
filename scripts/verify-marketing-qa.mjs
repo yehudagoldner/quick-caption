@@ -20,6 +20,11 @@ for (const [name, engine] of [['chromium', chromium], ['webkit', webkit]]) {
     assert(await page.locator('.marketing').evaluate(el => el.classList.contains('is-static-motion')));
     const restingTime = await page.locator('#caption-demo [role="slider"]').getAttribute('aria-valuenow');
     await page.locator('#caption-demo').scrollIntoViewIfNeeded();
+    const restingSlider = page.locator('#caption-demo [role="slider"]');
+    assert.equal(await restingSlider.getAttribute('aria-disabled'), 'true');
+    await restingSlider.scrollIntoViewIfNeeded();
+    const box = await restingSlider.boundingBox();
+    await page.touchscreen.tap(box.x + box.width * .7, box.y + box.height / 2);
     await page.waitForTimeout(800);
     assert.equal(await page.locator('#caption-demo [role="slider"]').getAttribute('aria-valuenow'), restingTime);
     assert.equal(await page.locator('.marketing').evaluate(el => el.getAnimations({ subtree: true }).filter(a => a.playState === 'running').length), 0);

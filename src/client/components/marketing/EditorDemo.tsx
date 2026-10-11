@@ -162,7 +162,7 @@ function speechPeaks(segments: Segment[], duration: number) {
   });
 }
 
-function DemoTimeline({ demo, fps, selectedId, onSelect }: { demo: CaptionDemo; fps: number; selectedId: Segment["id"] | null; onSelect: (id: Segment["id"] | null) => void }) {
+function DemoTimeline({ demo, fps, selectedId, onSelect, disableSeekBar }: { demo: CaptionDemo; fps: number; selectedId: Segment["id"] | null; onSelect: (id: Segment["id"] | null) => void; disableSeekBar: boolean }) {
   const theme = useTheme();
   const ltrTheme = useMemo(() => createTheme(theme, { direction: "ltr" }), [theme]);
   const { preferences } = useEditorPreferences();
@@ -196,7 +196,7 @@ function DemoTimeline({ demo, fps, selectedId, onSelect }: { demo: CaptionDemo; 
         onPointerDownCapture={() => { resume.current = playing; setPlaying(false); }}
         onPointerUpCapture={() => { if (resume.current) setPlaying(true); resume.current = false; }}
         onPointerCancelCapture={() => { if (resume.current) setPlaying(true); resume.current = false; }}>
-        <VideoSeekBar allowPageScroll currentTime={time} duration={duration} fps={fps} mediaUrl={null} onSeek={seek} />
+        <VideoSeekBar allowPageScroll disabled={disableSeekBar} currentTime={time} duration={duration} fps={fps} mediaUrl={null} onSeek={seek} />
       </Box>
     </Stack>
     {waveform ? <Box>
@@ -282,7 +282,7 @@ function DemoAppBar({ onStart }: { onStart: () => void }) {
   </Box>;
 }
 
-export function DesktopEditorDemo({ demo, onStart }: { demo: CaptionDemo; onStart: () => void }) {
+export function DesktopEditorDemo({ demo, onStart, disableSeekBar = false }: { demo: CaptionDemo; onStart: () => void; disableSeekBar?: boolean }) {
   const { preferences } = useEditorPreferences();
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [selectedId, setSelectedId] = useState<Segment["id"] | null>(null);
@@ -324,7 +324,7 @@ export function DesktopEditorDemo({ demo, onStart }: { demo: CaptionDemo; onStar
               <Stack className="preview-wrapper" spacing={1} sx={{ flex: 1, minWidth: 0, width: "100%", height: "100%" }}>
                 <Stack direction="column" alignItems="center" sx={{ width: "100%", minWidth: 0 }}>{toolbar}</Stack>
                 <Box sx={{ minWidth: 0, width: "100%", flex: 1, minHeight: 96, borderRadius: 2 }}><DemoStage demo={demo} captionTestId="demo-caption" /></Box>
-                <DemoTimeline demo={demo} fps={preferences.fps} selectedId={selectedId} onSelect={setSelectedId} />
+                <DemoTimeline demo={demo} fps={preferences.fps} selectedId={selectedId} onSelect={setSelectedId} disableSeekBar={disableSeekBar} />
               </Stack>
               {sidebarOpen && <>
                 <Divider orientation="vertical" flexItem />
@@ -339,7 +339,7 @@ export function DesktopEditorDemo({ demo, onStart }: { demo: CaptionDemo; onStar
 }
 
 /** The mobile caption editor in watch mode, inside a phone frame. */
-export function PhoneEditorDemo({ demo, onStart, decorative = false }: { demo: CaptionDemo; onStart: () => void; decorative?: boolean }) {
+export function PhoneEditorDemo({ demo, onStart, decorative = false, disableSeekBar = false }: { demo: CaptionDemo; onStart: () => void; decorative?: boolean; disableSeekBar?: boolean }) {
   const { preferences } = useEditorPreferences();
   const { segments, time } = demo;
   const active = findSegment(segments, time);
@@ -371,7 +371,7 @@ export function PhoneEditorDemo({ demo, onStart, decorative = false }: { demo: C
             <Box sx={{ flex: 1, minHeight: 0, width: "100%" }}><DemoStage demo={demo} compactControls captionTestId={decorative ? undefined : "demo-caption"} /></Box>
             <Typography variant="caption" color="text.secondary" sx={{ flexShrink: 0 }}>{formatTimecode(time, preferences.fps)}</Typography>
             <Box sx={{ width: "100%" }} {...(decorative ? { "aria-hidden": true } : {})}>
-              <VideoSeekBar compact allowPageScroll currentTime={time} duration={demo.duration} fps={preferences.fps} mediaUrl={null} onSeek={demo.seek} />
+              <VideoSeekBar compact allowPageScroll disabled={disableSeekBar} currentTime={time} duration={demo.duration} fps={preferences.fps} mediaUrl={null} onSeek={demo.seek} />
             </Box>
             <Box dir={preferences.direction} aria-label="מקטעי כתוביות" sx={{ flexShrink: 0, width: "100%", overflow: "hidden", px: 3, py: 0.5 }}>
               <Box sx={{ display: "flex", gap: 1, transition: "transform .35s ease", transform: `translateX(calc(${focused} * (78% + 8px) - ${focused > 0 ? "11%" : "0px"}))` }}>

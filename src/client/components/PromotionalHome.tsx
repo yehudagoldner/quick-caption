@@ -49,14 +49,14 @@ function LookCard({ name, note, look, demo, selected, onApply }: { name: string;
   </article>;
 }
 
-function LiveEditorPreview({ demo, wide, onStart }: { demo: CaptionDemo; wide: boolean; onStart: () => void }) {
+function LiveEditorPreview({ demo, wide, onStart, disableSeekBar }: { demo: CaptionDemo; wide: boolean; onStart: () => void; disableSeekBar: boolean }) {
   useCaptionDemoTime(demo);
-  return wide ? <DesktopEditorDemo demo={demo} onStart={onStart} /> : <PhoneEditorDemo demo={demo} onStart={onStart} />;
+  return wide ? <DesktopEditorDemo demo={demo} onStart={onStart} disableSeekBar={disableSeekBar} /> : <PhoneEditorDemo demo={demo} onStart={onStart} disableSeekBar={disableSeekBar} />;
 }
 
-function DecorativePhonePreview({ demo, onStart }: { demo: CaptionDemo; onStart: () => void }) {
+function DecorativePhonePreview({ demo, onStart, disableSeekBar }: { demo: CaptionDemo; onStart: () => void; disableSeekBar: boolean }) {
   useCaptionDemoTime(demo);
-  return <PhoneEditorDemo demo={demo} onStart={onStart} decorative />;
+  return <PhoneEditorDemo demo={demo} onStart={onStart} disableSeekBar={disableSeekBar} decorative />;
 }
 
 function useCarouselIndex(ref: RefObject<HTMLElement | null>) {
@@ -175,8 +175,8 @@ export function PromotionalHome({ authLoading, onSignIn, isAuthenticated, onStar
                 <span className="qc-window-url"><VerifiedRounded /> quick-caption.com</span>
                 <span className="qc-window-live"><b /> הדגמה חיה</span>
               </div>
-              <LiveEditorPreview demo={demo} wide onStart={start} />
-            </div> : <LiveEditorPreview demo={demo} wide={false} onStart={start} />}
+              <LiveEditorPreview demo={demo} wide onStart={start} disableSeekBar={iphoneMotion} />
+            </div> : <LiveEditorPreview demo={demo} wide={false} onStart={start} disableSeekBar={iphoneMotion} />}
             <div className="marketing-float marketing-float-a" aria-hidden="true"><TimelineRounded /> דיוק עד רמת הפריים</div>
             <div className="marketing-float marketing-float-b" aria-hidden="true"><span>כל</span> <b>מילה</b> <span>בזמן</span></div>
             <div className="marketing-float marketing-float-c" aria-hidden="true"><DownloadRounded /> SRT · VTT · MP4</div>
@@ -281,7 +281,7 @@ export function PromotionalHome({ authLoading, onSignIn, isAuthenticated, onStar
             </article>
             {wide && <article className="marketing-tile marketing-tile-phone">
               <div className="marketing-tile-copy"><span className="marketing-tile-icon"><PhoneIphoneRounded /></span><h3>עורכים גם מהטלפון</h3><p>עורך מלא שמותאם למגע: ניגון, תיקון, תזמון ועיצוב.</p></div>
-              <DecorativePhonePreview demo={gallery} onStart={start} />
+              <DecorativePhonePreview demo={gallery} onStart={start} disableSeekBar={iphoneMotion} />
             </article>}
             <article className="marketing-tile marketing-tile-rtl">
               <div className="marketing-tile-copy"><span className="marketing-tile-icon"><FormatTextdirectionRToLRounded /></span><h3>עברית, מימין לשמאל</h3><p>פיסוק במקום, מילים באנגלית נשארות שלמות, ואפשר לעבור ל־LTR בלחיצה.</p></div>
