@@ -2,9 +2,12 @@ import { test, expect, type Page } from '@playwright/test';
 import { prepareApp, portraitVideo } from './app-fixtures';
 
 async function openLongRecording(page: Page, mobile = false) {
+  // The standalone harness needs the same mocked auth context as the app fixtures.
+  await prepareApp(page);
   await page.setViewportSize(mobile ? { width: 390, height: 844 } : { width: 1366, height: 768 });
   await page.goto('/tests/editor-harness.html');
   await page.getByRole('button', { name: 'בדיקת ציר ארוך — 90 שניות', exact: true }).click();
+  if (mobile) await page.getByRole('navigation', { name: 'מצבי עריכה' }).getByRole('button', { name: 'צפייה', exact: true }).click();
   await expect.poll(() => page.locator('video').evaluate((video: HTMLVideoElement) => video.readyState)).toBeGreaterThan(0);
   const slider = page.getByRole('slider', { name: 'מיקום בהקלטה', exact: true });
   await slider.scrollIntoViewIfNeeded();
