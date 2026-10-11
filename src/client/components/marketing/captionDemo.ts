@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useState, type RefObject } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useState, useSyncExternalStore, type RefObject } from "react";
 import type { Segment } from "../../types";
 import { AUTO_CAPTION_FONT_SIZE, type CaptionFontSizeSetting } from "../../../captionStyle.js";
 import { useAutoCaptionFontSize } from "../../hooks/useAutoCaptionFontSize";
@@ -41,12 +41,55 @@ export function activeWordIndex(segment: Segment, time: number) {
   return Math.min(count - 1, Math.floor((time - segment.start) / ((segment.end - segment.start) / count)));
 }
 
+function createDemoClock() {
+  let time = 0.6;
+  const listeners = new Set<() => void>();
+  return {
+    getTime: () => time,
+    subscribe: (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; },
+    setTime: (value: number) => { if (value === time) return; time = value; listeners.forEach(listener => listener()); },
+  };
+}
+
+const subscribeWithoutPlayback = () => () => {};
+
+/** Only animated previews subscribe; the page itself keeps a stable demo object. */
+export function useCaptionDemoTime(demo: CaptionDemo, visible = true) {
+  return useSyncExternalStore(visible ? demo.clock.subscribe : subscribeWithoutPlayback, demo.clock.getTime, demo.clock.getTime);
+}
+
+/** Let native scrolling paint without competing with the demo's React updates. */
+export function usePageMotionActive() {
+  const [active, setActive] = useState(true);
+  useEffect(() => {
+    let scrolling = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const update = () => setActive(!scrolling && document.visibilityState === "visible");
+    const onScroll = () => {
+      scrolling = true;
+      update();
+      clearTimeout(timer);
+      timer = setTimeout(() => { scrolling = false; update(); }, 180);
+    };
+    update();
+    // Window only: the demo's automatically scrolling timeline must not pause itself.
+    window.addEventListener("scroll", onScroll, { passive: true });
+    document.addEventListener("visibilitychange", update);
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener("scroll", onScroll);
+      document.removeEventListener("visibilitychange", update);
+    };
+  }, []);
+  return active;
+}
+
 export function useCaptionDemo({ autoplay, visible }: { autoplay: boolean; visible: boolean }) {
   const [segments, setSegments] = useState<Segment[]>(DEMO_SEGMENTS);
   const [look, setLook] = useState<CaptionLook>(DEFAULT_LOOK);
   const [showCaptions, setShowCaptions] = useState(true);
   const [playing, setPlaying] = useState(autoplay);
-  const [time, setTime] = useState(0.6);
+  const [clock] = useState(createDemoClock);
   const duration = DEMO_DURATION;
 
   useEffect(() => {
@@ -54,23 +97,28 @@ export function useCaptionDemo({ autoplay, visible }: { autoplay: boolean; visib
     let frame = 0;
     let last = performance.now();
     const tick = (now: number) => {
-      const delta = Math.min(0.1, (now - last) / 1000);
-      last = now;
-      setTime(value => (value + delta) % duration);
+      if (document.visibilityState !== "visible") last = now;
+      else if (now - last >= 1000 / 24) {
+        const delta = Math.min(0.1, (now - last) / 1000);
+        last = now;
+        clock.setTime((clock.getTime() + delta) % duration);
+      }
       frame = requestAnimationFrame(tick);
     };
     frame = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(frame);
-  }, [playing, visible, duration]);
+  }, [playing, visible, duration, clock]);
+
+  useEffect(() => { if (!autoplay) setPlaying(false); }, [autoplay]);
 
   const autoFontSize = useAutoCaptionFontSize({ segments, videoDimensions: DEMO_VIDEO, marginPercent: look.marginPercent, offsetYPercent: look.offsetYPercent });
   const updateLook = useCallback((patch: Partial<CaptionLook>) => setLook(previous => ({ ...previous, ...patch })), []);
-  const seek = useCallback((value: number) => setTime(Math.max(0, Math.min(duration - 0.001, value))), [duration]);
+  const seek = useCallback((value: number) => clock.setTime(Math.max(0, Math.min(duration - 0.001, value))), [duration, clock]);
   const editText = useCallback((id: Segment["id"], text: string) => setSegments(list => list.map(segment => segment.id === id ? { ...segment, text } : segment)), []);
   const remove = useCallback(async (id: Segment["id"]) => setSegments(list => list.length > 1 ? list.filter(segment => segment.id !== id) : list), []);
 
-  return useMemo(() => ({ segments, look, setLook, updateLook, showCaptions, setShowCaptions, playing, setPlaying, time, seek, duration, autoFontSize, editText, remove }),
-    [segments, look, updateLook, showCaptions, playing, time, seek, duration, autoFontSize, editText, remove]);
+  return useMemo(() => ({ segments, look, setLook, updateLook, showCaptions, setShowCaptions, playing, setPlaying, clock, get time() { return clock.getTime(); }, seek, duration, autoFontSize, editText, remove }),
+    [segments, look, updateLook, showCaptions, playing, clock, seek, duration, autoFontSize, editText, remove]);
 }
 
 export type CaptionDemo = ReturnType<typeof useCaptionDemo>;

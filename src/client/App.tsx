@@ -1,6 +1,6 @@
 import { apiFetch } from "./api";
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Alert, Box, Button, CircularProgress, Container, CssBaseline, Stack, ThemeProvider, createTheme, useMediaQuery } from "@mui/material";
+import { Alert, Box, Button, CircularProgress, Container, CssBaseline, Stack, ThemeProvider, createTheme } from "@mui/material";
 import { AppHeader } from "./components/AppHeader";
 import { PromotionalHome } from "./components/PromotionalHome";
 import { TranscriptionPage } from "./components/TranscriptionPage";
@@ -69,7 +69,6 @@ function updateUrl(screen: AppScreen, videoToken?: string) {
 function App() {
   const { connectionNotice, impersonation, stopImpersonation } = useAuth();
   const workflow = useTranscriptionWorkflow();
-  const desktopHome = useMediaQuery(theme.breakpoints.up("md"));
   const narrowViewport = useNarrowViewport();
   const [initialRoute] = useState(getScreenFromUrl);
   const [currentScreen, setCurrentScreen] = useState<AppScreen>(initialRoute.screen);
@@ -307,13 +306,7 @@ function App() {
             </Alert>
           )}
 
-          {currentScreen === "home" && workflow.authLoading && !desktopHome && (
-            <Stack alignItems="center" py={8}>
-              <CircularProgress />
-            </Stack>
-          )}
-
-          {currentScreen === "home" && (desktopHome || !workflow.authLoading) && (
+          {currentScreen === "home" && (
             <PromotionalHome
               authLoading={workflow.authLoading}
               onSignIn={workflow.onSignIn}

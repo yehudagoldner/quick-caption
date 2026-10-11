@@ -11,7 +11,7 @@ const caption = (page: Page) => page.getByTestId('demo-caption');
 const activeWord = (page: Page) => caption(page).locator('[data-active-word]');
 
 for (const width of [320, 390, 900, 1366, 1920]) {
-  test(`marketing fits ${width}px and the live demo works without login`, async ({ page }) => {
+  test(`marketing fits ${width}px and the live demo works without login`, async ({ page, browserName }) => {
     test.setTimeout(60_000);
     await page.setViewportSize({ width, height: 900 });
     await guest(page);
@@ -19,7 +19,7 @@ for (const width of [320, 390, 900, 1366, 1920]) {
     await expect(page.getByRole('heading', { level: 1 })).toContainText('שעוצרות את הגלילה.');
     await expect.poll(() => liveDemo(page).getByTestId('demo-stage').locator('img').evaluate((img: HTMLImageElement) => img.naturalWidth)).toBeGreaterThan(0);
     await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBe(0);
-    if (width === 390 || width === 1366) {
+    if (browserName === 'chromium' && (width === 390 || width === 1366)) {
       await page.evaluate(() => document.fonts.ready);
       await page.screenshot({ path: `tmp/marketing-redesign/home-${width}.png`, fullPage: true });
       if (width === 1366) await page.screenshot({ path: 'tmp/marketing-redesign/hero-desktop.png' });
@@ -91,7 +91,12 @@ test('phone layout shows the start dock after the hero and swipes features with 
   await expect(dots.getByRole('button', { name: '1 מתוך 6' })).toHaveAttribute('aria-current', 'true');
   await dots.getByRole('button', { name: '3 מתוך 6' }).click();
   await expect(dots.getByRole('button', { name: '3 מתוך 6' })).toHaveAttribute('aria-current', 'true');
-  await expect(page.getByRole('heading', { name: 'עריכה עם AI' })).toBeInViewport({ ratio: 1 });
+  // Navigation changes the visible card without pulling the whole page upward.
+  await expect.poll(() => page.getByRole('heading', { name: 'עריכה עם AI' }).evaluate(el => {
+    const card = el.getBoundingClientRect();
+    const carousel = el.closest('.marketing-bento')!.getBoundingClientRect();
+    return card.left >= carousel.left && card.right <= carousel.right;
+  })).toBe(true);
 
   await page.getByRole('button', { name: 'לסרטון הבא שלכם' }).scrollIntoViewIfNeeded();
   await expect(dockStart).toBeHidden();
