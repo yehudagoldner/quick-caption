@@ -32,13 +32,20 @@ for (const width of [320, 390, 900, 1366, 1920]) {
     await page.getByRole('button', { name: 'צפו בדוגמה' }).click();
     await expect(liveDemo(page)).toBeInViewport();
     const first = await activeWord(page).innerText();
-    await expect.poll(() => activeWord(page).innerText(), { timeout: 10_000 }).not.toBe(first);
-    await liveDemo(page).getByTestId('demo-stage').click();
-    const paused = await activeWord(page).innerText();
-    await page.waitForTimeout(800);
-    await expect(activeWord(page)).toHaveText(paused);
+    const staticDemo = browserName === 'webkit'; // This project's WebKit uses an iPhone device.
+    if (staticDemo) {
+      await page.waitForTimeout(800);
+      await expect(activeWord(page)).toHaveText(first);
+      await expect(page.locator('.marketing-demo-content')).toHaveAttribute('inert', '');
+    } else {
+      await expect.poll(() => activeWord(page).innerText(), { timeout: 10_000 }).not.toBe(first);
+      await liveDemo(page).getByTestId('demo-stage').click();
+      const paused = await activeWord(page).innerText();
+      await page.waitForTimeout(800);
+      await expect(activeWord(page)).toHaveText(paused);
+    }
 
-    if (width >= 900) {
+    if (width >= 900 && !staticDemo) {
       const demo = liveDemo(page);
       await expect(demo.getByRole('button', { name: 'נגן', exact: true })).toBeVisible();
       await demo.getByRole('button', { name: 'מילה אקטיבית' }).click();
@@ -106,7 +113,7 @@ test('phone layout shows the start dock after the hero and swipes features with 
   expect(await page.evaluate(() => (window as any).signInCalls)).toBe(1);
 });
 
-test('demo does not autoplay with reduced motion', async ({ page }) => {
+test('demo does not autoplay with reduced motion', async ({ page, browserName }) => {
   await page.setViewportSize({ width: 1366, height: 768 });
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await guest(page);
@@ -115,8 +122,13 @@ test('demo does not autoplay with reduced motion', async ({ page }) => {
   const time = await page.getByTestId('demo-timecode').innerText();
   await page.waitForTimeout(700);
   await expect(page.getByTestId('demo-timecode')).toHaveText(time);
-  await liveDemo(page).getByRole('button', { name: 'פריים קדימה' }).click();
-  await expect(page.getByTestId('demo-timecode')).not.toHaveText(time);
+  if (browserName === 'webkit') {
+    await liveDemo(page).locator('[aria-label="פריים קדימה"]').dispatchEvent('click');
+    await expect(page.getByTestId('demo-timecode')).toHaveText(time);
+  } else {
+    await liveDemo(page).getByRole('button', { name: 'פריים קדימה' }).click();
+    await expect(page.getByTestId('demo-timecode')).not.toHaveText(time);
+  }
 });
 
 test('signed-in footer starts upload at the top and section links preserve browser history', async ({ page }) => {
@@ -134,12 +146,13 @@ test('signed-in footer starts upload at the top and section links preserve brows
   await expect.poll(() => page.evaluate(() => scrollY)).toBe(0);
 });
 
-test('desktop marketing and demo are available while authentication loads', async ({ page }) => {
+test('desktop marketing and demo are available while authentication loads', async ({ page, browserName }) => {
   await page.setViewportSize({ width: 1366, height: 768 });
   await guest(page, true);
   await page.goto('/');
   await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
   await expect(page.getByRole('button', { name: 'טוענים...', exact: true })).toBeDisabled();
   await page.getByRole('button', { name: 'צפו בדוגמה' }).click();
-  await expect(liveDemo(page).getByRole('button', { name: 'השהה', exact: true })).toBeVisible();
+  if (browserName === 'webkit') await expect(page.locator('.marketing-demo-content')).toHaveAttribute('inert', '');
+  else await expect(liveDemo(page).getByRole('button', { name: 'השהה', exact: true })).toBeVisible();
 });

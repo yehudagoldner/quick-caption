@@ -103,6 +103,9 @@ test('real authentication loading keeps the mobile page mounted and scrolled', a
   expect(Math.abs(await page.evaluate(() => scrollY) - before)).toBeLessThan(3);
 });
 
+test.describe('interactive mobile demo', () => {
+// iPhone is now static; exercise the retained Android playback in both engines.
+test.use({ userAgent: 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36' });
 test('demo playback updates captions without rendering the whole marketing page', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await guest(page);
@@ -178,6 +181,8 @@ test('repeated vertical scrolling suspends playback, preserves layout and resume
   await page.waitForTimeout(300);
   await expect(slider).toHaveAttribute('aria-valuenow', paused!);
   expect(errors).toEqual([]);
+});
+
 });
 
 test('touch layout avoids moving blur layers in portrait and landscape', async ({ page }) => {

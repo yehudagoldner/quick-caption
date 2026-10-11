@@ -106,12 +106,11 @@ function CarouselDots({ target, count, label, behavior }: { target: RefObject<HT
 
 export function PromotionalHome({ authLoading, onSignIn, isAuthenticated, onStart, onMyVideos }: PromotionalHomeProps) {
   const reducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)", { noSsr: true });
-  // Includes Safari and Chrome on iPhone. Keep the same layout, but require
-  // explicit playback so scrolling never starts a background demo clock.
+  // On iPhone the mockup is a static illustration, with the same artwork/layout.
   const [iphoneMotion] = useState(() => /iPhone|iPod/.test(navigator.userAgent));
   const autoplay = !reducedMotion && !iphoneMotion;
   const wide = useMediaQuery("(min-width: 760px)", { noSsr: true });
-  const motionActive = usePageMotionActive();
+  const motionActive = usePageMotionActive(!iphoneMotion);
   const demoRef = useRef<HTMLElement>(null);
   const stylesRef = useRef<HTMLElement>(null);
   const featuresRef = useRef<HTMLElement>(null);
@@ -120,10 +119,10 @@ export function PromotionalHome({ authLoading, onSignIn, isAuthenticated, onStar
   const looksRef = useRef<HTMLDivElement>(null);
   const bentoRef = useRef<HTMLDivElement>(null);
   const demoVisible = useInView(demoRef);
-  const demo = useCaptionDemo({ autoplay, visible: demoVisible && motionActive });
+  const demo = useCaptionDemo({ autoplay, visible: demoVisible && motionActive, staticPreview: iphoneMotion });
   const stylesVisible = useInView(stylesRef);
   const featuresVisible = useInView(featuresRef);
-  const gallery = useCaptionDemo({ autoplay, visible: (stylesVisible || (wide && featuresVisible)) && motionActive });
+  const gallery = useCaptionDemo({ autoplay, visible: (stylesVisible || (wide && featuresVisible)) && motionActive, staticPreview: iphoneMotion });
   const heroActionsVisible = useInView(actionsRef, 0, true);
   const finalVisible = useInView(finalRef);
   const dockVisible = isAuthenticated || (!heroActionsVisible && !finalVisible);
@@ -137,9 +136,9 @@ export function PromotionalHome({ authLoading, onSignIn, isAuthenticated, onStar
   };
   const revealDemo = () => {
     demoRef.current?.scrollIntoView({ behavior, block: "center" });
-    demoRef.current?.focus({ preventScroll: true });
+    if (!iphoneMotion) demoRef.current?.focus({ preventScroll: true });
   };
-  const showDemo = () => { demo.setPlaying(true); revealDemo(); };
+  const showDemo = () => { if (!iphoneMotion) demo.setPlaying(true); revealDemo(); };
   const applyLook = (look: CaptionLook) => {
     demo.setLook(look);
     if (!iphoneMotion) demo.setPlaying(true);
@@ -167,8 +166,9 @@ export function PromotionalHome({ authLoading, onSignIn, isAuthenticated, onStar
             </ul>
           </div>
 
-          <section id="caption-demo" ref={demoRef} tabIndex={-1} className="marketing-demo" aria-label="הדגמה חיה של עורך הכתוביות">
+          <section id="caption-demo" ref={demoRef} tabIndex={iphoneMotion ? undefined : -1} className="marketing-demo" aria-label="הדגמה חיה של עורך הכתוביות">
             <div className="marketing-demo-glow" aria-hidden="true" />
+            <div className="marketing-demo-content" {...(iphoneMotion ? { inert: "" } : {})}>
             {wide ? <div className="qc-window">
               <div className="qc-window-bar" aria-hidden="true">
                 <span className="qc-window-dots"><i /><i /><i /></span>
@@ -177,11 +177,14 @@ export function PromotionalHome({ authLoading, onSignIn, isAuthenticated, onStar
               </div>
               <LiveEditorPreview demo={demo} wide onStart={start} disableSeekBar={iphoneMotion} />
             </div> : <LiveEditorPreview demo={demo} wide={false} onStart={start} disableSeekBar={iphoneMotion} />}
+            </div>
             <div className="marketing-float marketing-float-a" aria-hidden="true"><TimelineRounded /> דיוק עד רמת הפריים</div>
             <div className="marketing-float marketing-float-b" aria-hidden="true"><span>כל</span> <b>מילה</b> <span>בזמן</span></div>
             <div className="marketing-float marketing-float-c" aria-hidden="true"><DownloadRounded /> SRT · VTT · MP4</div>
           </section>
-          <p className="marketing-demo-hint"><AutoAwesomeRounded /> {wide
+          <p className="marketing-demo-hint"><AutoAwesomeRounded /> {iphoneMotion
+            ? <>כך נראה עורך הכתוביות. העלו סרטון כדי לערוך את הכתוביות והעיצוב שלו.</>
+            : wide
             ? <>זה העורך עצמו. נסו <b>צבעים</b>, <b>מיקום</b>, <b>מילה אקטיבית</b>, או לחצו על כתובית בציר הזמן.</>
             : <>זה העורך בטלפון. הקישו על כתובית, או על <b>עיצוב</b> כדי להחליף סגנון.</>}</p>
         </div>
