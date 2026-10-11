@@ -3,7 +3,7 @@ import base from './playwright.config';
 
 export default defineConfig({
   ...base,
-  testMatch: /marketing-(?:home|mobile-stability)\.spec\.ts/,
+  testMatch: /marketing-(?:home|mobile-stability|iphone-motion)\.spec\.ts/,
   // Local frontend fixtures only; no application server or database is started.
   workers: 1,
   projects: [
