@@ -9,7 +9,7 @@ for (const [name, agent] of [
   test.describe(`iPhone ${name}`, () => {
     test.use({ userAgent: agent, hasTouch: true, viewport: { width: 384, height: 848 } });
 
-    test('keeps the signed-in home static until explicit playback, including after scroll and rotation', async ({ page }) => {
+    test('keeps the signed-in home static until explicit playback, including after scroll and rotation', async ({ page, context, browserName }) => {
       await prepareApp(page);
       await page.goto('/');
       const home = page.locator('.marketing');
@@ -23,6 +23,37 @@ for (const [name, agent] of [
         await page.locator('#caption-demo').scrollIntoViewIfNeeded();
         await page.waitForTimeout(650);
         await expect(slider).toHaveAttribute('aria-valuenow', initialTime!);
+        await expect(slider).toHaveAttribute('aria-disabled', 'true');
+        expect(await slider.getAttribute('tabindex')).toBeNull();
+        await slider.scrollIntoViewIfNeeded();
+        const box = (await slider.boundingBox())!;
+        const y = box.y + box.height / 2;
+        await page.touchscreen.tap(box.x + box.width * .7, y);
+        await page.mouse.move(box.x + box.width * .2, y);
+        await page.mouse.down();
+        await page.mouse.move(box.x + box.width * .8, y, { steps: 8 });
+        await page.mouse.up();
+        await expect(slider).not.toBeFocused();
+        // The keyboard handler must also ignore synthetic accessibility input.
+        await slider.dispatchEvent('keydown', { key: 'End' });
+        await expect(slider).toHaveAttribute('aria-valuenow', initialTime!);
+        if (browserName === 'chromium' && viewport.width === 384) {
+          await slider.evaluate(el => scrollTo({ top: el.getBoundingClientRect().top + scrollY - 440, behavior: 'instant' }));
+          await page.waitForTimeout(200);
+          const touchBox = (await slider.boundingBox())!;
+          const point = { x: touchBox.x + touchBox.width / 2, y: touchBox.y + touchBox.height / 2 };
+          const before = await page.evaluate(() => scrollY);
+          const cdp = await context.newCDPSession(page);
+          await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [point] });
+          for (let step = 1; step <= 10; step++) {
+            await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: point.x, y: point.y - step * 12 }] });
+            await page.waitForTimeout(20);
+          }
+          await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+          await expect.poll(async () => await page.evaluate(() => scrollY) - before).toBeGreaterThan(60);
+          await expect(slider).toHaveAttribute('aria-valuenow', initialTime!);
+          await cdp.detach();
+        }
         expect(await home.evaluate(el => el.getAnimations({ subtree: true }).filter(a => a.playState === 'running').length)).toBe(0);
         await expect(page.locator('.marketing-primary').first()).toHaveCSS('transition-duration', '0s');
         await page.locator('#styles').scrollIntoViewIfNeeded();

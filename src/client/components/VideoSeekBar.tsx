@@ -11,11 +11,12 @@ type Props = {
   onSeek: (time: number) => void;
   compact?: boolean;
   allowPageScroll?: boolean;
+  disabled?: boolean;
 };
 
 // Keep the thumb under the pointer while decoding catches up. Preview seeks are
 // limited to 10 per second; release always applies the exact final position.
-export function VideoSeekBar({ currentTime, duration, fps, mediaUrl, onSeek, compact, allowPageScroll = false }: Props) {
+export function VideoSeekBar({ currentTime, duration, fps, mediaUrl, onSeek, compact, allowPageScroll = false, disabled = false }: Props) {
   const player = useVideoPlayer();
   const [preview, setPreview] = useState<number | null>(null);
   const drag = useRef<{ id: number; time: number; player: HTMLVideoElement | null; resume: boolean } | null>(null);
@@ -32,7 +33,7 @@ export function VideoSeekBar({ currentTime, duration, fps, mediaUrl, onSeek, com
     setPreview(null);
     lastSeek.current = -Infinity;
     return () => { cancelPending(); drag.current = null; };
-  }, [mediaUrl, player]);
+  }, [mediaUrl, player, disabled]);
   const bounded = (time: number) => Math.max(0, Math.min(latest.current.duration, time));
   const timeAt = (event: PointerEvent<HTMLDivElement>) => {
     const rect = event.currentTarget.getBoundingClientRect();
@@ -79,11 +80,11 @@ export function VideoSeekBar({ currentTime, duration, fps, mediaUrl, onSeek, com
   const time = Math.max(0, Math.min(duration, preview ?? currentTime));
   const percent = duration > 0 ? time / duration * 100 : 0;
   return <Box
-    dir="ltr" role="slider" tabIndex={0} aria-label="מיקום בהקלטה"
+    dir="ltr" role="slider" tabIndex={disabled ? undefined : 0} aria-disabled={disabled || undefined} aria-label="מיקום בהקלטה"
     aria-valuemin={0} aria-valuemax={duration} aria-valuenow={time}
     aria-valuetext={formatTimecode(time, fps)}
     onPointerDown={event => {
-      if (event.button !== 0 || !event.isPrimary || drag.current) return;
+      if (disabled || event.button !== 0 || !event.isPrimary || drag.current) return;
       event.preventDefault();
       event.currentTarget.focus({ preventScroll: true });
       const resume = !!player && !player.paused && !player.ended;
@@ -100,7 +101,7 @@ export function VideoSeekBar({ currentTime, duration, fps, mediaUrl, onSeek, com
     onPointerUp={finish} onPointerCancel={finish} onLostPointerCapture={finish}
     onBlur={() => finish()}
     onKeyDown={event => {
-      if (drag.current || event.ctrlKey || event.metaKey || event.altKey) return;
+      if (disabled || drag.current || event.ctrlKey || event.metaKey || event.altKey) return;
       const frame = (event.shiftKey ? 10 : 1) / fps;
       const next = event.key === "Home" ? 0 : event.key === "End" ? duration
         : event.key === "ArrowLeft" || event.key === "ArrowDown" ? time - frame
@@ -111,7 +112,7 @@ export function VideoSeekBar({ currentTime, duration, fps, mediaUrl, onSeek, com
       latest.current.onSeek(bounded(next));
     }}
     sx={{ width: "100%", height: compact ? 28 : 40, position: "relative", display: "flex", alignItems: "center",
-      flexShrink: 0, cursor: "pointer", touchAction: allowPageScroll ? "pan-y" : "none", userSelect: "none", outline: "none",
+      flexShrink: 0, cursor: disabled ? "default" : "pointer", touchAction: disabled || allowPageScroll ? "pan-y" : "none", userSelect: "none", outline: "none",
       "&:focus-visible": { outline: "2px solid", outlineColor: "primary.main", outlineOffset: 2, borderRadius: 1 } }}
   >
     <Box sx={{ position: "relative", width: "100%", height: compact ? 6 : 4, bgcolor: compact ? "#e8edf3" : "primary.main", opacity: 1, borderRadius: 999 }}>
