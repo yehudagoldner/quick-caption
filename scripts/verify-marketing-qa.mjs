@@ -36,7 +36,11 @@ for (const [name, engine] of [['chromium', chromium], ['webkit', webkit]]) {
     await page.waitForFunction(() => !document.querySelector('.marketing').classList.contains('is-motion-paused'));
     const slider = page.locator('#caption-demo [role="slider"]');
     const initialTime = await slider.getAttribute('aria-valuenow');
-    await page.waitForFunction(initial => document.querySelector('#caption-demo [role="slider"]').getAttribute('aria-valuenow') !== initial, initialTime);
+    assert(await page.locator('.marketing-demo-content').evaluate(el => el.inert));
+    const stage = await page.getByTestId('demo-stage').boundingBox();
+    await page.touchscreen.tap(stage.x + stage.width / 2, stage.y + stage.height / 2);
+    await page.waitForTimeout(650);
+    assert.equal(await slider.getAttribute('aria-valuenow'), initialTime);
     const samples = await page.evaluate(async () => {
       const main = document.querySelector('.marketing');
       const slider = document.querySelector('#caption-demo [role="slider"]');
@@ -52,7 +56,8 @@ for (const [name, engine] of [['chromium', chromium], ['webkit', webkit]]) {
     });
     assert(samples.every(s => s.mounted && Math.abs(s.expected - s.y) < 2));
     assert.equal(new Set(samples.slice(2).map(s => s.time)).size, 1);
-    await page.waitForFunction(previous => document.querySelector('#caption-demo [role="slider"]').getAttribute('aria-valuenow') !== previous, samples.at(-1).time);
+    await page.waitForTimeout(650);
+    assert.equal(await slider.getAttribute('aria-valuenow'), initialTime);
     for (const selector of ['#styles', '#features', '#marketing-faq', '#marketing-title']) {
       await page.locator(selector).scrollIntoViewIfNeeded();
       await page.waitForTimeout(250);

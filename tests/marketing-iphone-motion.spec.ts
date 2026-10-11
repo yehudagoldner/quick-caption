@@ -9,12 +9,13 @@ for (const [name, agent] of [
   test.describe(`iPhone ${name}`, () => {
     test.use({ userAgent: agent, hasTouch: true, viewport: { width: 384, height: 848 } });
 
-    test('keeps the signed-in home static until explicit playback, including after scroll and rotation', async ({ page, context, browserName }) => {
+    test('keeps the signed-in demo static through touches, caption clicks, scroll and rotation', async ({ page, context, browserName }) => {
       await prepareApp(page);
       await page.goto('/');
       const home = page.locator('.marketing');
       const slider = page.locator('#caption-demo [role="slider"]');
       await expect(home).toHaveClass(/is-static-motion/);
+      await expect(page.locator('.marketing-demo-content')).toHaveAttribute('inert', '');
       await page.evaluate(() => document.fonts.ready);
       const initialTime = await slider.getAttribute('aria-valuenow');
 
@@ -86,13 +87,17 @@ for (const [name, agent] of [
       await expect(slider).toHaveAttribute('aria-valuenow', initialTime!);
       await expect(page.getByTestId('demo-caption')).toHaveCSS('color', 'rgb(255, 225, 77)');
       await page.getByRole('button', { name: 'צפו בדוגמה' }).click();
-      await expect.poll(() => slider.getAttribute('aria-valuenow')).not.toBe(initialTime);
-      await page.getByTestId('demo-stage').click();
-      const paused = await slider.getAttribute('aria-valuenow');
+      const stage = (await page.getByTestId('demo-stage').boundingBox())!;
+      const beforeTap = await page.evaluate(() => scrollY);
+      await page.touchscreen.tap(stage.x + stage.width / 2, stage.y + stage.height / 2);
+      expect(await page.evaluate(() => scrollY)).toBe(beforeTap);
+      await expect(page.locator('#caption-demo')).not.toBeFocused();
+      // Even a programmatic click bypassing inert cannot seek through a caption card.
+      await page.locator('#caption-demo .qc-phone [aria-label^="כתובית:"]').nth(2).dispatchEvent('click');
       await page.locator('#styles').scrollIntoViewIfNeeded();
       await page.locator('#caption-demo').scrollIntoViewIfNeeded();
-      await page.waitForTimeout(600);
-      await expect(slider).toHaveAttribute('aria-valuenow', paused!);
+      await page.waitForTimeout(1200);
+      await expect(slider).toHaveAttribute('aria-valuenow', initialTime!);
     });
   });
 }

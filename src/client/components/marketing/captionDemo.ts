@@ -59,9 +59,10 @@ export function useCaptionDemoTime(demo: CaptionDemo, visible = true) {
 }
 
 /** Let native scrolling paint without competing with the demo's React updates. */
-export function usePageMotionActive() {
+export function usePageMotionActive(enabled = true) {
   const [active, setActive] = useState(true);
   useEffect(() => {
+    if (!enabled) return;
     let scrolling = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const update = () => setActive(!scrolling && document.visibilityState === "visible");
@@ -80,11 +81,11 @@ export function usePageMotionActive() {
       window.removeEventListener("scroll", onScroll);
       document.removeEventListener("visibilitychange", update);
     };
-  }, []);
+  }, [enabled]);
   return active;
 }
 
-export function useCaptionDemo({ autoplay, visible }: { autoplay: boolean; visible: boolean }) {
+export function useCaptionDemo({ autoplay, visible, staticPreview = false }: { autoplay: boolean; visible: boolean; staticPreview?: boolean }) {
   const [segments, setSegments] = useState<Segment[]>(DEMO_SEGMENTS);
   const [look, setLook] = useState<CaptionLook>(DEFAULT_LOOK);
   const [showCaptions, setShowCaptions] = useState(true);
@@ -93,7 +94,7 @@ export function useCaptionDemo({ autoplay, visible }: { autoplay: boolean; visib
   const duration = DEMO_DURATION;
 
   useEffect(() => {
-    if (!playing || !visible) return;
+    if (staticPreview || !playing || !visible) return;
     let frame = 0;
     let last = performance.now();
     const tick = (now: number) => {
@@ -107,13 +108,16 @@ export function useCaptionDemo({ autoplay, visible }: { autoplay: boolean; visib
     };
     frame = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(frame);
-  }, [playing, visible, duration, clock]);
+  }, [playing, visible, duration, clock, staticPreview]);
 
   useEffect(() => { if (!autoplay) setPlaying(false); }, [autoplay]);
 
   const autoFontSize = useAutoCaptionFontSize({ segments, videoDimensions: DEMO_VIDEO, marginPercent: look.marginPercent, offsetYPercent: look.offsetYPercent });
   const updateLook = useCallback((patch: Partial<CaptionLook>) => setLook(previous => ({ ...previous, ...patch })), []);
-  const seek = useCallback((value: number) => clock.setTime(Math.max(0, Math.min(duration - 0.001, value))), [duration, clock]);
+  // Guard the clock too: caption cards and timeline controls can also seek.
+  const seek = useCallback((value: number) => {
+    if (!staticPreview) clock.setTime(Math.max(0, Math.min(duration - 0.001, value)));
+  }, [duration, clock, staticPreview]);
   const editText = useCallback((id: Segment["id"], text: string) => setSegments(list => list.map(segment => segment.id === id ? { ...segment, text } : segment)), []);
   const remove = useCallback(async (id: Segment["id"]) => setSegments(list => list.length > 1 ? list.filter(segment => segment.id !== id) : list), []);
 
