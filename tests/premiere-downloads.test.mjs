@@ -30,6 +30,18 @@ test('QA visitors can download the exact installer bytes without an account; HEA
   assert.equal((await fetch(base + PREMIERE_DOWNLOADS[0], { method: 'HEAD' })).status, 200);
 });
 
+test('the Windows link downloads executable bytes with its filename, including a resumed download', async t => {
+  const {directory,base}=await fixture(t);
+  const filename=PREMIERE_DOWNLOADS.find(name=>name.endsWith('-Windows.exe'));
+  const payload=Buffer.concat([Buffer.from('MZ'),Buffer.alloc(256,0xff)]);
+  await writeFile(path.join(directory,filename),payload);
+  const full=await fetch(base+filename);
+  assert.equal(full.status,200);assert.match(full.headers.get('content-disposition'),new RegExp(filename.replaceAll('.','\\.')));
+  assert.deepEqual(Buffer.from(await full.arrayBuffer()),payload);
+  const resumed=await fetch(base+filename,{headers:{Range:'bytes=128-'}});
+  assert.equal(resumed.status,206);assert.deepEqual(Buffer.from(await resumed.arrayBuffer()),payload.subarray(128));
+});
+
 test('unpublished packages return a visible error, private and unknown files stay inaccessible', async t => {
   const { directory, base } = await fixture(t);
   await writeFile(path.join(directory, '.env'), 'private');

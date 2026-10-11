@@ -4,6 +4,22 @@ The QA download and installation page is https://quick-caption.com/qa/premiere.h
 The QA badge in the application links to it. The page is public so a tester can
 download before connecting a Quick Caption account.
 
+The page immediately selects the Windows EXE or Mac ZIP using the browser's
+platform hints, with legacy user-agent fallback for Safari/Firefox. iPad desktop
+mode is treated as a mobile device, not a Mac. Mobile, Linux and unknown browsers
+see both choices and can pick the editing computer manually. The switch updates
+the requirements, installation instructions and support guidance as well as the
+download. Detection stays in the browser; it does not identify an account or send
+device information to the server. Without JavaScript both native links remain
+available. Links use the ordinary same-origin browser download gesture and show
+visible feedback after a click. Windows also offers a ZIP fallback containing the
+same EXE, so visitors can try a standard archive if the EXE download never starts.
+
+Windows downloads were checked with a complete public GET, SHA-256 comparison,
+and an actual headless Chromium click (106,496-byte EXE, no download failure).
+The beta EXE is still unsigned with Windows Authenticode. A browser/Windows
+publisher block is separate from a missing server file; do not bypass it in code.
+
 1.0.2 uses the manifest-authorized `http://localhost:37289` in the UXP client;
 Premiere rejected `127.0.0.1` even when that literal was listed in the manifest.
 The companion still binds to IPv4 and requires its private installation token.
@@ -19,7 +35,7 @@ node scripts/build-premiere-mac-installer.mjs
 
 The package version lives in `src/premiereRelease.js`. Keep both installer
 version checks and page filenames in sync; `tests/premiere-downloads.test.mjs`
-checks those boundaries. Only the Mac ZIP, Windows EXE and SHA256SUMS are
+checks those boundaries. Only the Mac ZIP, Windows EXE, Windows ZIP and SHA256SUMS are
 publicly downloadable. Neither signing material nor private pairing keys are
 published. Never serve the package build directory as a general static root.
 
