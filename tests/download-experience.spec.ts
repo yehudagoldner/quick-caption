@@ -317,7 +317,9 @@ async function mockAppleSharing(page: Page, { ipad = false, supported = true, fa
 
 async function preparePhotos(page: Page) {
   await page.getByRole('navigation', { name: 'מצבי עריכה' }).getByRole('button', { name: 'שמירה', exact: true }).click();
-  await page.getByRole('dialog', { name: 'שמירה והורדה' }).getByRole('button', { name: 'שמירה לתמונות', exact: true }).click();
+  const download = page.getByRole('dialog', { name: 'שמירה והורדה' });
+  await expect(download.getByRole('button', { name: 'שמירה לתמונות', exact: true })).toHaveCount(0);
+  await download.getByRole('button', { name: 'וידאו מלא עם כתוביות', exact: true }).click();
   return page.getByRole('dialog', { name: 'הסרטון מוכן לשיתוף' });
 }
 

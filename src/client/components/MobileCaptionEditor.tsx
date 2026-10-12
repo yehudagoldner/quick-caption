@@ -782,15 +782,14 @@ export function MobileCaptionEditor({
         <DialogContent>
           <Typography color="text.secondary" sx={{ mb: 2 }}>מה תרצו להוריד?</Typography>
           <Stack spacing={1.5}>
-            {videoSharing.isAppleMobile && <Button variant="contained" startIcon={<ShareRounded />} disabled={!canShareVideo}
-              onClick={() => { setDownloadOpen(false); void shareVideo(); }} sx={{ minHeight: 48, gap: 1, "& .MuiButton-startIcon": { m: 0 } }}>שמירה לתמונות</Button>}
             <Button variant="outlined" startIcon={<SubtitlesRounded />} disabled={!downloadUrl || hasTimelineDrafts || saveState === "saving"}
               onClick={() => void downloadSrt()} sx={{ minHeight: 48, gap: 1, "& .MuiButton-startIcon": { m: 0 } }}>קובץ כתוביות SRT</Button>
             <Button variant="contained" startIcon={isBurning ? <CircularProgress size={20} color="inherit" /> : <MovieFilterRounded />}
-              disabled={isBurning || !mediaUrl || !canBurn || !fontReady || hasTimelineDrafts || saveState === "saving"}
+              disabled={!canShareVideo}
               onClick={() => {
                 setDownloadOpen(false);
-                if (burnedVideo) void downloads.downloadVideo(burnedVideo);
+                if (videoSharing.isAppleMobile) void shareVideo();
+                else if (burnedVideo) void downloads.downloadVideo(burnedVideo);
                 else void onBurnVideo();
               }} sx={{ minHeight: 48, gap: 1, "& .MuiButton-startIcon": { m: 0 } }}>וידאו מלא עם כתוביות</Button>
           </Stack>
