@@ -6,7 +6,6 @@ type Platform = 'windows' | 'mac' | null;
 const isQa = import.meta.env.VITE_APP_ENV === 'qa';
 const pluginName = isQa ? 'Quick Caption QA' : 'Quick Caption';
 const accountName = isQa ? 'חשבון QA' : 'חשבון Quick Caption שלכם';
-const serviceName = isQa ? 'שרת QA של Quick Caption' : 'שרת Quick Caption';
 const asset = (name: string) => import.meta.env.BASE_URL + name;
 
 export function PremiereDownloadPage({ onHome }: { onHome: () => void }) {
@@ -100,7 +99,6 @@ export function PremiereDownloadPage({ onHome }: { onHome: () => void }) {
         <li><div><h3>פותחים את התוסף ומתחברים</h3><p>פתחו מחדש את Premiere ובחרו <bdi>Window → UXP Plugins → {pluginName}</bdi>. התחברו ל־Quick Caption ואשרו את החיבור ב{accountName}.</p></div></li>
       </ol>
       <details data-platform-panel="mac" hidden={platform !== null && platform !== 'mac'}><summary>macOS חוסם את פתיחת המתקין?</summary><p>אם ההודעה היא שהמפתח אינו מזוהה, נסו לפתוח פעם אחת ואז עברו ל־<bdi>System Settings → Privacy &amp; Security → Open Anyway</bdi> עבור המתקין הזה. אין צורך לכבות את Gatekeeper או להריץ פקודות להסרת quarantine.</p><p>אם ההודעה אומרת שהאפליקציה פגומה או מזיקה, עצרו והעבירו לנו את נוסח ההודעה. במחשב של ארגון ייתכן שנדרש אישור מנהל המערכת.</p></details>
-      <details className="connection-help"><summary>למה התוסף מתחבר גם ל־localhost?</summary><p>החשבון, הקרדיטים והתמלול מתקשרים עם {serviceName} באינטרנט. כדי להציב את הכתוביות בטיימליין, התוסף מתקשר גם עם רכיב שמותקן במחשב שלכם יחד עם התוסף.</p><p><bdi>localhost</bdi> הוא המחשב שבו Premiere פועל — במאק, זה המאק שלכם. אין צורך בגישה למחשב של אדם אחר או בהתקנת שרת נפרד.</p></details>
     </section>
     <section className="bottom-grid">
       <article className="info-card"><p className="eyebrow">הבדיקה הראשונה</p><h2>מתחילים מקטע קצר</h2><p>סמנו קטע עם דיבור והתחילו עם כתוביות רגילות. ודאו שהכתוביות מופיעות במקום הנכון, ואז נסו שני קטעים והדגשת מילה פעילה.</p><p>להדגשת המילה הפעילה נדרשת תבנית Adobe המקורית <bdi>Classic Web Caption</bdi>. אם היא חסרה, הוסיפו אותה דרך ממשק תבניות הגרפיקה של Adobe. אפשר להתחיל עם כתוביות רגילות גם בלעדיה.</p></article>
