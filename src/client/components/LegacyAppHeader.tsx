@@ -80,6 +80,33 @@ export function LegacyAppHeader({
               </Button>
             </Box>
           )}
+          <Tooltip title="הורדת התוסף ל־Premiere Pro (נפתח בלשונית חדשה)">
+            <Button
+              href="https://quick-caption.com/qa/premiere.html"
+              target="_blank"
+              rel="noopener noreferrer"
+              variant="outlined"
+              size="small"
+              startIcon={
+                <Box component="span" aria-hidden="true" dir="ltr" sx={{
+                  display: "grid", placeItems: "center", width: 26, height: 26,
+                  borderRadius: "6px", bgcolor: "#00005b", color: "#9999ff",
+                  fontFamily: '"Segoe UI", sans-serif', fontSize: "17px !important",
+                  fontWeight: 600, letterSpacing: "-0.5px", lineHeight: 1,
+                }}>Pr</Box>
+              }
+              sx={{
+                display: { xs: "none", md: "inline-flex" }, flexShrink: 0,
+                gap: 0.5, px: 1.5, py: 0.5, borderRadius: 2,
+                color: "#5142b5", borderColor: "#d8d1f5", bgcolor: "#f6f3ff",
+                whiteSpace: "nowrap",
+                "&:hover": { bgcolor: "#ece6ff", borderColor: "#a89ae1" },
+                "&.Mui-focusVisible": { outline: "2px solid #5142b5", outlineOffset: 2 },
+              }}
+            >
+              תוסף לפרימייר
+            </Button>
+          </Tooltip>
         </Box>
         {user ? (
           <>
