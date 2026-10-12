@@ -2,7 +2,7 @@
 
 This build targets **Windows 10/11 x64, Premiere Pro 25.6 or newer**, with an
 updated Adobe Creative Cloud Desktop installation. It connects to the existing
-QA service, not production. It is a beta for installation testing, not a
+QA service. It is a beta for installation testing, not a
 Marketplace-approved release or a claim that every Premiere version works.
 
 ## Files and installation
