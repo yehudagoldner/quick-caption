@@ -2,8 +2,12 @@ import { spawn } from 'node:child_process';
 
 export function buildBurnArguments(input, filter, output) {
   return ['-hide_banner', '-loglevel', 'error', '-nostdin', '-y',
-    '-progress', 'pipe:1', '-nostats', '-i', input, '-vf', filter,
-    '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23', '-c:a', 'copy', output];
+    '-progress', 'pipe:1', '-nostats', '-i', input,
+    // Photos needs a compatible video/audio combination, not just an .mp4
+    // extension. Padding retains the full frame for odd-sized source videos.
+    '-vf', `${filter},pad=ceil(iw/2)*2:ceil(ih/2)*2`,
+    '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23', '-pix_fmt', 'yuv420p',
+    '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart', output];
 }
 
 export function probeBurnDuration(input, { signal } = {}) {

@@ -458,6 +458,8 @@ export function MobileCaptionEditor({
       pb: "env(safe-area-inset-bottom, 0px)",
     }}>
       {burnError && <Alert severity="error" sx={{ flexShrink: 0, mx: 1.5, mt: 1 }}>{burnError}</Alert>}
+      {videoSharing.shareError && !videoSharing.readyToShare && <Alert severity="error" sx={{ flexShrink: 0, mx: 1.5, mt: 1 }}>{videoSharing.shareError}</Alert>}
+      {sharing && !isBurning && !videoSharing.readyToShare && <Typography role="status" sx={{ px: 2, py: 1 }}>מכין סרטון לשיתוף...</Typography>}
       {isBurning && <Stack direction="row" spacing={1} alignItems="center" sx={{ flexShrink: 0, px: 2, py: 1 }}><CircularProgress size={18} /><Typography variant="caption">יוצר וידאו...</Typography></Stack>}
 
       <Box sx={{
@@ -780,6 +782,8 @@ export function MobileCaptionEditor({
         <DialogContent>
           <Typography color="text.secondary" sx={{ mb: 2 }}>מה תרצו להוריד?</Typography>
           <Stack spacing={1.5}>
+            {videoSharing.isAppleMobile && <Button variant="contained" startIcon={<ShareRounded />} disabled={!canShareVideo}
+              onClick={() => { setDownloadOpen(false); void shareVideo(); }} sx={{ minHeight: 48, gap: 1, "& .MuiButton-startIcon": { m: 0 } }}>שמירה לתמונות</Button>}
             <Button variant="outlined" startIcon={<SubtitlesRounded />} disabled={!downloadUrl || hasTimelineDrafts || saveState === "saving"}
               onClick={() => void downloadSrt()} sx={{ minHeight: 48, gap: 1, "& .MuiButton-startIcon": { m: 0 } }}>קובץ כתוביות SRT</Button>
             <Button variant="contained" startIcon={isBurning ? <CircularProgress size={20} color="inherit" /> : <MovieFilterRounded />}
@@ -796,7 +800,9 @@ export function MobileCaptionEditor({
         <DialogActions><Button onClick={() => setDownloadOpen(false)}>סגור</Button></DialogActions>
       </Dialog>
 
-      <VideoShareDialog open={Boolean(videoSharing.readyToShare)} onClose={videoSharing.closeShare} onShare={videoSharing.shareReadyVideo} />
+      <VideoShareDialog open={Boolean(videoSharing.readyToShare)} onClose={videoSharing.closeShare} onShare={videoSharing.shareReadyVideo}
+        onDownload={videoSharing.downloadReadyVideo} canShare={Boolean(videoSharing.readyToShare?.file)}
+        isAppleMobile={videoSharing.isAppleMobile} busy={sharing} error={videoSharing.shareError} />
 
       <Dialog open={settingsOpen} onClose={() => setSettingsOpen(false)} fullWidth>
         <DialogTitle>הגדרות כתוביות</DialogTitle>

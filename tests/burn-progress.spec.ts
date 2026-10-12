@@ -1,23 +1,19 @@
 import { test, expect } from '@playwright/test';
 import { mkdirSync } from 'node:fs';
-import { prepareApp, portraitVideo, testUid } from './app-fixtures';
+import { prepareApp, portraitVideo } from './app-fixtures';
 
 mkdirSync('tmp/burn-progress', { recursive: true });
 for (const mobile of [false, true]) {
   test(`${mobile ? 'mobile' : 'desktop'} burn popup shows actual progress, prevents closing and disappears after success or failure`, async ({ page }) => {
     await page.setViewportSize(mobile ? { width: 390, height: 844 } : { width: 1366, height: 900 });
     await prepareApp(page);
-    await page.route('**/src/client/api.ts*', async route => {
-      const response = await route.fetch();
-      await route.fulfill({ response, body: await response.text() + `\nsetApiUser({ uid: '${testUid}', getIdToken: async () => 'burn-fixture-token' });` });
-    });
     let release = () => {}, fail = false, jobId = '', progress = { stage: 'preparing', percent: null as number | null };
     const posts: string[] = [];
     let fileDownloads = 0;
     await page.route('**/api/videos/42/file?**', route => { fileDownloads++; return route.fulfill({ body: portraitVideo }); });
     await page.route('**/api/burn-subtitles/progress/*', route => {
       expect(route.request().url().split('/').pop()).toBe(jobId);
-      expect(route.request().headers().authorization).toBe('Bearer burn-fixture-token');
+      expect(route.request().headers().authorization).toBe('Bearer fixture-id-token');
       return route.fulfill({ json: progress });
     });
     await page.route('**/api/burn-subtitles', async route => {

@@ -48,7 +48,7 @@ test('mobile bottom save button offers SRT and video and exports SRT regardless 
   const dialog = page.getByRole('dialog', { name: 'שמירה והורדה' });
   await expect(dialog).toBeVisible();
   await expect(dialog.getByRole('button', { name: 'וידאו מלא עם כתוביות', exact: true })).toBeEnabled();
-  await expect(page.locator('.MuiDialog-container')).toHaveCSS('opacity', '1');
+  await expect(page.locator('.MuiDialog-container').filter({ has: dialog })).toHaveCSS('opacity', '1');
   await page.screenshot({ path: 'tmp/review/mobile-save-dialog.png' });
   const file = page.waitForEvent('download');
   await dialog.getByRole('button', { name: 'קובץ כתוביות SRT', exact: true }).click();
@@ -95,7 +95,7 @@ test('rating hover and clicks agree with every visible star', async ({ page }) =
   await download;
   const dialog = page.getByRole('dialog', { name: 'איך הייתה החוויה?' });
   await expect(dialog).toBeVisible();
-  await expect(page.locator('.MuiDialog-container')).toHaveCSS('opacity', '1');
+  await expect(page.locator('.MuiDialog-container').filter({ has: dialog })).toHaveCSS('opacity', '1');
   const rating = dialog.locator('.MuiRating-root');
   for (const value of [1, 5, 2, 4, 3]) {
     const name = `${value} ${value === 1 ? 'כוכב' : 'כוכבים'}`;
@@ -127,7 +127,7 @@ test.describe('touch rating', () => {
     await download;
     const dialog = page.getByRole('dialog', { name: 'איך הייתה החוויה?' });
     await expect(dialog).toBeVisible();
-    await expect(page.locator('.MuiDialog-container')).toHaveCSS('opacity', '1');
+    await expect(page.locator('.MuiDialog-container').filter({ has: dialog })).toHaveCSS('opacity', '1');
     for (const value of [1, 2, 3, 4, 5]) {
       const radio = dialog.getByRole('radio', { name: `${value} ${value === 1 ? 'כוכב' : 'כוכבים'}`, exact: true });
       const id = await radio.getAttribute('id');
@@ -178,7 +178,7 @@ for (const mobile of [false, true]) {
     await expect(dialog.getByRole('button', { name: 'שליחת דירוג' })).toBeEnabled();
     await dialog.getByRole('textbox', { name: 'פידבק על החוויה (לא חובה)' }).fill('חוויה מצוינת\nתודה!');
     if (mobile) {
-      await expect(page.locator('.MuiDialog-container')).toHaveCSS('opacity', '1');
+      await expect(page.locator('.MuiDialog-container').filter({ has: dialog })).toHaveCSS('opacity', '1');
       await page.screenshot({ path: 'tmp/review/download-feedback-mobile.png' });
     }
     await dialog.getByRole('button', { name: 'שליחת דירוג' }).click();
@@ -222,7 +222,7 @@ test('failed video creation produces no download event or feedback request', asy
   await page.route('**/api/burn-subtitles', route => route.fulfill({ status: 500, json: { error: 'burn failed' } }));
   await page.goto('/?screen=edit&video=review-token');
   await selectDownload(page, false, 'הורד סרטון עם כתוביות', 'video');
-  await expect(page.getByText('שגיאה בשריפת הכתוביות', { exact: true })).toBeVisible();
+  await expect(page.getByRole('alert')).toHaveText('burn failed');
   expect(state.downloads).toHaveLength(0);
   await expect(page.getByRole('dialog', { name: 'איך הייתה החוויה?' })).toHaveCount(0);
 });
@@ -259,7 +259,7 @@ test('sharing only records a download and asks for feedback when using the downl
   const ready = page.getByRole('dialog', { name: 'הסרטון מוכן לשיתוף' });
   await expect(ready).toBeVisible(); expect(state.downloads).toHaveLength(0);
   const file = page.waitForEvent('download');
-  await ready.getByRole('button', { name: 'שתף', exact: true }).click(); await file;
+  await ready.getByRole('button', { name: 'הורדה לקבצים', exact: true }).click(); await file;
   await expect(ready).toHaveCount(0);
   expect(state.downloads).toHaveLength(1);
   await expect(page.getByRole('dialog', { name: 'איך הייתה החוויה?' })).toBeVisible();
@@ -275,7 +275,126 @@ test('native sharing does not count as a file download', async ({ page }) => {
   await page.goto('/?screen=edit&video=review-token');
   const share = page.getByTestId('app-header').getByRole('button', { name: 'שיתוף סרטון עם כתוביות' });
   await expect(share).toBeEnabled(); await share.click();
+  const ready = page.getByRole('dialog', { name: 'הסרטון מוכן לשיתוף' });
+  await expect(ready).toBeVisible();
+  expect(await page.evaluate(() => (window as any).shares ?? 0)).toBe(0);
+  await ready.getByRole('button', { name: 'שתף', exact: true }).click();
   await expect.poll(() => page.evaluate(() => (window as any).shares)).toBe(1);
   expect(state.downloads).toHaveLength(0);
   await expect(page.getByRole('dialog', { name: 'איך הייתה החוויה?' })).toHaveCount(0);
+});
+
+async function mockAppleSharing(page: Page, { ipad = false, supported = true, failures = [] as string[] } = {}) {
+  await page.addInitScript(({ ipad, supported, failures }) => {
+    Object.defineProperty(navigator, 'userAgent', { value: ipad ? 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15) Safari/605.1.15' : 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) Safari/604.1' });
+    Object.defineProperty(navigator, 'platform', { value: ipad ? 'MacIntel' : 'iPhone' });
+    Object.defineProperty(navigator, 'maxTouchPoints', { value: 5 });
+    let inClick = false;
+    document.addEventListener('click', () => { inClick = true; setTimeout(() => { inClick = false; }, 0); }, true);
+    const nativeFetch = window.fetch;
+    (window as any).blobReads = 0;
+    (window as any).nativeShares = [];
+    window.fetch = async (...args) => {
+      if (String(args[0]).startsWith('blob:')) {
+        (window as any).blobReads++;
+        await new Promise(resolve => setTimeout(resolve, 75));
+        if ((window as any).failBlob) return new Response('', { status: 503 });
+      }
+      return nativeFetch(...args);
+    };
+    Object.defineProperty(navigator, 'canShare', { value: () => supported });
+    let previous: File | undefined;
+    Object.defineProperty(navigator, 'share', { value: async (data: ShareData) => {
+      const file = data.files![0];
+      (window as any).nativeShares.push({ inClick, name: file.name, type: file.type, size: file.size, isFile: file instanceof File, sameFile: !previous || previous === file });
+      previous = file;
+      if (!inClick) throw new DOMException('Gesture expired', 'NotAllowedError');
+      const failure = failures.shift();
+      if (failure) throw new DOMException('Test failure', failure);
+    } });
+  }, { ipad, supported, failures });
+}
+
+async function preparePhotos(page: Page) {
+  await page.getByRole('navigation', { name: 'מצבי עריכה' }).getByRole('button', { name: 'שמירה', exact: true }).click();
+  await page.getByRole('dialog', { name: 'שמירה והורדה' }).getByRole('button', { name: 'שמירה לתמונות', exact: true }).click();
+  return page.getByRole('dialog', { name: 'הסרטון מוכן לשיתוף' });
+}
+
+for (const ipad of [false, true]) test(`${ipad ? 'iPad desktop user agent' : 'iPhone'} prepares a video before the explicit save-to-Photos tap`, async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const state = await setup(page);
+  await mockAppleSharing(page, { ipad });
+  await page.goto('/?screen=edit&video=review-token');
+  const ready = await preparePhotos(page);
+  await expect(ready).toBeVisible();
+  await expect(ready).toContainText('Save Video');
+  expect(await page.evaluate(() => (window as any).nativeShares)).toEqual([]);
+  const reads = await page.evaluate(() => (window as any).blobReads);
+  await ready.getByRole('button', { name: 'שמירה לתמונות', exact: true }).click();
+  await expect(ready).toHaveCount(0);
+  const shares = await page.evaluate(() => (window as any).nativeShares);
+  expect(shares).toEqual([{ inClick: true, name: 'captions.mp4', type: 'video/mp4', size: portraitVideo.length, isFile: true, sameFile: true }]);
+  expect(await page.evaluate(() => (window as any).blobReads)).toBe(reads);
+  expect(state.downloads).toHaveLength(0);
+  expect(state.burns()).toBe(1);
+});
+
+test('Photos sharing cancellation and errors retain the prepared file for retry', async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 720 });
+  const state = await setup(page);
+  await mockAppleSharing(page, { failures: ['AbortError', 'NotAllowedError'] });
+  await page.goto('/?screen=edit&video=review-token');
+  const ready = await preparePhotos(page);
+  const save = ready.getByRole('button', { name: 'שמירה לתמונות', exact: true });
+  await expect(save).toBeVisible();
+  await expect(page.locator('.MuiDialog-container').filter({ has: ready })).toHaveCSS('opacity', '1');
+  await expect(page.getByRole('dialog', { name: 'מכין את הסרטון עם הכתוביות' })).toHaveCount(0);
+  expect(await ready.evaluate(el => el.scrollWidth > el.clientWidth)).toBe(false);
+  await page.screenshot({ path: 'tmp/review/iphone-save-photos.png' });
+  await save.click();
+  await expect(ready).toBeVisible();
+  await expect(ready.getByRole('alert')).toHaveCount(0);
+  await save.click();
+  await expect(ready.getByRole('alert')).toBeVisible();
+  await save.click();
+  await expect(ready).toHaveCount(0);
+  const shares = await page.evaluate(() => (window as any).nativeShares);
+  expect(shares).toHaveLength(3);
+  expect(shares.every((share: any) => share.sameFile && share.inClick)).toBe(true);
+  expect(state.burns()).toBe(1);
+  expect(state.downloads).toHaveLength(0);
+});
+
+test('unsupported Photos sharing provides an explicit file download', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const state = await setup(page);
+  await mockAppleSharing(page, { supported: false });
+  await page.goto('/?screen=edit&video=review-token');
+  const ready = await preparePhotos(page);
+  await expect(ready).toContainText('שיתוף קבצים אינו זמין');
+  await expect(ready.getByRole('button', { name: 'שמירה לתמונות', exact: true })).toHaveCount(0);
+  const download = page.waitForEvent('download');
+  await ready.getByRole('button', { name: 'הורדה לקבצים', exact: true }).click();
+  expect((await download).suggestedFilename()).toBe('captions.mp4');
+  expect(state.downloads).toHaveLength(1);
+  expect(await page.evaluate(() => (window as any).nativeShares)).toEqual([]);
+});
+
+test('failed Photos preparation reports an error and retries without re-encoding', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const state = await setup(page);
+  await mockAppleSharing(page);
+  await page.goto('/?screen=edit&video=review-token');
+  await page.evaluate(() => { (window as any).failBlob = true; });
+  const ready = await preparePhotos(page);
+  await expect(page.getByText('לא ניתן להכין את הסרטון לשיתוף. נסו שוב או הורידו אותו כקובץ.')).toBeVisible();
+  await expect(ready).toHaveCount(0);
+  expect(state.downloads).toHaveLength(0);
+  await page.evaluate(() => { (window as any).failBlob = false; });
+  await preparePhotos(page);
+  await expect(ready).toBeVisible();
+  await ready.getByRole('button', { name: 'שמירה לתמונות', exact: true }).click();
+  await expect(ready).toHaveCount(0);
+  expect(state.burns()).toBe(1);
 });

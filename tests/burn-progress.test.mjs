@@ -56,9 +56,12 @@ test('saved source burns locally, emits measured progress only to its owner, pre
     assert.deepEqual(percentages, [...percentages].sort((a, b) => a - b));
     assert.equal((await fetch(`${base}/progress/${id}`, { headers: { 'X-Test-User': 'other' } })).status, 404);
     assert.ok(Math.abs(await probeBurnDuration(output) - 10) < .1);
-    // Audio remains a packet-for-packet copy, and the saved source is intact.
-    const audio = file => spawnSync('ffmpeg', ['-v', 'error', '-i', file, '-map', '0:a:0', '-c', 'copy', '-f', 'adts', 'pipe:1']).stdout;
-    assert.deepEqual(audio(output), audio(source));
+    // Export keeps audio in a Photos-compatible format and leaves the source intact.
+    const probe = spawnSync('ffprobe', ['-v', 'error', '-show_streams', '-of', 'json', output], { encoding: 'utf8' });
+    assert.equal(probe.status, 0, probe.stderr);
+    const streams = JSON.parse(probe.stdout).streams;
+    assert.equal(streams.find(stream => stream.codec_type === 'audio').codec_name, 'aac');
+    assert.equal(streams.find(stream => stream.codec_type === 'video').pix_fmt, 'yuv420p');
     assert.deepEqual(await fs.readFile(source), bytes);
     const remoteResponse = await fetch(base, { method: 'POST', body: body(2) });
     assert.equal(remoteResponse.status, 200);

@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { Alert, Box, Button, Checkbox, IconButton, Stack, Typography } from "@mui/material";
 import { SwapHorizRounded, PauseRounded, PlayArrowRounded, RedoRounded, UndoRounded, EditRounded } from "@mui/icons-material";
 import type { Segment, Word } from "../types";
@@ -55,7 +55,9 @@ export function MobileTimingTimeline({
   const total = duration && Number.isFinite(duration) && duration > 0 ? duration : Math.max(1, ...segments.map(segment => segment.end), 1);
   const time = Math.max(0, Math.min(total, currentTime ?? 0));
   const scrollerRef = useRef<HTMLDivElement | null>(null);
-  const programmatic = useRef(false);
+  // Keep the actual position, not a one-event flag: browsers may coalesce or
+  // repeat scroll events, and round scrollLeft to a different video timestamp.
+  const programmatic = useRef<number | null>(null);
   const fromScroll = useRef<{ time: number; at: number } | null>(null);
   const dragRef = useRef<Drag | null>(null);
   const pressRef = useRef<{ pointerId: number; x: number; y: number; lastX: number; timer: number } | null>(null);
@@ -64,6 +66,7 @@ export function MobileTimingTimeline({
   const pinchingRef = useRef(false);
   const previewRef = useRef<Preview | null>(null);
   const [width, setWidth] = useState(0);
+  const [viewportPage, setViewportPage] = useState(0);
   const [manualWindow, setManualWindow] = useState<number | null>(null);
   const [preview, setPreview] = useState<Preview | null>(null);
   const [dragging, setDragging] = useState<{ id: Segment["id"]; mode: DragMode } | null>(null);
@@ -147,15 +150,17 @@ export function MobileTimingTimeline({
     if (pending && performance.now() - pending.at < 280 && Math.abs(time - pending.time) > 0.08) return;
     fromScroll.current = null;
     const target = time * pps;
-    if (Math.abs(el.scrollLeft - target) < 1) return;
-    programmatic.current = true;
-    el.scrollLeft = target;
-  }, [time, pps]);
+    if (Math.abs(el.scrollLeft - target) >= 1) el.scrollLeft = target;
+    programmatic.current = el.scrollLeft;
+    setViewportPage(Math.floor(el.scrollLeft / Math.max(1, width)));
+  }, [time, pps, width]);
 
   const onScroll = () => {
     const el = scrollerRef.current;
     if (!el || latest.current.pps <= 0) return;
-    if (programmatic.current) { programmatic.current = false; return; }
+    setViewportPage(Math.floor(Math.max(0, el.scrollLeft) / Math.max(1, width)));
+    if (programmatic.current !== null && Math.abs(el.scrollLeft - programmatic.current) < 1) return;
+    programmatic.current = null;
     if (pinchingRef.current) return;
     const next = Math.max(0, Math.min(latest.current.total, el.scrollLeft / latest.current.pps));
     fromScroll.current = { time: next, at: performance.now() };
@@ -259,9 +264,17 @@ export function MobileTimingTimeline({
   const live = segments.find(segment => time >= segment.start - 0.001 && time < segment.end - 0.001);
   const focusedId = selectedSegmentId ?? live?.id ?? null;
   const step = [0.5, 1, 2, 5, 10, 15, 30].find(value => value * pps >= 64) ?? 30;
-  const ticks = pps > 0 ? Array.from({ length: Math.floor(total / step) + 1 }, (_, index) => index * step) : [];
   const pad = width / 2;
   const view = preview ?? segments;
+  // Overscan one viewport on either side. Only crossing a viewport boundary
+  // changes this window, rather than rebuilding every caption on every frame.
+  const windowStart = pps > 0 ? Math.max(0, ((viewportPage - 1) * width - pad) / pps) : 0;
+  const windowEnd = pps > 0 ? Math.min(total, ((viewportPage + 2) * width - pad) / pps) : 0;
+  const visibleSegments = useMemo(() => view.filter(segment =>
+    segment.end >= windowStart && segment.start <= windowEnd || segment.id === dragging?.id
+  ), [view, windowStart, windowEnd, dragging?.id]);
+  const firstTick = Math.ceil(windowStart / step);
+  const ticks = pps > 0 ? Array.from({ length: Math.max(0, Math.floor(windowEnd / step) - firstTick + 1) }, (_, index) => (firstTick + index) * step) : [];
   const draggedSegment = dragging ? view.find(segment => segment.id === dragging.id) : undefined;
   const readout = !dragging || !draggedSegment ? null
     : dragging.mode === "move" ? `${formatTimecode(draggedSegment.start, fps)} – ${formatTimecode(draggedSegment.end, fps)}`
@@ -293,14 +306,14 @@ export function MobileTimingTimeline({
       {error && <Alert severity="warning" onClose={() => setError(null)} sx={{ position: "absolute", top: 26, left: 8, right: 8, zIndex: 5, py: 0 }}>{error}</Alert>}
       <Box ref={scrollerRef} data-testid="mobile-timing-track" dir="ltr" onScroll={onScroll} sx={{
         height: "100%", width: "100%", maxWidth: "100%", overflowX: "auto", overflowY: "hidden", touchAction: "pan-x", overscrollBehaviorX: "contain",
-        scrollbarWidth: "none", bgcolor: "#f3f5f8", borderRadius: "12px", border: 1, borderColor: "#e4e8ee",
+        scrollbarWidth: "none", overflowAnchor: "none", bgcolor: "#f3f5f8", borderRadius: "12px", border: 1, borderColor: "#e4e8ee",
         "&::-webkit-scrollbar": { display: "none" },
       }}>
         <Box sx={{ position: "relative", height: "100%", width: Math.max(width, pad + total * pps + pad) }}>
           {ticks.map(tick => <Box key={tick} sx={{ position: "absolute", left: pad + tick * pps, top: 0, bottom: 0, width: "1px", bgcolor: "rgba(15,23,42,0.08)", pointerEvents: "none" }}>
             <Typography component="span" dir="ltr" sx={{ position: "absolute", top: 2, left: 4, fontSize: 10, color: "#8b93a0", lineHeight: 1 }}>{clock(tick)}</Typography>
           </Box>)}
-          {pps > 0 && view.map(segment => {
+          {pps > 0 && visibleSegments.map(segment => {
             const focused = segment.id === focusedId;
             const checked = checkedIds.includes(segment.id);
             const showChrome = focused && !disabled && !isPlaying && !selecting;
