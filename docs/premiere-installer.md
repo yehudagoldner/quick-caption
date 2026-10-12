@@ -7,13 +7,13 @@ Marketplace-approved release or a claim that every Premiere version works.
 
 ## Files and installation
 
-`artifacts/premiere-installer/QuickCaption-Setup-1.0.1-Windows.exe` embeds both:
+`artifacts/premiere-installer/QuickCaption-Setup-1.0.2-Windows.exe` embeds both:
 
-- `QuickCaption-Premiere-1.0.1.ccx`: UXP panel, standard root-manifest ZIP.
-- `QuickCaption-Timeline-Bridge-1.0.1.zxp`: CEP companion, signed using Adobe
+- `QuickCaption-Premiere-1.0.2.ccx`: UXP panel, standard root-manifest ZIP.
+- `QuickCaption-Timeline-Bridge-1.0.2.zxp`: CEP companion, signed using Adobe
   ZXPSignCmd 4.1.3 and a private self-signed beta certificate.
 
-For sharing, `QuickCaption-Installer-1.0.1-Windows.zip` contains the EXE,
+For sharing, `QuickCaption-Installer-1.0.2-Windows.zip` contains the EXE,
 this README, checksums and build metadata. The target user only needs the EXE.
 
 Save the Premiere project, close Premiere, run the EXE, and click **התקנה**.
@@ -110,7 +110,7 @@ versions/configuration are changed for distribution.
 
 ## macOS
 
-The separate `QuickCaption-Installer-1.0.1-Mac-Beta.zip` now contains a Mac app
+The separate `QuickCaption-Installer-1.0.2-Mac-Beta.zip` now contains a Mac app
 launcher, built-in Bash installer and diagnostic export command. See
 [Mac beta instructions](premiere-installer-mac.md). **This Windows EXE is not
 a Mac installer.** The Mac beta uses the existing verified Adobe packages;
@@ -141,7 +141,7 @@ Official references:
   opening an interactive window.
 - After the user closed Premiere, the compiled installer's shared installation
   routine successfully installed both packages through UPIA. Adobe listed both
-  QA extensions as enabled at version 1.0.1. The installed CEP folder signature
+  QA extensions as enabled at version 1.0.2. The installed CEP folder signature
   was independently verified and neither installed bundle contains a pairing key.
 - The unsigned developer companion was preserved at
   `%LOCALAPPDATA%/Quick Caption/Installer/development-bridge-backup`.

@@ -9,7 +9,7 @@ import { useAuth } from "../contexts/AuthContext";
 import { useNarrowViewport } from "../hooks/useNarrowViewport";
 import { MOBILE_APP_HEADER_HEIGHT } from "../utils/appLayout";
 
-type HeaderPage = "home" | "videos" | "transcription";
+type HeaderPage = "home" | "videos" | "transcription" | "premiere";
 
 export type AppHeaderProps = {
   editing: boolean;
@@ -50,7 +50,7 @@ function MobileEditorHeader({ user, authLoading, profileAnchorEl, currentPage, c
     <AppBar position="fixed" color="default" elevation={0} data-testid="app-header" sx={{ height: headerHeight, borderBottom: 1, borderColor: "divider", bgcolor: "background.paper" }}>
       <Toolbar variant="dense" sx={{ minHeight: `${headerHeight - 1}px !important`, px: { xs: 1, sm: 1.5 }, direction: "rtl", gap: 1, justifyContent: "space-between" }}>
         <Box sx={{ display: "flex", alignItems: "center", gap: 0.5, flexShrink: 0 }}>
-          <QaEnvironmentBadge />
+          <QaEnvironmentBadge onNavigate={() => { if (!navigationBlocked) onNavigate("premiere"); }} />
           {user && <>
             <IconButton aria-label="תפריט" aria-haspopup="menu" aria-controls={menuOpen ? "app-navigation-menu" : undefined} aria-expanded={menuOpen}
               onClick={onProfileClick} sx={{ width: actionSize, height: actionSize, borderRadius: 2, ...(menuOpen ? { bgcolor: "action.selected" } : {}) }}><MenuRounded sx={{ fontSize: 20 }} /></IconButton>
@@ -89,6 +89,7 @@ function MobileEditorHeader({ user, authLoading, profileAnchorEl, currentPage, c
             <MenuItem disabled={navigationBlocked} onClick={() => { onProfileClose(); onBuyCredits(); }}>
               <AccountBalanceWalletRounded sx={{ ml: 1.5 }} />רכישת קרדיטים
             </MenuItem>
+            <MenuItem disabled={navigationBlocked} onClick={() => { onProfileClose(); onNavigate("premiere"); }}>תוסף לפרימייר</MenuItem>
             {onConnections && <MenuItem disabled={navigationBlocked} onClick={() => { onProfileClose(); onConnections(); }}>החיבורים שלי</MenuItem>}
             {isAdmin && <MenuItem disabled={navigationBlocked} onClick={() => { onProfileClose(); onAdmin?.(); }}>ניהול</MenuItem>}
             {onReportIssue && <MenuItem onClick={() => { onProfileClose(); onReportIssue(); }}>דיווח על תקלה</MenuItem>}

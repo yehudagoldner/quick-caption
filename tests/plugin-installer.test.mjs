@@ -40,7 +40,7 @@ test('signed CEP staging upgrades only extension versions and keeps vendor attri
   const source=path.join(root,'source'),stage=path.join(root,'stage');await mkdir(path.join(source,'CSXS'),{recursive:true});
   await writeFile(path.join(source,'CSXS','manifest.xml'),'<ExtensionManifest Version="7.0" ExtensionBundleVersion="1.0.0"><Extension Version="1.0.0"/></ExtensionManifest>');
   await writeFile(path.join(source,'THIRD-PARTY.md'),'Original license');await stageBundle(source,stage,'cep');
-  const xml=await readFile(path.join(stage,'CSXS','manifest.xml'),'utf8');assert.match(xml,/Version="7.0"/);assert.equal((xml.match(/1\.0\.1/g)||[]).length,2);
+  const xml=await readFile(path.join(stage,'CSXS','manifest.xml'),'utf8');assert.match(xml,/Version="7.0"/);assert.equal(xml.split(`Version="${VERSION}"`).length-1,2);
   assert.equal(await readFile(path.join(stage,'THIRD-PARTY.md'),'utf8'),'Original license');
 }));
 test('archive builder preserves UTF-8 file names and file contents',()=>temporary(async root=>{
@@ -71,10 +71,10 @@ test('corrupt pairing is rejected; migration preserves the developer key',()=>te
   assert.deepEqual(pairing.loadPairing({home,development}),development);
   await writeFile(connection.connectionPath(home),'{"token":"bad","port":80}');assert.throws(()=>pairing.loadPairing({home}),/Invalid local pairing/);
 }));
-test('runtime discovery retries after a missing companion, uses IPv4 and never sends account data',async()=>{
+test('runtime discovery retries after a missing companion, uses the permitted localhost domain and never sends account data',async()=>{
   let available=false;const urls=[];
   const client=new bridgeClient.TimelineBridge({configurationProvider:async()=>{if(!available)throw Error('missing');return {token:'f'.repeat(64),port:37289};},fetcher:async(url,options)=>{urls.push(url);assert.deepEqual(options.headers,{'X-Quick-Caption-Bridge':'f'.repeat(64)});return {ok:true,json:async()=>({ok:true})};}});
-  await assert.rejects(client.request('/health'),{code:'bridge_unavailable'});available=true;await client.request('/health');assert.deepEqual(urls,['http://127.0.0.1:37289/health']);
+  await assert.rejects(client.request('/health'),{code:'bridge_unavailable'});available=true;await client.request('/health');assert.deepEqual(urls,['http://localhost:37289/health']);
 });
 test('preset discovery requires the same local authentication as timeline mutation',()=>temporary(async root=>{
   const server=bridgeServer.startBridge({root,token:'f'.repeat(64),port:0,evalHost:async method=>({ok:true,method,audioPresets:['/Applications/Premiere.app/wave.epr']})});

@@ -13,7 +13,7 @@ Apple Silicon; כלי ההתקנה של Adobe מגיע מה־Creative Cloud המ
 
 ## התקנה
 
-1. הורידו `QuickCaption-Installer-1.0.1-Mac-Beta.zip` וחלצו במק בלחיצה כפולה.
+1. הורידו `QuickCaption-Installer-1.0.2-Mac-Beta.zip` וחלצו במק בלחיצה כפולה.
 2. שמרו את הפרויקט וסגרו את פרימייר. פתחו Creative Cloud Desktop והתחברו ל־Adobe.
 3. הפעילו `Quick Caption Setup.app` ולחצו **התקנה** בחלון.
 4. אם macOS מציג הודעה שהמפתח אינו מזוהה או שאין אישור Apple, לאחר ניסיון

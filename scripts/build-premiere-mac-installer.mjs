@@ -1,17 +1,17 @@
 import {mkdtemp,mkdir,readFile,writeFile,copyFile,rm,readdir} from 'node:fs/promises';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {sha256,zipDirectory,readZipEntries,VERSION,PACKAGE_NAMES} from './premiere-package.mjs';
+import {sha256,zipDirectory,readZipEntries,VERSION,PACKAGE_NAMES,CHANNEL,artifactFolder,distributionText} from './premiere-package.mjs';
 const root=fileURLToPath(new URL('..',import.meta.url));
-export async function buildMacInstaller({input=path.join(root,'artifacts','premiere-installer'),output=path.join(root,'artifacts','premiere-installer-mac')}={}) {
+export async function buildMacInstaller({input=path.join(root,'artifacts',artifactFolder('premiere-installer')),output=path.join(root,'artifacts',artifactFolder('premiere-installer-mac'))}={}) {
   const provenance=JSON.parse(await readFile(path.join(input,'build-info.json'),'utf8'));
   const expected=JSON.parse(await readFile(path.join(input,'checksums.json'),'utf8'));
-  if(provenance.version!==VERSION || provenance.channel!=='qa' || !/Signature verified successfully/i.test(provenance.zxpSignature))throw Error('Unverified Adobe package provenance');
+  if(provenance.version!==VERSION || provenance.channel!==CHANNEL || !/Signature verified successfully/i.test(provenance.zxpSignature))throw Error('Unverified Adobe package provenance');
   for(const name of PACKAGE_NAMES)if(!/^[a-f0-9]{64}$/.test(expected[name]||'') || await sha256(path.join(input,name))!==expected[name])throw Error('Adobe package checksum mismatch');
   const cep=readZipEntries(await readFile(path.join(input,PACKAGE_NAMES[0]))),uxp=readZipEntries(await readFile(path.join(input,PACKAGE_NAMES[1])));
   const manifest=JSON.parse(uxp.get('manifest.json'));
-  if(manifest.id!=='com.quickcaption.premiere.qa' || manifest.version!==VERSION || manifest.host?.app!=='premierepro' || manifest.host.minVersion!=='25.6.0')throw Error('Unexpected UXP manifest');
-  if(!cep.has('META-INF/signatures.xml') || !/ExtensionBundleId="com.quickcaption.premiere.bridge.qa"/.test(cep.get('CSXS/manifest.xml')?.toString()) || !cep.get('CSXS/manifest.xml')?.toString().includes(`ExtensionBundleVersion="${VERSION}"`))throw Error('Unexpected CEP manifest/signature');
+  if(manifest.id!==distributionText('com.quickcaption.premiere.qa') || manifest.version!==VERSION || manifest.host?.app!=='premierepro' || manifest.host.minVersion!=='25.6.0')throw Error('Unexpected UXP manifest');
+  if(!cep.has('META-INF/signatures.xml') || !cep.get('CSXS/manifest.xml')?.toString().includes(distributionText('ExtensionBundleId="com.quickcaption.premiere.bridge.qa"')) || !cep.get('CSXS/manifest.xml')?.toString().includes(`ExtensionBundleVersion="${VERSION}"`))throw Error('Unexpected CEP manifest/signature');
   for(const archive of [cep,uxp])for(const name of archive.keys())if(/(?:^|\/)(?:bridge-config\.json|\.env|\.local-secrets|\.DS_Store)|\.(?:p12|epr|mogrt|mp[34]|log)$/i.test(name))throw Error('Private or Adobe-owned asset in input');
   await mkdir(output,{recursive:true});
   const temporaryRoot=path.join(root,'tmp','installer-build');await mkdir(temporaryRoot,{recursive:true});
@@ -20,17 +20,17 @@ export async function buildMacInstaller({input=path.join(root,'artifacts','premi
     const app='Quick Caption Setup.app',contents=path.join(staging,app,'Contents'),resources=path.join(contents,'Resources');
     await mkdir(path.join(contents,'MacOS'),{recursive:true});await mkdir(resources);
     for(const name of PACKAGE_NAMES)await copyFile(path.join(input,name),path.join(resources,name));
-    for(const name of ['installer.sh','cleanup.sh'])await copyFile(path.join(root,'installer','macos',name),path.join(resources,name));
-    await copyFile(path.join(root,'docs','premiere-installer-mac.md'),path.join(resources,'README.md'));
-    await copyFile(path.join(root,'docs','premiere-installer-mac.md'),path.join(staging,'README.md'));
+    for(const name of ['installer.sh','cleanup.sh'])await writeFile(path.join(resources,name),distributionText(await readFile(path.join(root,'installer','macos',name),'utf8')));
+    await writeFile(path.join(resources,'README.md'),distributionText(await readFile(path.join(root,'docs','premiere-installer-mac.md'),'utf8')));
+    await writeFile(path.join(staging,'README.md'),distributionText(await readFile(path.join(root,'docs','premiere-installer-mac.md'),'utf8')));
     await copyFile(path.join(root,'installer','macos','QuickCaptionSetup'),path.join(contents,'MacOS','QuickCaptionSetup'));
     for(const name of ['Install Quick Caption.command','Quick Caption Diagnostics.command'])await copyFile(path.join(root,'installer','macos',name),path.join(staging,name));
-    const metadata={version:VERSION,channel:'qa',minimumPremiere:'25.6.0',minimumMacOS:'13.0',architectures:['x64','arm64'],builtAt:new Date().toISOString(),appleSigned:false,notarized:false,nativeMacValidated:false,cepSignaturePlatform:provenance.platform.startsWith('darwin')?'darwin':'win32',sourcePackages:expected};
+    const metadata={version:VERSION,channel:CHANNEL,minimumPremiere:'25.6.0',minimumMacOS:'13.0',architectures:['x64','arm64'],builtAt:new Date().toISOString(),appleSigned:false,notarized:false,nativeMacValidated:false,cepSignaturePlatform:provenance.platform.startsWith('darwin')?'darwin':'win32',sourcePackages:expected};
     await writeFile(path.join(resources,'build-info.json'),JSON.stringify(metadata,null,2)+'\n');
     await writeFile(path.join(contents,'Info.plist'),`<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
-<key>CFBundleIdentifier</key><string>com.quickcaption.premiere.installer.qa</string>
+<key>CFBundleIdentifier</key><string>${distributionText('com.quickcaption.premiere.installer.qa')}</string>
 <key>CFBundleName</key><string>Quick Caption Setup</string>
 <key>CFBundleDisplayName</key><string>Quick Caption Setup</string>
 <key>CFBundleExecutable</key><string>QuickCaptionSetup</string>

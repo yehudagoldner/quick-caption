@@ -14,7 +14,9 @@ class TimelineBridge {
     let response;
     let timer;
     try {
-      const request = this.fetcher(`http://127.0.0.1:${this.configuration.port}${route}`, {
+      // Premiere UXP rejects IPv4 literals in its network permission resolver.
+      // Use the named loopback domain explicitly declared in the manifest.
+      const request = this.fetcher(`http://localhost:${this.configuration.port}${route}`, {
         method: body ? 'POST' : 'GET', headers: { 'X-Quick-Caption-Bridge': this.configuration.token, ...(body ? { 'Content-Type': 'application/json' } : {}) },
         ...(body ? { body: JSON.stringify(body) } : {}),
       });

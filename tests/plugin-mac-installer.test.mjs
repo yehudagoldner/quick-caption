@@ -62,7 +62,7 @@ qc_host_versions() { printf '25.6.6\\n'; }
 qc_run_adobe() {
   QC_PROCESS_EXIT=0
   if [ "$1" = --list ]; then
-    QC_OUTPUT=$' Enabled    Quick Caption Timeline Bridge QA 1.0.1\\n Enabled    Quick Caption QA 1.0.1'
+    QC_OUTPUT=$' Enabled    Quick Caption Timeline Bridge QA ${VERSION}\\n Enabled    Quick Caption QA ${VERSION}'
   else
     printf '%s\\n' "$2" >> "$QC_STATE/calls"
     QC_OUTPUT='Extension installed successfully'
@@ -161,7 +161,7 @@ test('partial installation retains the first component and reports the failing s
 test('an unrecognized, disabled or wrong-version registration never becomes success',()=>temporary(async directory=>{
   const {output,state}=await fixture(directory,`qc_run_adobe() {
   QC_PROCESS_EXIT=0; QC_OUTPUT='Installed successfully'
-  if [ "$1" = --list ]; then QC_OUTPUT=$' Enabled Quick Caption Timeline Bridge QA 1.0.1\\n Disabled Quick Caption QA 1.0.0'; fi
+  if [ "$1" = --list ]; then QC_OUTPUT=$' Enabled Quick Caption Timeline Bridge QA ${VERSION}\\n Disabled Quick Caption QA 1.0.0'; fi
 }`);
   assert.match(output,/result=1 code=registration_unverified/);
   assert.equal(JSON.parse(await readFile(path.join(state,'last-install.json'),'utf8')).stage,'verify-installation');

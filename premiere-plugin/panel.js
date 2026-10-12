@@ -21,12 +21,12 @@ let diagnosticEnvironment = { pluginVersion: version, paired: !!bridgeConfigurat
 try { const os = require('os'); Object.assign(diagnosticEnvironment, { os: os.platform(), arch: os.arch() }); } catch { /* Older host: explicit unknown environment. */ }
 const diagnostics = new Diagnostics({ storage: uxp.storage.secureStorage, client, environment: diagnosticEnvironment });
 bridge.diagnostics = diagnostics;
-// Both panels share one document; retain references while their roots are detached.
+// Keep a single panel entrypoint: Premiere's multi-panel lifecycle can route
+// main content into the small shortcut panel. Retain controls when attaching.
 const ui = new Map(Array.from(document.querySelectorAll('[id]'), node => [node.id, node]));
 const $ = id => ui.get(id);
-const mainPanel = $('plugin-main'), toolbarPanel = $('quick-caption-toolbar');
-mainPanel.remove(); toolbarPanel.remove();
-const visiblePanels = new Set();
+const mainPanel = $('plugin-main');
+mainPanel.remove();
 let account = null, file = null, quote = null, busy = false, linkEpoch = 0, timer = null, shown = true;
 let accountPending = null;
 let uploading = false;
@@ -180,8 +180,6 @@ function controls() {
   $('account-menu').hidden = !connected;
   if (!connected) $('account-settings').hidden = true;
   disable('selected', active || booting || (hasPending && !connected) || (!hasPending && (!account || !quote || account.credits < quote.estimatedCredits)));
-  disable('toolbar-caption', busy || preparing || uploading || watching || booting);
-  $('toolbar-caption').setAttribute('title', hasPending ? 'פתיחת התמלול הפעיל או הכתוביות המוכנות' : 'קבלת כתוביות לקטעים שנבחרו');
   $('selected').hidden = active;
   $('selection-section').hidden = active || hasPending;
   $('selected').textContent = hasPending ? 'נסיון חוזר · ללא חיוב נוסף' : quote ? `יצירת כתוביות · כ־${quote.estimatedCredits} קרדיטים` : 'יצירת כתוביות לבחירה';
@@ -581,7 +579,16 @@ $('active-word-color').addEventListener('change',()=>{
 $('connect').addEventListener('click', () => { if (!busy) void connect().catch(error => reportFailure(error)); });
 $('account-menu').addEventListener('click', () => { $('account-settings').hidden = !$('account-settings').hidden; });
 $('selected').addEventListener('click', () => void captionSelection());
-$('toolbar-caption').addEventListener('click', () => void openTimelineAction().catch(error => message(error.message, true)));
+$('advanced-toggle').addEventListener('click', () => {
+  const expanded = $('advanced-settings').hidden;
+  $('advanced-settings').hidden = !expanded;
+  $('advanced-toggle').setAttribute('aria-expanded', String(expanded));
+});
+$('layout-toggle').addEventListener('click', () => {
+  const expanded = $('layout-help').hidden;
+  $('layout-help').hidden = !expanded;
+  $('layout-toggle').setAttribute('aria-expanded', String(expanded));
+});
 $('cancel-link').addEventListener('click', () => { linkEpoch++; message('החיבור בוטל.'); });
 $('logout').addEventListener('click', () => run(async () => {
   // Keep credentials if server revocation fails so the user can retry safely.
@@ -625,17 +632,16 @@ async function openTimelineAction() {
   if (hasPending) { mainPanel.scrollTop = 0; return; }
   await refreshSelection();
 }
-function showPanel(id, body, content) {
-  body.appendChild(content); visiblePanels.add(id); shown = true; void updateAccount();
-  if (id === 'quickCaption') void refreshSelection();
+function showPanel(body) {
+  body.appendChild(mainPanel); shown = true; void updateAccount();
+  void refreshSelection();
 }
-function hidePanel(id) { visiblePanels.delete(id); shown = visiblePanels.size > 0; }
+function hidePanel() { shown = false; }
 uxp.entrypoints.setup({
   plugin: { create() {}, destroy() { shown = false; linkEpoch++; clearInterval(timer); clearInterval(selectionTimer); } },
   commands: { captionSelection() { void openTimelineAction().catch(error => message(error.message, true)); } },
   panels: {
-    quickCaption: { show(body) { showPanel('quickCaption', body, mainPanel); }, hide() { hidePanel('quickCaption'); }, destroy() { hidePanel('quickCaption'); } },
-    quickCaptionToolbar: { show(body) { showPanel('quickCaptionToolbar', body, toolbarPanel); }, hide() { hidePanel('quickCaptionToolbar'); }, destroy() { hidePanel('quickCaptionToolbar'); } },
+    quickCaption: { show(body) { showPanel(body); }, hide() { hidePanel(); }, destroy() { hidePanel(); } },
   },
 });
 let settingsPolicyVersion = null;

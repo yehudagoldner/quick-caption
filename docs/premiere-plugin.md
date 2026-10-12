@@ -70,18 +70,24 @@ caption-track creation. It has not been submitted to Adobe Marketplace.
    or press the same button in the plugin panel. The documented UXP command entrypoint
    appears in this menu; this build does not insert a command in Premiere's native
    timeline right-click menu.
-   For a compact shortcut, open the `CC · כתוביות` panel from the same plugin menu
-   and drag its panel tab beside Premiere's Tools panel. This is a separate dockable
-   panel, not an added native editing tool. Its blue CC button opens the main panel
-   and shows a locally computed price for the current selection; it never confirms a paid upload.
-   If a job is awaiting completion or placement, the shortcut opens that job instead
-   of preparing another selection. Both panels share the same account and state.
-   On Premiere 25.6.6 the panel tabs use the plugin name, and a newly opened main
-   panel can inherit a floating size. The UXP API does not expose a dock-position
-   setter: drag the panel's tab (not the OS title bar) to the outside edge until
-   Premiere shows a full-height docking zone, then save a custom workspace.
-   The shortcut brings forward the same panel entrypoint. It must not depend on
-   `hide()` to decide visibility: Premiere 25.6 does not reliably deliver that hook.
+   The plugin exposes one dockable panel. The separate small CC panel has been
+   removed to avoid Premiere's multi-panel lifecycle limitations placing main
+   controls in the small shortcut container. The command brings the same main
+   panel forward and preserves any pending job without approving a paid upload.
+   Preferred sizes are 374×960 docked and 440×960 floating, with a minimum width
+   of 308. The taller defaults fit the owner's 1032-pixel logical work area with
+   room for window chrome; smaller displays still need host size adjustment.
+   Adobe treats these
+   as hints and may restore an older workspace size. The layout wraps at narrow
+   widths, and secondary language options are under “שפות נוספות ותרגום”.
+   Drag the Quick Caption tab (not the window border) into a side docking zone,
+   then use Window > Workspaces > Save as New Workspace to retain the placement.
+   “איך מעגנים את הפאנל בצד?” shows these instructions inside the plugin.
+   After a manifest update, use Unload then Load in UDT. An existing saved tiny
+   floating window may still require manual resizing/docking once. This update
+   does not force a docking location or modify the user's saved workspaces.
+   The command must not depend on `hide()` to decide visibility: Premiere 25.6
+   does not reliably deliver that hook.
 5. If the account is disconnected, connect it through browser pairing and confirm
    the matching code and account. The selection and estimate refresh automatically.
 6. First use asks for an existing Waveform Audio `.epr` preset. Its persistent file

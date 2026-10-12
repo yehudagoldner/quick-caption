@@ -2,10 +2,30 @@ import {readdir, readFile, lstat, mkdir, writeFile} from 'node:fs/promises';
 import path from 'node:path';
 import {deflateRawSync,inflateRawSync} from 'node:zlib';
 import {createHash} from 'node:crypto';
-export const VERSION = '1.0.1';
+export { PREMIERE_VERSION as VERSION } from '../src/premiereRelease.js';
+import { PREMIERE_VERSION as VERSION } from '../src/premiereRelease.js';
 export const PACKAGE_NAMES = [`QuickCaption-Timeline-Bridge-${VERSION}.zxp`, `QuickCaption-Premiere-${VERSION}.ccx`];
+export const CHANNEL = process.env.PREMIERE_CHANNEL || 'qa';
+if (!['qa', 'production'].includes(CHANNEL)) throw Error('Unknown Premiere distribution channel');
+export const artifactFolder = name => CHANNEL === 'qa' ? name : name + '-production';
+export function distributionText(text, channel = CHANNEL) {
+  if (!['qa', 'production'].includes(channel)) throw Error('Unknown Premiere distribution channel');
+  text = text.replaceAll('1.0.2', VERSION);
+  if (channel === 'qa') return text;
+  return text.replaceAll('https://quick-caption.com/qa', 'https://quick-caption.com')
+    .replaceAll('com.quickcaption.premiere.bridge.qa', 'com.quickcaption.premiere.bridge')
+    .replaceAll('com.quickcaption.premiere.installer.qa', 'com.quickcaption.premiere.installer')
+    .replaceAll('com.quickcaption.premiere.qa', 'com.quickcaption.premiere')
+    .replaceAll('premiere-qa/', 'premiere-production/')
+    .replaceAll('37289', '37290')
+    .replaceAll('Quick Caption Timeline Bridge QA', 'Quick Caption Timeline Bridge')
+    .replaceAll('Premiere Bridge QA', 'Premiere Bridge')
+    .replaceAll('Quick Caption QA', 'Quick Caption')
+    .replaceAll('"channel":"qa"', '"channel":"production"')
+    .replace(/\bQA\b/g, 'Production');
+}
 const safe = name => !/(?:^|\/)(?:\.|node_modules|bridge-config\.json|\.env|\.local-secrets)/.test(name) && /\.(?:js|jsx|json|html|css|xml|md)$/.test(name) && (!name.endsWith('.json') || ['manifest.json','package.json','language-labels.json'].includes(name));
-export async function stageBundle(source, destination, kind) {
+export async function stageBundle(source, destination, kind, channel = CHANNEL) {
   await mkdir(destination,{recursive:true});
   async function visit(folder, prefix='') {
     for(const entry of await readdir(folder,{withFileTypes:true})) {
@@ -22,6 +42,7 @@ export async function stageBundle(source, destination, kind) {
       if(name==='package.json') { const manifest=JSON.parse(content); manifest.version=VERSION;content=Buffer.from(JSON.stringify(manifest)+'\n'); }
       if(name==='config.js' && kind==='uxp') content=Buffer.from(`// Independent beta distribution uses the existing QA service.\nmodule.exports = {baseUrl:'https://quick-caption.com/qa', version:'${VERSION}'};\n`);
       if(name==='CSXS/manifest.xml') content=Buffer.from(content.toString().replace(/(?:ExtensionBundleVersion|Version)="1\.0\.0"/g,match=>match.replace('1.0.0',VERSION)));
+      content=Buffer.from(distributionText(content.toString(),channel));
       const output=path.join(destination,name);await mkdir(path.dirname(output),{recursive:true});await writeFile(output,content);
     }
   }

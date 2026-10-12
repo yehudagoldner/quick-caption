@@ -19,3 +19,6 @@ premiere-bridge/bridge-config.json
 stored-videos/.thumbnails/
 artifacts/premiere-installer/
 artifacts/premiere-installer-mac/
+
+artifacts/premiere-installer-production/
+artifacts/premiere-installer-mac-production/

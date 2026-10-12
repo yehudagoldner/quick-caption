@@ -1,7 +1,7 @@
 #!/bin/bash
 # Bash 3.2 and tools supplied by macOS. No Node, Python, sudo or developer mode.
 # Sourcing defines functions only, so local fixtures can replace OS boundaries.
-QC_VERSION=1.0.1
+QC_VERSION=1.0.3
 QC_AGENT='/Library/Application Support/Adobe/Adobe Desktop Common/RemoteComponents/UPI/UnifiedPluginInstallerAgent/UnifiedPluginInstallerAgent.app/Contents/MacOS/UnifiedPluginInstallerAgent'
 
 qc_platform() { /usr/bin/uname -s; }
@@ -171,8 +171,9 @@ qc_preflight() {
   QC_CODE=ready
 }
 qc_registered() {
-  printf '%s\n' "$QC_OUTPUT" | /usr/bin/grep -Eq "^[[:space:]]*Enabled[[:space:]]+Quick Caption Timeline Bridge QA[[:space:]]+1[.]0[.]1[[:space:]]*$" &&
-    printf '%s\n' "$QC_OUTPUT" | /usr/bin/grep -Eq "^[[:space:]]*Enabled[[:space:]]+Quick Caption QA[[:space:]]+1[.]0[.]1[[:space:]]*$"
+  local registered_version="${QC_VERSION//./[.]}"
+  printf '%s\n' "$QC_OUTPUT" | /usr/bin/grep -Eq "^[[:space:]]*Enabled[[:space:]]+Quick Caption Timeline Bridge QA[[:space:]]+$registered_version[[:space:]]*$" &&
+    printf '%s\n' "$QC_OUTPUT" | /usr/bin/grep -Eq "^[[:space:]]*Enabled[[:space:]]+Quick Caption QA[[:space:]]+$registered_version[[:space:]]*$"
 }
 qc_install() {
   qc_prepare_log || { [ "$QC_CODE" = installer_busy ] || QC_CODE=log_unavailable; return 1; }

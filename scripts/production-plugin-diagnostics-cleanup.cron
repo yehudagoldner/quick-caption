@@ -1,0 +1,2 @@
+# Production idle fallback; the running server prunes reports every 15 minutes.
+19 * * * * root if [ -d /home/quick-caption/plugin-diagnostics ]; then /usr/bin/find /home/quick-caption/plugin-diagnostics -maxdepth 1 -type f \( -name reports.json -o -name reports.json.tmp \) -mmin +10095 -delete; fi

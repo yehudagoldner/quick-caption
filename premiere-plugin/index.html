@@ -23,12 +23,13 @@
       <p id="link-code" dir="ltr"></p>
       <sp-button id="cancel-link" variant="secondary" quiet>ביטול החיבור</sp-button>
     </div>
-    <div id="intro" class="intro"><h1>כתוביות לקטעים שבחרתם</h1></div>
+    <div id="intro" class="intro"><h1>כתוביות לבחירה בטיימליין</h1></div>
     <div id="selection-section" class="card selection-card">
       <div class="card-header"><span class="eyebrow">הבחירה בטיימליין</span><span id="selection-state" class="badge">מוכנים להתחיל</span></div>
       <p id="selection-summary" class="selection-summary">סמנו קטעים יחד עם האודיו שלהם.</p>
       <p id="file" class="muted">האודיו יוכן אוטומטית.</p>
     </div>
+    <sp-button id="selected" variant="cta" class="main-action">יצירת כתוביות לבחירה</sp-button>
     <div id="transcription-settings" class="card settings-card">
       <p class="card-title">אורך הכתובית</p>
       <div class="segmented" role="group" aria-label="הגבלת אורך כתובית">
@@ -42,6 +43,14 @@
       </div>
       <p id="limit-unrestricted" class="setting-help" hidden>חלוקה טבעית לפי הדיבור, ללא הגבלת אורך.</p>
       <div class="setting-field"><label for="language">שפת התמלול</label><select id="language"><option value="he">עברית · Hebrew</option></select></div>
+      <sp-checkbox id="active-word">הדגשת המילה הפעילה</sp-checkbox>
+      <div id="active-word-options" class="setting-field" hidden>
+        <label for="active-word-color">צבע ההדגשה</label>
+        <select id="active-word-color"><option value="#FFD45A">צהוב</option><option value="#63D8FF">תכלת</option><option value="#78E6A5">ירוק</option><option value="#FF9DBB">ורוד</option></select>
+      </div>
+      <p id="active-word-help" class="setting-help" hidden>לחיצה כפולה על משפט פותחת את ההדגשות עם האודיו שלו. לתיקון תזמון: N וגרירת הגבול בין המילים. להתאמת המשפט לרוחב הטיימליין: לחצו בתוכו ואז \ . להגדלת גובה הקטעים: Ctrl + =.</p>
+      <sp-button id="advanced-toggle" variant="secondary" quiet aria-expanded="false" aria-controls="advanced-settings">שפות נוספות ותרגום</sp-button>
+      <div id="advanced-settings" hidden>
       <sp-button id="additional-toggle" variant="secondary" aria-expanded="false">שפות נוספות בסרטון</sp-button>
       <div id="additional-picker" class="additional-picker" hidden>
         <sp-textfield id="language-search" type="search" placeholder="חיפוש שפה" aria-label="חיפוש שפות נוספות"></sp-textfield>
@@ -55,12 +64,7 @@
         <sp-button id="mode-transliterate" variant="secondary" aria-pressed="false">תעתיק</sp-button>
       </div>
       <p id="mode-help" class="setting-help">כל שפה מוצגת בכתב המקורי שלה.</p>
-      <sp-checkbox id="active-word">הדגשת המילה הפעילה</sp-checkbox>
-      <div id="active-word-options" class="setting-field" hidden>
-        <label for="active-word-color">צבע ההדגשה</label>
-        <select id="active-word-color"><option value="#FFD45A">צהוב</option><option value="#63D8FF">תכלת</option><option value="#78E6A5">ירוק</option><option value="#FF9DBB">ורוד</option></select>
       </div>
-      <p id="active-word-help" class="setting-help" hidden>לחיצה כפולה על משפט פותחת את ההדגשות עם האודיו שלו. לתיקון תזמון: N וגרירת הגבול בין המילים. להתאמת המשפט לרוחב הטיימליין: לחצו בתוכו ואז \ . להגדלת גובה הקטעים: Ctrl + =.</p>
     </div>
     <div id="quote-section" class="card quote-card" hidden>
       <div class="card-header"><span class="eyebrow">עלות התמלול</span><span id="price" class="price">—</span></div>
@@ -68,15 +72,15 @@
       <p class="billing-note">החיוב הסופי לפי עלות העיבוד בפועל.</p>
       <sp-button id="buy" variant="secondary" hidden>הוספת קרדיטים באתר</sp-button>
     </div>
-    <sp-button id="selected" variant="cta" class="main-action">יצירת כתוביות לבחירה</sp-button>
     <div id="progress-section" class="card" hidden><p id="progress-title" class="card-title">מכין את הכתוביות</p><sp-progressbar id="progress-bar" indeterminate aria-label="התקדמות יצירת הכתוביות"></sp-progressbar><p id="progress"></p></div>
     <sp-button id="add-reference-audio" variant="secondary" hidden>הוספת סאונד לכתוביות הקיימות</sp-button>
     <p id="status" class="notice" role="status" hidden></p>
     <p id="footer-note" class="footer-note">רק הקטעים שנבחרו · המחיר מוצג לפני השליחה</p>
+    <sp-button id="layout-toggle" variant="secondary" quiet aria-expanded="false" aria-controls="layout-help">איך מעגנים את הפאנל בצד?</sp-button>
+    <div id="layout-help" class="notice" hidden>
+      <p>גררו את לשונית Quick Caption בתוך פרימייר, עד שמופיע אזור עגינה בצד, ושחררו.</p>
+      <p>לשמירת הסידור: <span dir="ltr">Window → Workspaces → Save as New Workspace</span>. תנו לסביבת העבודה שם שתוכלו לחזור אליו.</p>
+    </div>
   </main>
-  <div id="quick-caption-toolbar" class="caption-toolbar" dir="rtl">
-    <sp-button id="toolbar-caption" variant="cta" class="toolbar-action" title="קבלת כתוביות לקטעים שנבחרו" aria-label="קבלת כתוביות לקטעים שנבחרו" disabled>CC</sp-button>
-    <span class="toolbar-label">כתוביות</span>
-  </div>
   <script src="panel.js"></script>
 </body></html>

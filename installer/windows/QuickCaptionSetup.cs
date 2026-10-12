@@ -19,7 +19,7 @@ static class Setup {
     static readonly string ReportId = Guid.NewGuid().ToString();
     static string LogPath { get { return Path.Combine(LogRoot, "last-install.json"); } }
     static readonly JavaScriptSerializer Json = new JavaScriptSerializer();
-    static readonly string[] Packages = {"QuickCaption-Timeline-Bridge-1.0.1.zxp", "QuickCaption-Premiere-1.0.1.ccx"};
+    static readonly string[] Packages = {"QuickCaption-Timeline-Bridge-1.0.3.zxp", "QuickCaption-Premiere-1.0.3.ccx"};
     static byte[] Resource(string name) {
         using(var stream = Assembly.GetExecutingAssembly().GetManifestResourceStream(name)) {
             if(stream == null) throw new InvalidDataException("missing_payload");
@@ -40,7 +40,7 @@ static class Setup {
                     if(entry == null) throw new InvalidDataException("missing_manifest");
                     using(var reader = new StreamReader(entry.Open())) {
                         var manifest = Json.Deserialize<System.Collections.Generic.Dictionary<string,object>>(reader.ReadToEnd());
-                        if((string)manifest["id"] != "com.quickcaption.premiere.qa" || (string)manifest["version"] != "1.0.1") throw new InvalidDataException("incorrect_manifest");
+                        if((string)manifest["id"] != "com.quickcaption.premiere.qa" || (string)manifest["version"] != "1.0.3") throw new InvalidDataException("incorrect_manifest");
                     }
                 } else if(zip.GetEntry("META-INF/signatures.xml") == null || zip.GetEntry("CSXS/manifest.xml") == null) throw new InvalidDataException("missing_signature");
             }
@@ -81,7 +81,7 @@ static class Setup {
     static void Record(string stage, int? exit = null) {
         try {
             Directory.CreateDirectory(LogRoot); Prune();
-            var report = new {id=ReportId, at=DateTime.UtcNow.ToString("o"), expiresAt=DateTime.UtcNow.AddDays(7).ToString("o"), stage=stage, exitCode=exit, platform="win32", installerVersion="1.0.1"};
+            var report = new {id=ReportId, at=DateTime.UtcNow.ToString("o"), expiresAt=DateTime.UtcNow.AddDays(7).ToString("o"), stage=stage, exitCode=exit, platform="win32", installerVersion="1.0.3"};
             File.WriteAllText(LogPath, Json.Serialize(report), new UTF8Encoding(false));
         } catch { /* Logging must not prevent installation. */ }
     }
@@ -132,7 +132,7 @@ static class Setup {
         try { Verify(); } catch { if(args.Length>0) Console.WriteLine("{\"ok\":false,\"code\":\"invalid_package\"}"); else MessageBox.Show("The installer package is damaged. Download it again.","Quick Caption"); return 2; }
         if(args.Contains("--verify")) {
             if(AdobeResult(0,"Failed to install, status = -204!")!=-204 || AdobeResult(0,"Extension installed successfully")!=0 || AdobeResult(0,"Installing extension...")!=-10000 || AdobeResult(7,"Extension installed successfully")!=7) return 3;
-            Console.WriteLine("{\"ok\":true,\"packages\":2,\"version\":\"1.0.1\",\"adobeStatusParser\":true}"); return 0;
+            Console.WriteLine("{\"ok\":true,\"packages\":2,\"version\":\"1.0.3\",\"adobeStatusParser\":true}"); return 0;
         }
         if(args.Contains("--preflight")) { Console.WriteLine(Json.Serialize(new {ok=File.Exists(Agent), creativeCloud=File.Exists(Agent), premiereRunning=PremiereRunning(), hostVersions=HostVersions()})); return 0; }
         if(args.Contains("--install")) {
