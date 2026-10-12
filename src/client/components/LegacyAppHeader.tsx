@@ -100,7 +100,7 @@ export function LegacyAppHeader({
                 }}>Pr</Box>
               }
               sx={{
-                display: "inline-flex", flexShrink: 0, minWidth: { xs: 34, md: 64 },
+                display: { xs: "none", md: "inline-flex" }, flexShrink: 0, minWidth: { xs: 34, md: 64 },
                 gap: 0.5, px: { xs: 0.5, md: 1.5 }, py: 0.5, borderRadius: 2,
                 "& .MuiButton-startIcon": { m: { xs: 0, md: undefined } },
                 color: "#5142b5", borderColor: "#d8d1f5", bgcolor: "#f6f3ff",

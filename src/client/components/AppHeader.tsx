@@ -89,7 +89,6 @@ function MobileEditorHeader({ user, authLoading, profileAnchorEl, currentPage, c
             <MenuItem disabled={navigationBlocked} onClick={() => { onProfileClose(); onBuyCredits(); }}>
               <AccountBalanceWalletRounded sx={{ ml: 1.5 }} />רכישת קרדיטים
             </MenuItem>
-            <MenuItem disabled={navigationBlocked} onClick={() => { onProfileClose(); onNavigate("premiere"); }}>תוסף לפרימייר</MenuItem>
             {onConnections && <MenuItem disabled={navigationBlocked} onClick={() => { onProfileClose(); onConnections(); }}>החיבורים שלי</MenuItem>}
             {isAdmin && <MenuItem disabled={navigationBlocked} onClick={() => { onProfileClose(); onAdmin?.(); }}>ניהול</MenuItem>}
             {onReportIssue && <MenuItem onClick={() => { onProfileClose(); onReportIssue(); }}>דיווח על תקלה</MenuItem>}
