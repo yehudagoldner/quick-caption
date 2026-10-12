@@ -62,7 +62,7 @@ test('the download router is disabled outside QA', async t => {
 });
 
 test('the download page, package builders and both installer version checks agree', async () => {
-  const page = await readFile(new URL('../public/premiere.html', import.meta.url), 'utf8');
+  const page = await readFile(new URL('../src/client/components/PremiereDownloadPage.tsx', import.meta.url), 'utf8');
   for (const filename of PREMIERE_DOWNLOADS) assert.ok(page.includes(`downloads/premiere/${filename}`));
   const mac = await readFile(new URL('../installer/macos/installer.sh', import.meta.url), 'utf8');
   const windows = await readFile(new URL('../installer/windows/QuickCaptionSetup.cs', import.meta.url), 'utf8');

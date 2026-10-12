@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {detectPlatform} from '../public/premiere-platform.js';
+import {detectPlatform} from '../src/client/utils/premierePlatform.js';
 
 const cases = [
   ['Chrome/Edge Windows client hints', {userAgentData:{platform:'Windows',mobile:false}}, 'windows'],

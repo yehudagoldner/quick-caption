@@ -3,6 +3,7 @@ import {
   Avatar,
   Box,
   Button,
+  ButtonBase,
   Chip,
   CircularProgress,
   IconButton,
@@ -43,9 +44,11 @@ export function LegacyAppHeader({
   return (
     <AppBar position="fixed" color="default" elevation={0} data-testid="app-header" sx={{ borderBottom: 1, borderColor: "divider" }}>
       <Toolbar variant={narrow ? "dense" : "regular"} sx={narrow ? { minHeight: 48, px: 1 } : undefined}>
-        <Box sx={{ flexGrow: 1, display: "flex", alignItems: "center", gap: 2 }}>
-          <Box component="img" src={`${import.meta.env.BASE_URL}quickcaption-logo.svg`} alt="QuickCaption" sx={{ height: narrow ? 24 : 32 }} />
-          <QaEnvironmentBadge />
+        <Box sx={{ flexGrow: 1, display: "flex", alignItems: "center", gap: narrow ? 0.75 : 2 }}>
+          <ButtonBase aria-label="Quick Caption — דף הבית" disabled={navigationBlocked} onClick={() => onNavigate("home")} sx={{ borderRadius: 1, flexShrink: 0 }}>
+            <Box component="img" src={`${import.meta.env.BASE_URL}quickcaption-logo.svg`} alt="QuickCaption" sx={{ height: narrow ? 24 : 32 }} />
+          </ButtonBase>
+          <QaEnvironmentBadge onNavigate={() => { if (!navigationBlocked) onNavigate("premiere"); }} />
           {isDevBypass && !narrow && (
             <Chip size="small" color="warning" variant="outlined" label="משתמש דמה מקומי" />
           )}
@@ -80,11 +83,12 @@ export function LegacyAppHeader({
               </Button>
             </Box>
           )}
-          <Tooltip title="הורדת התוסף ל־Premiere Pro (נפתח בלשונית חדשה)">
+          <Tooltip title="התוסף ל־Premiere Pro">
             <Button
-              href="https://quick-caption.com/qa/premiere.html"
-              target="_blank"
-              rel="noopener noreferrer"
+              onClick={() => onNavigate("premiere")}
+              disabled={navigationBlocked}
+              aria-label="תוסף לפרימייר"
+              aria-current={currentPage === "premiere" ? "page" : undefined}
               variant="outlined"
               size="small"
               startIcon={
@@ -96,15 +100,17 @@ export function LegacyAppHeader({
                 }}>Pr</Box>
               }
               sx={{
-                display: { xs: "none", md: "inline-flex" }, flexShrink: 0,
-                gap: 0.5, px: 1.5, py: 0.5, borderRadius: 2,
+                display: "inline-flex", flexShrink: 0, minWidth: { xs: 34, md: 64 },
+                gap: 0.5, px: { xs: 0.5, md: 1.5 }, py: 0.5, borderRadius: 2,
+                "& .MuiButton-startIcon": { m: { xs: 0, md: undefined } },
                 color: "#5142b5", borderColor: "#d8d1f5", bgcolor: "#f6f3ff",
+                ...(currentPage === "premiere" ? { borderColor: "#5142b5", bgcolor: "#ece6ff" } : {}),
                 whiteSpace: "nowrap",
                 "&:hover": { bgcolor: "#ece6ff", borderColor: "#a89ae1" },
                 "&.Mui-focusVisible": { outline: "2px solid #5142b5", outlineOffset: 2 },
               }}
             >
-              תוסף לפרימייר
+              <Box component="span" sx={{ display: { xs: "none", md: "inline" } }}>תוסף לפרימייר</Box>
             </Button>
           </Tooltip>
         </Box>

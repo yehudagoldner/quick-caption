@@ -15,7 +15,7 @@ import {PREMIERE_DOWNLOADS} from '../src/premiereRelease.js';
 const root=fileURLToPath(new URL('..',import.meta.url));
 const source=name=>path.join(root,'artifacts',name.includes('-Windows')?'premiere-installer':'premiere-installer-mac',name);
 let server,temporary,base=process.argv[2];
-const browser=await chromium.launch({headless:true});
+const browser=await chromium.launch({headless:true,channel:process.env.PLAYWRIGHT_CHANNEL || undefined});
 const windowsUA='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130.0.0.0 Safari/537.36';
 const macUA='Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 Version/18.0 Safari/605.1.15';
 async function context(platform,{ua=windowsUA,hint,points=0,javaScriptEnabled=true,viewport={width:1366,height:1000}}={}) {
@@ -43,8 +43,8 @@ try {
     temporary=await mkdtemp(path.join(os.tmpdir(),'caption-browser-downloads-'));
     for(const name of PREMIERE_DOWNLOADS.filter(name=>/\.(exe|zip)$/.test(name)))await copyFile(source(name),path.join(temporary,name));
     const app=express();app.use('/qa/downloads/premiere',createPremiereDownloadsRouter({directory:temporary,enabled:true}));
-    app.use('/qa',express.static(path.join(root,'public')));
-    server=app.listen(0,'127.0.0.1');await once(server,'listening');base=`http://127.0.0.1:${server.address().port}/qa/premiere.html`;
+    app.use('/qa',express.static(path.join(root,'dist')));
+    server=app.listen(0,'127.0.0.1');await once(server,'listening');base=`http://127.0.0.1:${server.address().port}/qa/?screen=premiere`;
   }
   for(const scenario of [
     {name:'Windows Chrome/Edge',platform:'Win32',hint:{platform:'Windows',mobile:false},expected:'windows'},
@@ -78,14 +78,39 @@ try {
     assert.deepEqual(errors,[]);
     console.log('Verified '+scenario.name);await ctx.close();
   }
-  const noJS=await context('Win32',{javaScriptEnabled:false}),page=await noJS.newPage();
-  await page.goto(base,{waitUntil:'networkidle'});
-  for(const platform of ['windows','mac'])assert.equal(await page.locator(`[data-installer="${platform}"]`).isVisible(),true);
-  assert.equal(await page.locator('#platform-switch').isVisible(),false);await noJS.close();
+  for (const width of [1366,390]) {
+    const ctx=await context('Win32',{viewport:{width,height:900}}),page=await ctx.newPage();
+    const rootUrl=new URL('./',base).href;
+    await page.goto(rootUrl,{waitUntil:'networkidle'});
+    await page.evaluate(()=>{window.__premiereHeader=document.querySelector('[data-testid="app-header"]');});
+    await page.getByRole('button',{name:'תוסף לפרימייר',exact:true}).click();
+    await page.locator('#premiere-download').waitFor();
+    assert.equal(new URL(page.url()).searchParams.get('screen'),'premiere');
+    assert.equal(ctx.pages().length,1,'navigation must stay in the same tab');
+    assert.equal(await page.evaluate(()=>window.__premiereHeader===document.querySelector('[data-testid="app-header"]')),true,'shared header must stay mounted');
+    await page.getByRole('button',{name:'חזרה לדף הבית',exact:false}).click();
+    assert.equal(new URL(page.url()).searchParams.has('screen'),false);
+    await page.goBack();await page.locator('#premiere-download').waitFor();
+    await page.goForward();await page.locator('#premiere-download').waitFor({state:'detached'});
+    await page.goto(new URL('premiere.html#tutorial',rootUrl).href,{waitUntil:'networkidle'});
+    await page.locator('#premiere-download').waitFor();
+    assert.equal(new URL(page.url()).searchParams.get('screen'),'premiere');assert.equal(new URL(page.url()).hash,'#tutorial');
+    await page.reload({waitUntil:'networkidle'});await page.locator('#premiere-download').waitFor();
+    const video=page.locator('#tutorial video');
+    await video.evaluate(v=>{v.muted=true;return v.play();});
+    await page.waitForFunction(()=>document.querySelector('#tutorial video').currentTime>0.3);
+    assert.equal(await video.evaluate(v=>v.duration),44);
+    assert.equal(await video.evaluate(v=>v.currentSrc.includes('premiere-tutorial-silent.mp4')),true);
+    await video.evaluate(v=>{v.currentTime=30;});await page.waitForFunction(()=>document.querySelector('#tutorial video').currentTime>30.3);await video.evaluate(v=>v.pause());
+    assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
+    await mkdir(path.join(root,'tmp'),{recursive:true});await page.screenshot({path:path.join(root,'tmp',`premiere-react-${width}.png`)});
+    await page.getByRole('button',{name:'Quick Caption — דף הבית',exact:true}).click();await page.locator('#premiere-download').waitFor({state:'detached'});
+    console.log('Verified shared navigation, history, legacy URL and video: '+width);await ctx.close();
+  }
   const screenshot=await browser.newPage({viewport:{width:1366,height:1000}});
   await screenshot.goto(base,{waitUntil:'networkidle'});
   await mkdir(path.join(root,'tmp'),{recursive:true});await screenshot.screenshot({path:path.join(root,'tmp','premiere-platform-windows.png'),fullPage:true});
-  console.log('Native downloads, platform instructions, manual switch, no-JS fallback and layout verified');
+  console.log('Native downloads, platform instructions, React navigation, silent-video playback and layout verified');
 } finally {
   await browser.close();
   if(server){server.closeAllConnections();await new Promise(resolve=>server.close(resolve));}

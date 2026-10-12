@@ -1,93 +1,14 @@
 <!doctype html>
 <html lang="he" dir="rtl">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="robots" content="noindex, nofollow">
-  <meta name="description" content="הורדת Quick Caption QA ל־Premiere Pro, עם מתקין מתאים ל־Windows או Mac והוראות התקנה בעברית.">
-  <title>התוסף ל־Premiere Pro | Quick Caption QA</title>
-  <link rel="stylesheet" href="premiere.css?v=1.0.2-tutorial">
-  <script type="module" src="premiere-platform.js?v=1.0.2-platform"></script>
-</head>
-<body>
-  <a class="skip" href="#main">דילוג לתוכן</a>
-  <header class="site-header">
-    <a class="brand" href="./" dir="ltr"><span class="brand-icon" aria-hidden="true">CC</span>Quick Caption</a>
-    <div class="header-links"><span class="qa-badge">QA · סביבת בדיקות</span><a href="./">חזרה לאתר <span aria-hidden="true">↗</span></a></div>
-  </header>
-  <main id="main">
-    <section class="hero" aria-labelledby="title">
-      <div class="hero-copy">
-        <p class="eyebrow" dir="ltr">QUICK CAPTION × PREMIERE PRO</p>
-        <h1 id="title">מהדיבור שלכם.<br><span>ישר לטיימליין.</span></h1>
-        <p class="intro">סמנו קטעים בפרימייר, קבלו כתוביות בעברית והמשיכו לערוך באותו פרויקט.</p>
-        <div class="features"><span>בחירה ישירות מהטיימליין</span><span>כתוביות שאפשר לערוך</span><span>הדגשת המילה הפעילה</span></div>
-        <p class="release-note">גרסה 1.0.2 · 11 באוקטובר 2026<br>כוללת תיקון לחיבור המקומי של התוסף ל־Premiere.</p>
-      </div>
-      <div class="download-card">
-        <div class="card-top"><span class="platform-icon" aria-hidden="true">↓</span><span class="beta-label" id="platform-badge">גרסת בטא</span></div>
-        <h2 id="download-title">מתקין Quick Caption</h2>
-        <p>מתקין אחד לשני רכיבי התוסף.</p>
-        <p class="detected-platform" id="platform-detection" role="status">בחרו את מערכת ההפעלה של המחשב שבו מותקן Premiere.</p>
-        <div class="platform-switch" id="platform-switch" role="group" aria-label="בחירת מערכת הפעלה" hidden>
-          <button type="button" data-platform="windows" aria-pressed="false">Windows</button>
-          <button type="button" data-platform="mac" aria-pressed="false">Mac</button>
-        </div>
-        <div class="platform-download" data-platform-panel="windows">
-          <h3 class="platform-heading">Windows</h3>
-          <a class="download-button" href="downloads/premiere/QuickCaption-Setup-1.0.2-Windows.exe" data-installer="windows" download>הורדה ל־Windows <span aria-hidden="true">↓</span></a>
-          <p class="requirements"><bdi>Windows 10/11 · 64-bit</bdi> · Premiere Pro 25.6 ומעלה<br>נדרש Creative Cloud Desktop מותקן ומעודכן.</p>
-          <p class="download-alternative">ההורדה לא התחילה? <a href="downloads/premiere/QuickCaption-Installer-1.0.2-Windows.zip" data-installer="windows-zip" download>הורידו את המתקין בקובץ ZIP</a> וחלצו אותו לפני ההתקנה.</p>
-        </div>
-        <div class="platform-download" data-platform-panel="mac">
-          <h3 class="platform-heading">Mac</h3>
-          <a class="download-button" href="downloads/premiere/QuickCaption-Installer-1.0.2-Mac-Beta.zip" data-installer="mac" download>הורדה למאק <span aria-hidden="true">↓</span></a>
-          <p class="requirements">macOS 13 ומעלה · Apple Silicon ו־Intel · Premiere Pro 25.6 ומעלה<br>נדרש Creative Cloud Desktop מותקן ומעודכן.</p>
-        </div>
-        <p class="download-status" id="download-status" role="status" hidden></p>
-        <noscript><p class="requirements">אפשר להוריד את המתקין המתאים באמצעות אחד משני הכפתורים. זיהוי אוטומטי דורש JavaScript.</p></noscript>
-      </div>
-    </section>
-    <aside class="beta-note" data-platform-panel="windows" aria-label="מצב גרסת Windows"><strong>גרסת בדיקה ל־Windows</strong><p>המתקין טרם חתום בחתימת מפרסם של Windows. אם הדפדפן או Windows חוסמים אותו, שלחו לנו את נוסח ההודעה כדי שנוכל לבדוק. התוסף מתחבר לחשבון QA; תמלול צורך קרדיטים לפי המחיר שמוצג לפני השליחה.</p></aside>
-    <aside class="beta-note" data-platform-panel="mac" aria-label="מצב גרסת המאק"><strong>גרסת בדיקה למאק</strong><p>החבילה טרם נבדקה במאק אמיתי ואינה חתומה או מאושרת ב־Apple. רכיב Adobe נחתם ב־Windows, ולכן ההתקנה במאק עדיין דורשת אימות. התוסף מתחבר לחשבון QA; תמלול צורך קרדיטים לפי המחיר שמוצג לפני השליחה.</p></aside>
-    <section class="tutorial" id="tutorial" aria-labelledby="tutorial-title">
-      <div class="section-heading"><p class="eyebrow">רואים איך זה עובד</p><h2 id="tutorial-title">מהבחירה בטיימליין ועד לכתוביות</h2><p>44 שניות מתוך Premiere Pro: בחירת קטע, הגדרות בעברית, יצירת כתוביות והמשך עריכה.</p></div>
-      <video controls playsinline preload="metadata" width="1920" height="1080" poster="premiere-tutorial.jpg" aria-label="סרטון הדרכה לשימוש ב־Quick Caption בפרימייר" aria-describedby="tutorial-note">
-        <source src="premiere-tutorial.mp4" type="video/mp4">
-        הדפדפן אינו תומך בניגון הסרטון. <a href="premiere-tutorial.mp4">פתיחת סרטון ההדרכה</a>
-      </video>
-      <p class="tutorial-note" id="tutorial-note">צילום מסך אמיתי ב־Windows ובסביבת QA, עם הסברים בעברית, זום וסימונים. אפשר לעקוב גם בלי שמע. הקריינות בקטע ההדגמה נוצרה ב־AI; זמן העיבוד קוצר בעריכה.</p>
-      <details><summary>שלבי ההדרכה בכתב</summary><ol class="tutorial-transcript">
-        <li>מסמנים בטיימליין את הווידאו ואת האודיו שרוצים לתמלל.</li>
-        <li>פותחים <bdi>Window → UXP Plugins → Quick Caption QA</bdi>. בשימוש הראשון מחברים את חשבון Quick Caption.</li>
-        <li>בוחרים עברית ואת אורך הכתוביות. בדוגמה נבחרו עד 5 מילים לכל כתובית.</li>
-        <li>בודקים את הערכת הקרדיטים ולוחצים על יצירת כתוביות. התוסף שולח את האודיו לתמלול ומוסיף את הכתוביות לטיימליין.</li>
-        <li>מנגנים את הקטע ובודקים את הטקסט והתזמון.</li>
-        <li>לוחצים פעמיים על כתובית כדי לפתוח את כלי העריכה של Premiere, לתקן טקסט ולשנות עיצוב.</li>
-      </ol></details>
-    </section>
-    <section class="installation" aria-labelledby="installation-title">
-      <div class="section-heading"><p class="eyebrow">מתחילים כאן</p><h2 id="installation-title">התקנה, צעד אחר צעד</h2><p>אין צורך ב־Node.js או בכלי פיתוח.</p></div>
-      <ol class="steps" data-platform-panel="windows" aria-label="התקנה ב־Windows">
-        <li><div><h3>מורידים את המתקין</h3><p>לחצו על <strong>הורדה ל־Windows</strong>. הקובץ נקרא <bdi>QuickCaption-Setup-1.0.2-Windows.exe</bdi>. אפשר למצוא אותו גם ברשימת ההורדות של הדפדפן.</p></div></li>
-        <li><div><h3>שומרים וסוגרים את Premiere</h3><p>שמרו את הפרויקט וסגרו את פרימייר לגמרי. פתחו את Creative Cloud Desktop והתחברו לחשבון Adobe שלכם.</p></div></li>
-        <li><div><h3>מפעילים את המתקין</h3><p>פתחו את קובץ ה־EXE שהורדתם ולחצו על <strong>התקנה</strong>. המשיכו רק אחרי שהמתקין מאשר ששני הרכיבים מותקנים ופעילים.</p></div></li>
-        <li><div><h3>פותחים את התוסף ומתחברים</h3><p>פתחו מחדש את Premiere ובחרו <bdi>Window → UXP Plugins → Quick Caption QA</bdi>. התחברו ל־Quick Caption ואשרו את החיבור בחשבון QA.</p></div></li>
-      </ol>
-      <ol class="steps" data-platform-panel="mac" aria-label="התקנה במאק">
-        <li><div><h3>מורידים ומחלצים</h3><p>הורידו את קובץ ה־ZIP וחלצו אותו בלחיצה כפולה. אם יש גרסה ישנה, השתמשו במתקין החדש כדי לעדכן.</p></div></li>
-        <li><div><h3>שומרים וסוגרים את Premiere</h3><p>שמרו את הפרויקט וסגרו את פרימייר לגמרי. פתחו את Creative Cloud Desktop והתחברו לחשבון Adobe שלכם.</p></div></li>
-        <li><div><h3>מפעילים את המתקין</h3><p>פתחו <bdi>Quick Caption Setup.app</bdi> ולחצו על <strong>התקנה</strong>. המשיכו רק אחרי שהמתקין מאשר ששני הרכיבים מותקנים ופעילים.</p><p>אם חלון המתקין אינו מופיע, פתחו את <bdi>Install Quick Caption.command</bdi> מהתיקייה שחילצתם.</p></div></li>
-        <li><div><h3>פותחים את התוסף ומתחברים</h3><p>פתחו מחדש את Premiere ובחרו <bdi>Window → UXP Plugins → Quick Caption QA</bdi>. התחברו ל־Quick Caption ואשרו את החיבור בחשבון QA.</p></div></li>
-      </ol>
-      <details data-platform-panel="mac"><summary>macOS חוסם את פתיחת המתקין?</summary><p>אם ההודעה היא שהמפתח אינו מזוהה, נסו לפתוח פעם אחת ואז עברו ל־<bdi>System Settings → Privacy &amp; Security → Open Anyway</bdi> עבור המתקין הזה. אין צורך לכבות את Gatekeeper או להריץ פקודות להסרת quarantine.</p><p>אם ההודעה אומרת שהאפליקציה פגומה או מזיקה, עצרו והעבירו לנו את נוסח ההודעה. במחשב של ארגון ייתכן שנדרש אישור מנהל המערכת.</p></details>
-      <details class="connection-help"><summary>למה התוסף מתחבר גם ל־localhost?</summary><p>החשבון, הקרדיטים והתמלול מתקשרים עם שרת QA של Quick Caption באינטרנט. כדי להציב את הכתוביות בטיימליין, התוסף מתקשר גם עם רכיב שמותקן במחשב שלכם יחד עם התוסף.</p><p><bdi>localhost</bdi> הוא המחשב שבו Premiere פועל — במאק, זה המאק שלכם. אין צורך בגישה למחשב של אדם אחר או בהתקנת שרת נפרד.</p></details>
-    </section>
-    <section class="bottom-grid">
-      <article class="info-card"><p class="eyebrow">הבדיקה הראשונה</p><h2>מתחילים מקטע קצר</h2><p>סמנו קטע עם דיבור והתחילו עם כתוביות רגילות. ודאו שהכתוביות מופיעות במקום הנכון, ואז נסו שני קטעים והדגשת מילה פעילה.</p><p>להדגשת המילה הפעילה נדרשת תבנית Adobe המקורית <bdi>Classic Web Caption</bdi>. אם היא חסרה, הוסיפו אותה דרך ממשק תבניות הגרפיקה של Adobe. אפשר להתחיל עם כתוביות רגילות גם בלעדיה.</p></article>
-      <article class="info-card"><p class="eyebrow">אם משהו נעצר</p><h2>איך מדווחים על תקלה?</h2><p data-platform-panel="windows"><strong>במהלך ההתקנה ב־Windows:</strong> שלחו את נוסח השגיאה ואת קובץ <bdi>last-install.json</bdi> מתוך <bdi>%LOCALAPPDATA%\Quick Caption\Installer</bdi>, אם נוצר.</p><p data-platform-panel="mac"><strong>במהלך ההתקנה במאק:</strong> פתחו <bdi>Quick Caption Diagnostics.command</bdi>, בחרו <strong>שמירת דוח</strong> ושלחו לנו את קובץ ה־JSON ואת נוסח השגיאה.</p><p><strong>בתוך התוסף, לאחר התחברות:</strong> העתיקו את קוד האבחון שמופיע ליד השגיאה. הוא מאפשר לנו למצוא את דוח התקלה ב־QA.</p><p class="muted">דוח ההתקנה נשאר במחשב; מזהה הדוח לבדו אינו מספיק לשליפתו. אין צורך לשלוח קובצי פרויקט או מדיה.</p></article>
-    </section>
-    <footer><span>Quick Caption · Premiere QA · גרסה 1.0.2</span><a href="downloads/premiere/SHA256SUMS" download>בדיקת שלמות הקבצים · SHA-256</a></footer>
-  </main>
-</body>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>התוסף ל־Premiere Pro | Quick Caption</title>
+<script>
+  const destination = new URL('./', window.location.href);
+  destination.search = '?screen=premiere';
+  destination.hash = window.location.hash;
+  window.location.replace(destination.href);
+</script>
+<noscript><meta http-equiv="refresh" content="0;url=./?screen=premiere"></noscript>
+<p><a href="./?screen=premiere">לעמוד התוסף בתוך Quick Caption</a></p>
 </html>

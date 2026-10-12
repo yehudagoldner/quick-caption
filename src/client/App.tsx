@@ -9,6 +9,7 @@ import { VideosPage } from "./components/VideosPage";
 import { BuyCreditsPage } from "./components/BuyCreditsPage";
 import { AdminPage } from "./components/AdminPage";
 import { ConnectionsPage } from './components/ConnectionsPage';
+import { PremiereDownloadPage } from './components/PremiereDownloadPage';
 import { useAuth } from './contexts/AuthContext';
 import { adminRequest } from "./adminApi";
 import { warmVideoLibrary } from './videoLibrary';
@@ -33,7 +34,7 @@ const RAW_API_BASE = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.
 const API_BASE_URL = RAW_API_BASE.replace(/\/?$/, "");
 const APP_BASE_PATH = import.meta.env.BASE_URL;
 
-type AppScreen = "home" | "transcription" | "videos" | "edit" | "buy-credits" | "admin" | "connections";
+type AppScreen = "home" | "transcription" | "videos" | "edit" | "buy-credits" | "admin" | "connections" | "premiere";
 
 function getScreenFromUrl(): { screen: AppScreen; videoToken?: string } {
   if (window.location.pathname.replace(/\/$/, '') === `${APP_BASE_PATH}admin`) return { screen: 'admin' };
@@ -45,7 +46,7 @@ function getScreenFromUrl(): { screen: AppScreen; videoToken?: string } {
     return { screen: "edit", videoToken };
   }
 
-  if (["transcription", "videos", "buy-credits", "connections"].includes(screen)) {
+  if (["transcription", "videos", "buy-credits", "connections", "premiere"].includes(screen)) {
     return { screen };
   }
 
@@ -114,7 +115,7 @@ function App() {
     setNavigationBlocked(blocked);
   }, []);
   const editing = currentScreen === "edit" || (currentScreen === "transcription" && workflow.activePage === "preview");
-  const marketingHome = currentScreen === "home";
+  const marketingHome = currentScreen === "home" || currentScreen === "premiere";
 
   useEffect(() => {
     window.history.replaceState({ ...window.history.state, editorIndex: historyIndex.current }, '', window.location.href);
@@ -230,7 +231,7 @@ function App() {
           authLoading={workflow.authLoading}
           profileAnchorEl={workflow.profileAnchorEl}
           currentPage={
-            currentScreen === "transcription"
+            currentScreen === "premiere" ? "premiere" : currentScreen === "transcription"
               ? "transcription"
               : currentScreen === "videos" || currentScreen === "edit"
                 ? "videos"
@@ -286,7 +287,7 @@ function App() {
           px: marketingHome ? 0 : { xs: 1.5, md: 3 },
           mt: marketingHome ? { xs: narrowViewport ? '49px' : '57px', sm: '65px' } : { xs: currentScreen === "transcription" ? 0 : 10, md: currentScreen === "transcription" ? 8 : editing ? 8 : 10 },
         }}>
-          {signingOut || (currentScreen !== "home" && workflow.authLoading) ? (
+          {signingOut || (!marketingHome && workflow.authLoading) ? (
             <Stack alignItems="center" py={8} role="status" aria-label="טוען את החשבון">
               <CircularProgress />
             </Stack>
@@ -315,6 +316,8 @@ function App() {
               onMyVideos={() => navigateToScreen("videos")}
             />
           )}
+
+          {currentScreen === "premiere" && <PremiereDownloadPage onHome={() => navigateToScreen("home")} />}
 
           {currentScreen === "transcription" && (
             <TranscriptionPage
