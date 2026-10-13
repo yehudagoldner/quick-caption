@@ -24,7 +24,11 @@ export async function ensureConnectionSchema(pool) {
 }
 
 export async function lockConnectionState(connection, uid) {
-  await connection.execute('INSERT IGNORE INTO account_connection_state (user_uid) VALUES (?)', [uid]);
+  // Acquire an exclusive lock immediately, including for an existing account.
+  // INSERT IGNORE takes a shared duplicate-key lock; parallel requests then
+  // deadlock when both try to upgrade it in the SELECT ... FOR UPDATE below.
+  await connection.execute(`INSERT INTO account_connection_state (user_uid) VALUES (?)
+    ON DUPLICATE KEY UPDATE revoked_before = revoked_before`, [uid]);
   const [rows] = await connection.execute('SELECT revoked_before FROM account_connection_state WHERE user_uid = ? FOR UPDATE', [uid]);
   return Number(rows[0].revoked_before);
 }
