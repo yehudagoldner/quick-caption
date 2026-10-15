@@ -1,4 +1,4 @@
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect, devices, type Page } from '@playwright/test';
 import { prepareApp, portraitVideo, segments as fixtureSegments, testUid } from './app-fixtures';
 import type { Segment } from '../src/client/types';
 
@@ -93,7 +93,42 @@ for (const mobile of [false, true]) test(`${mobile ? 'mobile' : 'desktop'} indiv
 });
 
 test.describe('touch appearance editing', () => {
-  test.use({ hasTouch: true, isMobile: true });
+  test.use({ hasTouch: true, isMobile: true, userAgent: devices['Pixel 7'].userAgent });
+  test('Android selected caption moves from the preview background and rotates with a finger', async ({ page }) => {
+    const state = await setup(page, true);
+    const caption = page.getByTestId('caption-position');
+    await caption.tap();
+    const panel = page.getByRole('region', { name: 'עיצוב כתובית נבחרת', exact: true });
+    await expect(panel).toBeVisible();
+    await expect(page.locator('.MuiDrawer-paper')).toHaveCSS('transform', 'none');
+    const stage = (await page.getByTestId('media-stage').boundingBox())!;
+    const initial = (await caption.boundingBox())!;
+    const cdp = await page.context().newCDPSession(page);
+    const x = stage.x + stage.width / 2, y = stage.y + 55;
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
+    for (let i = 1; i <= 12; i++) {
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: x + i * 2, y: y + i * 3 }] });
+      await page.waitForTimeout(20);
+    }
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    const moved = (await caption.boundingBox())!;
+    expect(moved.x - initial.x).toBeCloseTo(24, 0);
+    expect(moved.y - initial.y).toBeCloseTo(36, 0);
+    const pivot = { x: moved.x + moved.width / 2, y: moved.y + moved.height / 2 };
+    const handle = (await page.getByRole('button', { name: 'ידית סיבוב הכתובית' }).boundingBox())!;
+    const hx = handle.x + handle.width / 2, hy = handle.y + handle.height / 2;
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: hx, y: hy }] });
+    for (let i = 1; i <= 12; i++) {
+      const angle = Math.PI / 6 * i / 12, dx = hx - pivot.x, dy = hy - pivot.y;
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: pivot.x + dx * Math.cos(angle) - dy * Math.sin(angle), y: pivot.y + dx * Math.sin(angle) + dy * Math.cos(angle) }] });
+    }
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    await expect(panel.getByRole('slider', { name: 'סיבוב', exact: true })).toHaveValue('30');
+    await panel.getByRole('button', { name: 'שמירת עיצוב הכתובית', exact: true }).click();
+    await expect(panel).toHaveCount(0);
+    expect(state.saved()[0].style!.rotation).toBe(30);
+    expect(state.saved()[1].style).toBeUndefined();
+  });
   test('first touch drags immediately; two fingers rotate and pinch, then one finger continues without a jump', async ({ page }) => {
     const state = await setup(page, true);
     const caption = page.getByTestId('caption-position');
@@ -101,7 +136,8 @@ test.describe('touch appearance editing', () => {
     const cdp = await page.context().newCDPSession(page);
     const initial = (await caption.boundingBox())!;
     const before = (await stage.boundingBox())!;
-    const x = initial.x + initial.width / 2, y = initial.y + initial.height / 2;
+    // A fingertip may land just below the glyphs, inside the enlarged hit target.
+    const x = initial.x + initial.width / 2, y = initial.y + initial.height + 8;
     await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ id: 1, x, y }] });
     await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ id: 1, x: x + 25, y: y - 25 }] });
     // The drawer waits until release; the preview must not resize underneath a finger.

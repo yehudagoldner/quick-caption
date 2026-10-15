@@ -158,7 +158,7 @@ export function VideoPlayer({ compact, size, fill, hideMeta, mediaUrl, activeSeg
     {isAudio && !hideMeta && <Typography variant="subtitle2">אודיו בלבד — תצוגה מקדימה של הכתוביות</Typography>}
     {error && <Alert severity="error" sx={fill ? { position: "absolute", zIndex: 2, mx: 1 } : undefined}>לא ניתן לנגן את המדיה. בדקו שהקובץ זמין ובפורמט שנתמך בדפדפן.</Alert>}
     <Box ref={stageRef} data-testid="media-stage" {...transformEvents} sx={{ position: "relative", bgcolor: "common.black", color: "white", borderRadius: 2, overflow: "hidden", mx: "auto", flexShrink: 0,
-      touchAction: appearanceSelected ? 'none' : undefined,
+      touchAction: appearance && !appearance.disabled ? 'none' : undefined,
       ...stageSize,
       aspectRatio: isAudio || fill ? undefined : `${dimensions.width} / ${dimensions.height}`, minHeight: isAudio && !fill ? 180 : undefined }}>
       {mediaUrl ? <>
@@ -178,6 +178,8 @@ export function VideoPlayer({ compact, size, fill, hideMeta, mediaUrl, activeSeg
           sx={{ ...previewStyle, ...(isAudio ? { fontSize: 24, bottom: 75, width: "90%" } : {}),
             ...(appearance ? { width: 'max-content', maxWidth: 'none', pointerEvents: 'auto', cursor: appearance.disabled ? 'default' : transforming ? 'grabbing' : 'grab', touchAction: 'none', userSelect: 'none',
               outline: appearanceSelected ? '2px solid #38bdf8' : undefined, outlineOffset: 3,
+              // Enlarge the touch target without changing caption layout or export geometry.
+              '&::after': { content: '""', position: 'absolute', inset: '-12px', touchAction: 'none' },
               '&:focus-visible': { outline: '2px solid #38bdf8' } } : {}) }}>
           <CaptionPreview key={activeCaption.id} activeSegmentId={activeCaption.id} activeSegmentText={activeCaption.text}
             words={words} currentTime={currentTime} activeWordEnabled={activeWordEnabled} activeWordColor={highlight}

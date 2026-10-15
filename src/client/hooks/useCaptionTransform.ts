@@ -41,7 +41,9 @@ export function useCaptionTransform({ stage, caption, segmentId, selected, disab
     const target = event.target as HTMLElement;
     const handle = target.closest('[data-caption-rotate]');
     const hit = target.closest('[data-testid="caption-position"]');
-    if (!hit && !handle && !(event.pointerType === 'touch' && pointers.current.size)) return;
+    // A finger often lands beside the small text after the mobile drawer opens.
+    // Once selected, the whole preview is a manipulation surface for that caption.
+    if (!hit && !handle && !selected && !(event.pointerType === 'touch' && pointers.current.size)) return;
     event.preventDefault(); event.stopPropagation();
     if (!selected) select();
     pointers.current.set(event.pointerId, { x: event.clientX, y: event.clientY });

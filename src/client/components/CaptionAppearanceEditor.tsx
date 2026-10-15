@@ -10,7 +10,7 @@ export function CaptionAppearanceEditor() {
   return <Stack spacing={1.5} dir="rtl" role="region" aria-label="עיצוב כתובית נבחרת" sx={{ p: 2, minWidth: 0 }}>
     <Typography fontWeight={600}>עיצוב הכתובית הזו בלבד</Typography>
     <Typography variant="body2" noWrap>{editor.segment.text}</Typography>
-    <Typography variant="caption" color="text.secondary">גררו להזזה, גררו את הידית העגולה לסיבוב. בשתי אצבעות אפשר לסובב ולהגדיל או להקטין.</Typography>
+    <Typography variant="caption" color="text.secondary">גררו בשטח הסרטון להזזת הכתובית שנבחרה. גררו את הידית העגולה לסיבוב. בשתי אצבעות אפשר לסובב ולהגדיל או להקטין.</Typography>
     {editor.error && <Alert severity="error">{editor.error}</Alert>}
     <CaptionFontPicker fontId={values.fontId} onFontChange={fontId => change({ fontId })} disabled={saving} />
     <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 1 }}>
