@@ -27,6 +27,8 @@ import { useDownloadExperience } from "../hooks/useDownloadExperience";
 import { DownloadFeedbackDialog } from "./DownloadFeedbackDialog";
 import { BurnProgressDialog } from './BurnProgressDialog';
 import type { BurnProgress } from '../utils/burnRequest';
+import { CaptionAppearanceContext } from '../contexts/CaptionAppearanceContext';
+import { sanitizeCaptionOverrides, type CaptionOverrides } from '../../captionOverrides.js';
 
 export type { BurnOptions };
 type BurnResult = { blob: Blob; filename?: string; };
@@ -61,7 +63,13 @@ export function TranscriptionResult({
   const { preferences } = useEditorPreferences();
   const downloads = useDownloadExperience(videoId);
   const [burnProgress, setBurnProgress] = useState<BurnProgress>({ stage: 'preparing', percent: null });
-  const [hasTimelineDrafts, setHasTimelineDrafts] = useState(false);
+  const [timelineDrafts, setHasTimelineDrafts] = useState(false);
+  const [appearanceDraft, setAppearanceDraft] = useState<{ id: Segment['id']; style: CaptionOverrides; original: string } | null>(null);
+  const [appearanceSaving, setAppearanceSaving] = useState(false);
+  const [appearanceError, setAppearanceError] = useState<string | null>(null);
+  const appearanceDirty = Boolean(appearanceDraft && JSON.stringify(appearanceDraft.style) !== appearanceDraft.original);
+  const hasTimelineDrafts = timelineDrafts || Boolean(appearanceDraft) || appearanceSaving;
+  useEffect(() => { setAppearanceDraft(null); setAppearanceError(null); }, [videoId, mediaUrl]);
   const [loopEnabled, setLoopEnabled] = useState(false);
   const loopEnabledRef = useRef(loopEnabled);
   loopEnabledRef.current = loopEnabled;
@@ -146,6 +154,10 @@ export function TranscriptionResult({
 
   const fontId = projectFontId ?? preferences.fontId;
   const { ready: fontReady, error: fontLoadError } = useCaptionFont(fontId);
+  const activeSegment = useMemo(() => findSegment(editableSegments, currentTime) ?? null, [editableSegments, currentTime]);
+  const appearanceSegment = editableSegments.find(segment => segment.id === appearanceDraft?.id) ?? null;
+  const activeOverrides = sanitizeCaptionOverrides(activeSegment?.id === appearanceDraft?.id ? appearanceDraft?.style : activeSegment?.style);
+  const { ready: previewFontReady, error: previewFontError } = useCaptionFont(activeOverrides.fontId ?? fontId);
   const sizingSegments = useMemo(() => captionMotion === "pop"
     ? editableWords.map((word, index) => ({ id: index, start: word.start, end: word.end, text: word.word }))
     : editableSegments, [captionMotion, editableWords, editableSegments]);
@@ -159,11 +171,13 @@ export function TranscriptionResult({
 
   const previewStyle = usePreviewStyle({
     scaleOutline: true,
-    fontId,
-    fontColor,
-    fontSize: effectiveFontSize,
-    offsetYPercent,
-    outlineColor,
+    fontId: activeOverrides.fontId ?? fontId,
+    fontColor: activeOverrides.fontColor ?? fontColor,
+    fontSize: activeOverrides.fontSize ?? effectiveFontSize,
+    offsetYPercent: activeOverrides.offsetYPercent ?? offsetYPercent,
+    outlineColor: activeOverrides.outlineColor ?? outlineColor,
+    positionXPercent: activeOverrides.positionXPercent,
+    rotation: activeOverrides.rotation,
     marginPercent,
     videoDimensions,
     renderDimensions,
@@ -177,7 +191,6 @@ export function TranscriptionResult({
   }, [editableSegments, exportFormat, preferences.direction]);
 
 
-  const activeSegment = useMemo(() => findSegment(editableSegments, currentTime) ?? null, [editableSegments, currentTime]);
   // Fresh transcriptions already include this notice in the server warnings.
   // Keep the editor fallback for older results and newly edited word timings.
   const hasEstimatedTimingWarning = response.warnings?.some(warning => warning.includes("תזמון משוער")) ?? false;
@@ -193,6 +206,7 @@ export function TranscriptionResult({
         || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return;
       const target = event.target;
       if (!(target instanceof HTMLElement)) return;
+      if (target.closest('[data-testid="caption-position"]') || appearanceDraft) return;
       // Page whitespace may leave focus on body. Header controls and portals
       // keep their own keyboard behavior, while the editor owns plain Space.
       if (target !== document.body && target !== document.documentElement && !playbackRoot.current?.contains(target)) return;
@@ -205,7 +219,7 @@ export function TranscriptionResult({
     };
     window.addEventListener("keydown", playbackKey, true);
     return () => window.removeEventListener("keydown", playbackKey, true);
-  }, [desktop, videoPlayer, handlePlayPause]);
+  }, [desktop, videoPlayer, handlePlayPause, appearanceDraft]);
   const registerNavigation = useContext(EditorNavigationContext);
 
   const leaveEditor = async (destination: () => void) => {
@@ -280,12 +294,39 @@ export function TranscriptionResult({
 
   return (
     <DownloadContext.Provider value={downloads.actions}>
+    <CaptionAppearanceContext.Provider value={{
+      segment: appearanceSegment,
+      values: { fontId, fontSize: effectiveFontSize, fontColor, outlineColor, activeWordColor, positionXPercent: 50, offsetYPercent, rotation: 0, ...appearanceDraft?.style },
+      disabled: !isEditable || isBurning || timelineDrafts || appearanceSaving || saveState === 'saving',
+      dirty: appearanceDirty, saving: appearanceSaving, error: appearanceError,
+      select: id => {
+        if (!isEditable || isBurning || timelineDrafts || appearanceSaving || saveState === 'saving' || (appearanceDirty && appearanceDraft?.id !== id)) return;
+        const segment = editableSegments.find(item => item.id === id);
+        if (!segment || appearanceDraft?.id === id) return;
+        loopEnabledRef.current = false; videoPlayer?.pause(); setLoopEnabled(false); setSelectedSegmentId(id);
+        const style = sanitizeCaptionOverrides(segment.style);
+        setAppearanceDraft({ id, style, original: JSON.stringify(style) }); setAppearanceError(null);
+      },
+      change: patch => { if (!appearanceSaving) setAppearanceDraft(previous => previous ? { ...previous, style: sanitizeCaptionOverrides({ ...previous.style, ...patch }) } : null); },
+      reset: () => setAppearanceDraft(previous => previous ? { ...previous, style: {} } : null),
+      close: () => { if (!appearanceSaving) { setAppearanceDraft(null); setAppearanceError(null); } },
+      save: async () => {
+        if (!appearanceDraft || !appearanceSegment || appearanceSaving) return;
+        setAppearanceSaving(true); setAppearanceError(null);
+        try {
+          await persistSegments(editableSegments.map(segment => segment.id === appearanceDraft.id
+            ? { ...segment, style: Object.keys(appearanceDraft.style).length ? appearanceDraft.style : undefined } : segment), editableWords, { throwOnError: true });
+          setAppearanceDraft(null);
+        } catch { setAppearanceError('שמירת העיצוב נכשלה. השינויים נשארו כאן; אפשר לנסות שוב.'); }
+        finally { setAppearanceSaving(false); }
+      },
+    }}>
     <BurnProgressDialog open={isBurning} progress={burnProgress} />
     <Card ref={playbackRoot} elevation={narrow ? 0 : 3} sx={{ overflow: "visible", ...(narrow ? { bgcolor: "transparent", boxShadow: "none" } : {}) }}>
       <CardContent sx={narrow ? { p: 0, "&:last-child": { pb: 0 } } : { p: { md: 1.5 }, "&:last-child": { pb: { md: 1.5 } } }}>
         <Stack spacing={narrow ? 0 : 1.5}>
-          {fontLoadError && <Alert severity="error">טעינת הפונט נכשלה. בחרו פונט אחר כדי לצרוב את הסרטון.</Alert>}
-          {!fontReady && !fontLoadError && <Typography role="status" variant="caption">טוען פונט...</Typography>}
+          {(fontLoadError || previewFontError) && <Alert severity="error">טעינת הפונט נכשלה. בחרו פונט אחר כדי לצרוב את הסרטון.</Alert>}
+          {(!fontReady || !previewFontReady) && !fontLoadError && !previewFontError && <Typography role="status" variant="caption">טוען פונט...</Typography>}
           {!narrow && !desktop && (
           <TranscriptionResultHeader
             subtitleFormatLabel={subtitleFormatLabel}
@@ -296,7 +337,7 @@ export function TranscriptionResult({
             onBack={handleLeaveEditor}
           />
           )}
-          {saveState === "error" && <Alert severity="error" action={<Button onClick={() => persistSegments(editableSegments, editableWords)}>נסה לשמור שוב</Button>}>{saveError}</Alert>}
+          {saveState === "error" && !appearanceError && <Alert severity="error" action={<Button onClick={() => persistSegments(editableSegments, editableWords)}>נסה לשמור שוב</Button>}>{saveError}</Alert>}
           {!narrow && !desktop && activeWordEnabled && !hasEstimatedTimingWarning && editableWords.some(word => word.timingSource === "estimated") && <Alert severity="info">לחלק מהמילים הושלם תזמון משוער. אפשר לדייק אותן בציר המילים של המקטע; הטקסט המתוקן נשמר במלואו.</Alert>}
 
           <TranscriptionMainContent
@@ -360,6 +401,7 @@ export function TranscriptionResult({
             onVideoResize={handleVideoResize}
             onTimelineSegmentsChange={handleTimelineSegmentsChange}
             onTimelineTimeChange={time => {
+              if (appearanceDraft) return;
               // A manual seek must win over the selected-caption loop, including
               // media events queued before React renders the new loop state.
               loopEnabledRef.current = false;
@@ -387,7 +429,7 @@ export function TranscriptionResult({
             onResegment={handleResegment}
             onAIEdit={handleAIEdit}
             isPlaying={isPlaying}
-            onPlayPause={handlePlayPause}
+            onPlayPause={() => { if (!appearanceDraft) void handlePlayPause(); }}
             onBack={handleLeaveEditor}
             onMyVideos={handleMyVideos}
             backDisabled={saveState === "saving" || isBurning || hasTimelineDrafts}
@@ -400,6 +442,7 @@ export function TranscriptionResult({
       <Alert severity="error" onClose={downloads.clearError}>{downloads.error}</Alert>
     </Snackbar>
     {downloads.feedbackDownloadId && <DownloadFeedbackDialog key={downloads.feedbackDownloadId} open onClose={downloads.closeFeedback} onSubmit={downloads.saveFeedback} />}
+    </CaptionAppearanceContext.Provider>
     </DownloadContext.Provider>
   );
 }

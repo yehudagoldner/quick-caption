@@ -1,8 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useContext, useEffect, useMemo, useRef, useState } from "react";
 import { Alert, Box, Stack, Typography } from "@mui/material";
 import type { Segment, Word } from "../types";
 import { useActiveWord } from "../hooks/useActiveWord";
 import { escapeAssText, wordPopCues, wordPopScale, type CaptionMotion, type PopIntensity } from "../../captionMotion.js";
+import { CaptionAppearanceContext } from '../contexts/CaptionAppearanceContext';
+import { sanitizeCaptionOverrides } from '../../captionOverrides.js';
 
 type VideoPlayerProps = {
   compact?: boolean;
@@ -50,6 +52,8 @@ function CaptionPreview({ activeSegmentText, activeSegmentId, words, currentTime
 }
 
 export function VideoPlayer({ compact, size, fill, hideMeta, mediaUrl, activeSegmentText, activeSegmentId, segments, previewStyle, words, currentTime, activeWordEnabled, activeWordColor = "#ffd700", captionMotion = "none", popIntensity = "gentle", onTimeUpdate, onLoadedMetadata, onResize }: VideoPlayerProps) {
+  const appearance = useContext(CaptionAppearanceContext);
+  const drag = useRef<{ pointerId: number; x: number; y: number; left: number; bottom: number; width: number; height: number } | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [dimensions, setDimensions] = useState({ width: 16, height: 9 });
   const [isAudio, setIsAudio] = useState(false);
@@ -57,6 +61,9 @@ export function VideoPlayer({ compact, size, fill, hideMeta, mediaUrl, activeSeg
   const activeCaption = useMemo(() => segments
     ? segments.find(segment => segment.text && currentTime >= segment.start && currentTime < segment.end)
     : activeSegmentText ? { id: activeSegmentId, text: activeSegmentText } : null, [segments, currentTime, activeSegmentText, activeSegmentId]);
+  const appearanceSelected = Boolean(appearance?.segment && appearance.segment.id === activeCaption?.id);
+  const highlight = appearanceSelected ? appearance!.values.activeWordColor
+    : sanitizeCaptionOverrides(segments?.find(segment => segment.id === activeCaption?.id)?.style).activeWordColor ?? activeWordColor;
   const timeUpdateRef = useRef(onTimeUpdate);
   useEffect(() => { timeUpdateRef.current = onTimeUpdate; }, [onTimeUpdate]);
 
@@ -143,13 +150,42 @@ export function VideoPlayer({ compact, size, fill, hideMeta, mediaUrl, activeSeg
       ...stageSize,
       aspectRatio: isAudio || fill ? undefined : `${dimensions.width} / ${dimensions.height}`, minHeight: isAudio && !fill ? 180 : undefined }}>
       {mediaUrl ? <>
-        <Box component="video" ref={videoRef} controls controlsList="nofullscreen" playsInline preload="metadata" src={mediaUrl}
+        <Box component="video" ref={videoRef} controls={!appearance?.segment} controlsList="nofullscreen" playsInline preload="metadata" src={mediaUrl}
           onSeeking={e => onTimeUpdate?.(e.currentTarget.currentTime)}
           onTimeUpdate={e => onTimeUpdate?.(e.currentTarget.currentTime)} onError={() => setError(true)}
           sx={{ width: "100%", height: isAudio ? 54 : "100%", display: "block", objectFit: "contain", ...(isAudio ? { position: "absolute", bottom: 0 } : {}) }} />
-        {activeCaption && <Box sx={{ ...previewStyle, ...(isAudio ? { fontSize: 24, bottom: 75, width: "90%" } : {}) }}>
+        {activeCaption && <Box data-testid="caption-position" role={appearance ? 'button' : undefined}
+          tabIndex={appearance && !appearance.disabled ? 0 : undefined} aria-label={appearance ? 'עריכת עיצוב הכתובית בתצוגה' : undefined}
+          aria-pressed={appearance ? appearanceSelected : undefined}
+          onClick={() => { if (appearance && !appearance.disabled && activeCaption.id != null) appearance.select(activeCaption.id); }}
+          onKeyDown={event => {
+            if ((event.key === 'Enter' || event.key === ' ') && appearance && !appearance.disabled && activeCaption.id != null) {
+              event.preventDefault(); event.stopPropagation(); appearance.select(activeCaption.id);
+            }
+          }}
+          onPointerDown={event => {
+            if (!appearance || appearance.disabled || activeCaption.id == null || event.button !== 0) return;
+            event.stopPropagation();
+            if (appearanceSelected && !isAudio) {
+              const bounds = event.currentTarget.parentElement!.getBoundingClientRect();
+              drag.current = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, left: appearance.values.positionXPercent,
+                bottom: appearance.values.offsetYPercent, width: bounds.width, height: bounds.height };
+              event.currentTarget.setPointerCapture(event.pointerId);
+            } else appearance.select(activeCaption.id);
+          }}
+          onPointerMove={event => {
+            const start = drag.current;
+            if (!start || start.pointerId !== event.pointerId || !appearance || appearance.disabled) return;
+            appearance.change({ positionXPercent: start.left + (event.clientX - start.x) * 100 / start.width,
+              offsetYPercent: start.bottom - (event.clientY - start.y) * 100 / start.height });
+          }}
+          onPointerUp={() => { drag.current = null; }} onPointerCancel={() => { drag.current = null; }} onLostPointerCapture={() => { drag.current = null; }}
+          sx={{ ...previewStyle, ...(isAudio ? { fontSize: 24, bottom: 75, width: "90%" } : {}),
+            ...(appearance ? { pointerEvents: 'auto', cursor: appearance.disabled ? 'default' : appearanceSelected ? 'move' : 'pointer', touchAction: 'none', userSelect: 'none',
+              outline: appearanceSelected ? '2px dashed #38bdf8' : undefined, outlineOffset: 3,
+              '&:focus-visible': { outline: '2px solid #38bdf8' } } : {}) }}>
           <CaptionPreview key={activeCaption.id} activeSegmentId={activeCaption.id} activeSegmentText={activeCaption.text}
-            words={words} currentTime={currentTime} activeWordEnabled={activeWordEnabled} activeWordColor={activeWordColor}
+            words={words} currentTime={currentTime} activeWordEnabled={activeWordEnabled} activeWordColor={highlight}
             captionMotion={captionMotion} popIntensity={popIntensity} />
         </Box>}
       </> : <Typography sx={{ p: 3 }}>אין תצוגה זמינה לקובץ הנוכחי.</Typography>}

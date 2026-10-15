@@ -3,6 +3,7 @@ export type Segment = {
   start: number;
   end: number;
   text: string;
+  style?: import('../captionOverrides.js').CaptionOverrides;
 };
 
 export type Word = {

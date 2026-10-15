@@ -125,7 +125,7 @@ export function VideoEditPage({ user, videoToken, onSaveSegments, onNewUpload, o
     formData.append("popIntensity", options.popIntensity ?? "gentle");
     formData.append("activeWordColor", options.activeWordColor ?? "#ffd700");
     if (options.activeWordEnabled) formData.append("activeWordEnabled", "true");
-    if (options.activeWordEnabled || options.captionMotion === "pop") {
+    if (options.activeWordEnabled || options.captionMotion === "pop" || options.segments?.some(segment => segment.style && Object.keys(segment.style).length)) {
       formData.append("segments", JSON.stringify(options.segments ?? []));
       formData.append("words", JSON.stringify(options.words ?? []));
     }

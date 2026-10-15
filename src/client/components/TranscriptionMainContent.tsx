@@ -1,4 +1,6 @@
-import { useState, type ReactNode } from "react";
+import { useContext, useState, type ReactNode } from "react";
+import { CaptionAppearanceContext } from '../contexts/CaptionAppearanceContext';
+import { CaptionAppearanceEditor } from './CaptionAppearanceEditor';
 import { Box, Divider, FormControlLabel, Stack, Switch, Typography, useMediaQuery, useTheme } from "@mui/material";
 import type { Segment, Word } from "../types";
 import { SubtitleTimeline, type SubtitleTimelineProps, type CaptionDraft } from "./SubtitleTimeline";
@@ -154,6 +156,7 @@ export function TranscriptionMainContent({
   backDisabled,
 }: TranscriptionMainContentProps) {
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const appearance = useContext(CaptionAppearanceContext);
   const [showSubtitles, setShowSubtitles] = useState(true);
   const isNarrow = useNarrowViewport();
   const desktop = useMediaQuery(useTheme().breakpoints.up("md"));
@@ -235,7 +238,7 @@ export function TranscriptionMainContent({
     <>
       <Stack data-testid="desktop-caption-editor" direction={{ xs: "column", md: "row" }} spacing={1.5} alignItems="flex-start" sx={{ width: "100%", minWidth: 0, height: { md: "calc(100dvh - 104px)" } }}>
         <Stack className="preview-wrapper" spacing={desktop ? 1 : 2} sx={{ flex: 1, minWidth: 0, width: "100%", height: { md: "100%" } }}>
-          <Stack direction="column" spacing={1.5} alignItems="center" justifyContent="center" sx={{ width: "100%", minWidth: 0 }}>
+          <Stack component="fieldset" disabled={Boolean(appearance?.segment)} direction="column" spacing={1.5} alignItems="center" justifyContent="center" sx={{ width: "100%", minWidth: 0, border: 0, p: 0, m: 0 }}>
             <VideoToolbar
               captionStyles={captionStyles} fontId={fontId} onFontChange={onFontChange}
               activeWordColor={activeWordColor} onActiveWordColorChange={onActiveWordColorChange}
@@ -300,7 +303,7 @@ export function TranscriptionMainContent({
               mediaUrl={mediaUrl}
               busy={saveState === "saving"}
               segments={editableSegments}
-              disabled={!isEditable}
+              disabled={!isEditable || Boolean(appearance?.segment)}
               duration={videoDuration}
               currentTime={currentTime}
               onRequestTimeChange={onTimelineTimeChange}
@@ -316,12 +319,12 @@ export function TranscriptionMainContent({
           )}
         </Stack>
 
-        {sidebarOpen && (
+        {(sidebarOpen || appearance?.segment) && (
           <>
             <Divider orientation="vertical" flexItem sx={{ display: { xs: "none", md: "block" } }} />
 
             <Stack spacing={2} sx={{ width: { xs: "100%", md: 280, lg: 310 }, flexShrink: 0, minWidth: 0, maxHeight: { md: "100%" }, overflowY: "auto" }}>
-              <SubtitleEditor
+              {appearance?.segment ? <CaptionAppearanceEditor /> : <SubtitleEditor
                 segments={editableSegments}
                 isEditable={isEditable && !hasTimelineDrafts && saveState !== "saving"}
                 saveState={saveState}
@@ -330,7 +333,7 @@ export function TranscriptionMainContent({
                 onSegmentTextChange={onSegmentTextChange}
                 onSegmentBlur={onSegmentBlur}
                 onDeleteSegment={onDeleteSegment}
-              />
+              />}
             </Stack>
           </>
         )}

@@ -2,6 +2,8 @@ import { useContext, useEffect, useRef, useState, type ChangeEvent, type ReactNo
 import { DownloadContext } from "../contexts/DownloadContext";
 import { VideoSeekBar } from "./VideoSeekBar";
 import { CaptionFontPicker } from "./CaptionFontPicker";
+import { CaptionAppearanceContext } from '../contexts/CaptionAppearanceContext';
+import { CaptionAppearanceEditor } from './CaptionAppearanceEditor';
 import {
   Alert,
   Box,
@@ -197,7 +199,12 @@ export function MobileCaptionEditor({
   const downloads = useContext(DownloadContext);
   const { preferences } = useEditorPreferences();
   const [mode, setMode] = useState<MobileMode>("timing");
-  const [styleOpen, setStyleOpen] = useState(false);
+  const [globalStyleOpen, setStyleOpen] = useState(false);
+  const appearance = useContext(CaptionAppearanceContext);
+  const individualStyleOpen = Boolean(appearance?.segment);
+  const styleOpen = globalStyleOpen || individualStyleOpen;
+  const drawerHeight = individualStyleOpen ? '48dvh' : STYLE_DRAWER_HEIGHT;
+  const closeStyle = () => { appearance?.close(); setStyleOpen(false); };
   const [moreOpen, setMoreOpen] = useState(false);
   const [downloadOpen, setDownloadOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -470,7 +477,7 @@ export function MobileCaptionEditor({
         boxSizing: "border-box",
         px: 1.5,
         pt: 1,
-        pb: styleOpen ? `calc(${STYLE_DRAWER_HEIGHT} - ${MOBILE_EDITOR_NAV_HEIGHT + 1}px)` : 0.5,
+        pb: styleOpen ? `calc(${drawerHeight} - ${MOBILE_EDITOR_NAV_HEIGHT + 1}px)` : 0.5,
         display: "flex",
         flexDirection: "column",
         overflow: "hidden",
@@ -572,7 +579,7 @@ export function MobileCaptionEditor({
               {player}
             </Box>
             {/* Reserve room for zoom, the card controls and two caption lines. */}
-            <Box sx={{ flex: "0 0 calc(30dvh - 82px)", minWidth: 0, minHeight: 216, width: "100%", display: "flex", overflow: "hidden" }}>
+            {!styleOpen && <Box sx={{ flex: "0 0 calc(30dvh - 82px)", minWidth: 0, minHeight: 216, width: "100%", display: "flex", overflow: "hidden" }}>
             <MobileTimingTimeline
               mediaUrl={mediaUrl}
               segments={editableSegments}
@@ -602,7 +609,7 @@ export function MobileCaptionEditor({
                 setTimingWordsId(id);
               }}
             />
-            </Box>
+            </Box>}
           </Stack>
         )}
 
@@ -674,9 +681,9 @@ export function MobileCaptionEditor({
         variant="persistent"
         anchor="bottom"
         open={styleOpen}
-        onClose={() => setStyleOpen(false)}
+        onClose={closeStyle}
         slotProps={{ paper: { role: "region", "aria-label": "עיצוב כתוביות", dir: "rtl", sx: {
-          height: STYLE_DRAWER_HEIGHT,
+          height: drawerHeight,
           borderTopLeftRadius: 18,
           borderTopRightRadius: 18,
           bgcolor: "#ffffff",
@@ -697,10 +704,11 @@ export function MobileCaptionEditor({
         } } }}
       >
         <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ px: 1.8, pt: 0.9, pb: 0.45, flexShrink: 0 }}>
-          <Typography fontWeight={500}>עיצוב כתוביות</Typography>
-          <IconButton aria-label="סגירת עיצוב" onClick={() => setStyleOpen(false)} sx={{ p: 0.9 }}><CheckRounded sx={{ fontSize: 21.6 }} /></IconButton>
+          <Typography fontWeight={500}>{individualStyleOpen ? 'כתובית נבחרת' : 'עיצוב כל הכתוביות'}</Typography>
+          <IconButton aria-label="סגירת עיצוב" disabled={appearance?.saving} onClick={closeStyle} sx={{ p: 0.9 }}>{individualStyleOpen ? <CloseRounded sx={{ fontSize: 21.6 }} /> : <CheckRounded sx={{ fontSize: 21.6 }} />}</IconButton>
         </Stack>
         <Box sx={{ px: 1.8, pb: "max(14.4px, env(safe-area-inset-bottom, 0px))", overflowY: "auto", minHeight: 0 }}>
+          {individualStyleOpen ? <CaptionAppearanceEditor /> : <>
           {captionStyles}
           <Box sx={{ mt: captionStyles ? 2 : 0 }}><CaptionFontPicker disabled={isBurning} fontId={fontId} onFontChange={onFontChange} /></Box>
           <Box sx={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 0.9, my: 1.35, "& > *": { minWidth: 0 } }}>
@@ -721,6 +729,7 @@ export function MobileCaptionEditor({
           <Slider aria-label="שולי הכתובית" value={marginPercent} onChange={onMarginChange} min={0} max={40} valueLabelDisplay="auto" />
           <FormControlLabel control={<Switch checked={activeWordEnabled} onChange={onToggleActiveWord} />} label="מילה אקטיבית" />
           <FormControlLabel control={<Switch checked={showSubtitles} onChange={(_, checked) => onShowSubtitlesChange(checked)} />} label="הצג כתוביות בתצוגה המקדימה" />
+          </>}
         </Box>
       </Drawer>
 

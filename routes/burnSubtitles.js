@@ -9,6 +9,8 @@ import { renderActiveWordSrt } from "../src/activeWordSubtitles.js";
 import { renderWordPopAss, sanitizeCaptionMotion, sanitizePopIntensity } from "../src/captionMotion.js";
 import { CAPTION_OUTLINE_WIDTH, captionMarginPixels, sanitizeCaptionFontSize } from "../src/captionStyle.js";
 import { getCaptionFont } from "../src/captionFonts.js";
+import { sanitizeCaptionOverrides } from '../src/captionOverrides.js';
+import { renderStyledCaptionsAss } from '../src/styledCaptions.js';
 
 const CAPTION_FONTS_DIR = fileURLToPath(new URL("../public/fonts", import.meta.url));
 const TEMP_SUBTITLE_DIR = path.join(os.tmpdir(), "subtitles-api-subtitle-temp");
@@ -67,14 +69,14 @@ export function createBurnSubtitlesRouter(upload, { resolveVideo } = {}) {
 
     const motion = sanitizeCaptionMotion(req.body?.captionMotion);
     let timedSegments, timedWords;
-    if (req.body?.activeWordEnabled === "true" || motion === "pop") {
+    if (req.body?.segments || req.body?.activeWordEnabled === "true" || motion === "pop") {
       try {
         const segments = JSON.parse(req.body.segments);
         const words = JSON.parse(req.body.words ?? "[]");
         if (!Array.isArray(segments) || !segments.length || !Array.isArray(words) || segments.some(s => !s || typeof s.text !== "string" || !Number.isFinite(s.start) || !Number.isFinite(s.end) || s.end <= s.start)) throw new Error("Invalid word timing data");
-        timedSegments = segments;
+        timedSegments = segments.map(segment => ({ ...segment, style: sanitizeCaptionOverrides(segment.style) }));
         timedWords = words;
-        if (motion !== "pop") subtitleContent = renderActiveWordSrt(segments, words, req.body.textDirection, req.body.activeWordColor);
+        if (motion !== "pop" && req.body?.activeWordEnabled === 'true') subtitleContent = renderActiveWordSrt(segments, words, req.body.textDirection, req.body.activeWordColor);
       } catch {
         await safeUnlink(req.file?.path);
         return res.status(400).json({ error: "נתוני תזמון המילים אינם תקינים. נסו לשמור את הכתוביות ולצרוב שוב." });
@@ -88,12 +90,13 @@ export function createBurnSubtitlesRouter(upload, { resolveVideo } = {}) {
     const marginPercent = sanitizePercent(req.body?.marginPercent, 5);
     const videoWidth = sanitizeDimension(req.body?.videoWidth);
     const videoHeight = sanitizeDimension(req.body?.videoHeight);
-    if (motion === "pop" && (!videoWidth || !videoHeight)) {
+    const styled = timedSegments?.some(segment => Object.keys(segment.style).length > 0);
+    if ((motion === "pop" || styled) && (!videoWidth || !videoHeight)) {
       await safeUnlink(req.file?.path);
-      return res.status(400).json({ error: "נדרש גודל וידאו תקין לאנימציה. המתינו לטעינת הסרטון ונסו שוב." });
+      return res.status(400).json({ error: "נדרש גודל וידאו תקין לעיצוב הכתוביות. המתינו לטעינת הסרטון ונסו שוב." });
     }
 
-    const subtitlePath = path.join(TEMP_SUBTITLE_DIR, `${randomUUID()}.${motion === "pop" ? "ass" : "srt"}`);
+    const subtitlePath = path.join(TEMP_SUBTITLE_DIR, `${randomUUID()}.${motion === "pop" || styled ? "ass" : "srt"}`);
     const outputPath = path.join(TEMP_OUTPUT_DIR, `${randomUUID()}.mp4`);
     let source = req.file ? { ...req.file, temporary: true } : null;
     const { signal } = req.burnController;
@@ -108,7 +111,12 @@ export function createBurnSubtitlesRouter(upload, { resolveVideo } = {}) {
         if (!source) return res.status(404).json({ error: 'הסרטון לא נמצא או שאין לכם הרשאה לצפות בו.' });
       }
       // Wrap subtitle lines with RTL markers for proper Hebrew punctuation rendering
-      const rtlSubtitleContent = motion === "pop"
+      const rtlSubtitleContent = styled
+        ? renderStyledCaptionsAss(timedSegments, timedWords, { ...sanitizeCaptionOverrides(req.body),
+          fontSize, fontColor: assColorToHex(fontColor), outlineColor: assColorToHex(outlineColor), offsetYPercent,
+          captionMotion: motion, activeWordEnabled: req.body?.activeWordEnabled === 'true',
+          intensity: sanitizePopIntensity(req.body?.popIntensity), direction: req.body?.textDirection === 'ltr' ? 'ltr' : 'rtl', videoWidth, videoHeight, outlineWidth: CAPTION_OUTLINE_WIDTH })
+        : motion === "pop"
         ? renderWordPopAss(timedSegments, timedWords, { intensity: sanitizePopIntensity(req.body?.popIntensity), direction: req.body?.textDirection === "ltr" ? "ltr" : "rtl", videoWidth, videoHeight, outlineWidth: CAPTION_OUTLINE_WIDTH })
         : req.body?.textDirection === "ltr" ? subtitleContent : wrapSubtitleLinesWithRTL(subtitleContent);
       await fsp.writeFile(subtitlePath, rtlSubtitleContent, "utf-8");
@@ -121,7 +129,7 @@ export function createBurnSubtitlesRouter(upload, { resolveVideo } = {}) {
         marginPercent,
         videoWidth,
         videoHeight,
-        wholeTextLayout: req.body?.activeWordEnabled === "true" || motion === "pop",
+        wholeTextLayout: req.body?.activeWordEnabled === "true" || motion === "pop" || styled,
       });
 
       const duration = await probeBurnDuration(source.path, { signal });
@@ -226,12 +234,17 @@ function escapeFilterPath(value) {
 }
 
 function sanitizeDimension(raw) {
+  if (raw == null || raw === '') return null;
   const numeric = Number(raw);
-  if (!Number.isFinite(numeric)) {
+  if (!Number.isFinite(numeric) || numeric <= 0) {
     return null;
   }
   const rounded = Math.max(1, Math.round(numeric));
   return Number.isFinite(rounded) ? rounded : null;
+}
+
+function assColorToHex(value) {
+  return `#${value.slice(8, 10)}${value.slice(6, 8)}${value.slice(4, 6)}`;
 }
 
 function sanitizeColor(raw) {
