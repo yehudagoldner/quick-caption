@@ -67,9 +67,10 @@ export function TranscriptionResult({
   const [appearanceDraft, setAppearanceDraft] = useState<{ id: Segment['id']; style: CaptionOverrides; original: string } | null>(null);
   const [appearanceSaving, setAppearanceSaving] = useState(false);
   const [appearanceError, setAppearanceError] = useState<string | null>(null);
+  const [appearanceControlsOpen, setAppearanceControlsOpen] = useState(false);
   const appearanceDirty = Boolean(appearanceDraft && JSON.stringify(appearanceDraft.style) !== appearanceDraft.original);
   const hasTimelineDrafts = timelineDrafts || Boolean(appearanceDraft) || appearanceSaving;
-  useEffect(() => { setAppearanceDraft(null); setAppearanceError(null); }, [videoId, mediaUrl]);
+  useEffect(() => { setAppearanceDraft(null); setAppearanceError(null); setAppearanceControlsOpen(false); }, [videoId, mediaUrl]);
   const [loopEnabled, setLoopEnabled] = useState(false);
   const loopEnabledRef = useRef(loopEnabled);
   loopEnabledRef.current = loopEnabled;
@@ -299,17 +300,22 @@ export function TranscriptionResult({
       values: { fontId, fontSize: effectiveFontSize, fontColor, outlineColor, activeWordColor, positionXPercent: 50, offsetYPercent, rotation: 0, ...appearanceDraft?.style },
       disabled: !isEditable || isBurning || timelineDrafts || appearanceSaving || saveState === 'saving',
       dirty: appearanceDirty, saving: appearanceSaving, error: appearanceError,
-      select: id => {
+      controlsOpen: appearanceControlsOpen,
+      showControls: () => setAppearanceControlsOpen(true),
+      select: (id, options) => {
         if (!isEditable || isBurning || timelineDrafts || appearanceSaving || saveState === 'saving' || (appearanceDirty && appearanceDraft?.id !== id)) return;
         const segment = editableSegments.find(item => item.id === id);
-        if (!segment || appearanceDraft?.id === id) return;
-        loopEnabledRef.current = false; videoPlayer?.pause(); setLoopEnabled(false); setSelectedSegmentId(id);
+        if (!segment) return;
+        if (!options?.deferControls) setAppearanceControlsOpen(true);
+        if (appearanceDraft?.id === id) return;
+        setAppearanceControlsOpen(!options?.deferControls);
+        loopEnabledRef.current = false; videoPlayer?.pause(); setLoopEnabled(false);
         const style = sanitizeCaptionOverrides(segment.style);
         setAppearanceDraft({ id, style, original: JSON.stringify(style) }); setAppearanceError(null);
       },
       change: patch => { if (!appearanceSaving) setAppearanceDraft(previous => previous ? { ...previous, style: sanitizeCaptionOverrides({ ...previous.style, ...patch }) } : null); },
       reset: () => setAppearanceDraft(previous => previous ? { ...previous, style: {} } : null),
-      close: () => { if (!appearanceSaving) { setAppearanceDraft(null); setAppearanceError(null); } },
+      close: () => { if (!appearanceSaving) { setAppearanceDraft(null); setAppearanceError(null); setAppearanceControlsOpen(false); } },
       save: async () => {
         if (!appearanceDraft || !appearanceSegment || appearanceSaving) return;
         setAppearanceSaving(true); setAppearanceError(null);
@@ -317,6 +323,7 @@ export function TranscriptionResult({
           await persistSegments(editableSegments.map(segment => segment.id === appearanceDraft.id
             ? { ...segment, style: Object.keys(appearanceDraft.style).length ? appearanceDraft.style : undefined } : segment), editableWords, { throwOnError: true });
           setAppearanceDraft(null);
+          setAppearanceControlsOpen(false);
         } catch { setAppearanceError('שמירת העיצוב נכשלה. השינויים נשארו כאן; אפשר לנסות שוב.'); }
         finally { setAppearanceSaving(false); }
       },

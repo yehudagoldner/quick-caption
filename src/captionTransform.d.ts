@@ -1,0 +1,10 @@
+import type { CaptionOverrides } from './captionOverrides.js';
+export type CaptionTransformValues = Required<Pick<CaptionOverrides, 'positionXPercent' | 'offsetYPercent' | 'rotation' | 'fontSize'>>;
+export type Point = { x: number; y: number };
+export type TransformBounds = { left: number; top: number; width: number; height: number };
+export function normalizeCaptionAngle(angle: number): number;
+export function snapCaptionAngle(angle: number, stepped?: boolean): number;
+export function captionAnchor(values: CaptionTransformValues, bounds: TransformBounds): Point;
+export function moveCaption(values: CaptionTransformValues, dx: number, dy: number, bounds: TransformBounds): CaptionOverrides;
+export function rotateCaption(values: CaptionTransformValues, start: Point, current: Point, pivot: Point, bounds: TransformBounds, stepped?: boolean): CaptionOverrides;
+export function pinchCaption(values: CaptionTransformValues, start: Point[], current: Point[], bounds: TransformBounds): CaptionOverrides;

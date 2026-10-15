@@ -201,7 +201,7 @@ export function MobileCaptionEditor({
   const [mode, setMode] = useState<MobileMode>("timing");
   const [globalStyleOpen, setStyleOpen] = useState(false);
   const appearance = useContext(CaptionAppearanceContext);
-  const individualStyleOpen = Boolean(appearance?.segment);
+  const individualStyleOpen = Boolean(appearance?.segment && appearance.controlsOpen);
   const styleOpen = globalStyleOpen || individualStyleOpen;
   const drawerHeight = individualStyleOpen ? '48dvh' : STYLE_DRAWER_HEIGHT;
   const closeStyle = () => { appearance?.close(); setStyleOpen(false); };

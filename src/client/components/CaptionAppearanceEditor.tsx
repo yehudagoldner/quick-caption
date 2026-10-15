@@ -10,7 +10,7 @@ export function CaptionAppearanceEditor() {
   return <Stack spacing={1.5} dir="rtl" role="region" aria-label="עיצוב כתובית נבחרת" sx={{ p: 2, minWidth: 0 }}>
     <Typography fontWeight={600}>עיצוב הכתובית הזו בלבד</Typography>
     <Typography variant="body2" noWrap>{editor.segment.text}</Typography>
-    <Typography variant="caption" color="text.secondary">אפשר לגרור את הכתובית בתצוגה או לדייק בעזרת הפקדים.</Typography>
+    <Typography variant="caption" color="text.secondary">גררו להזזה, גררו את הידית העגולה לסיבוב. בשתי אצבעות אפשר לסובב ולהגדיל או להקטין.</Typography>
     {editor.error && <Alert severity="error">{editor.error}</Alert>}
     <CaptionFontPicker fontId={values.fontId} onFontChange={fontId => change({ fontId })} disabled={saving} />
     <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 1 }}>
@@ -26,6 +26,10 @@ export function CaptionAppearanceEditor() {
         min={key === 'rotation' ? -180 : 0} max={key === 'rotation' ? 180 : 100} step={key === 'rotation' ? 1 : .01} valueLabelDisplay="auto"
         onChange={(_, value) => change({ [key]: value as number })} />
     </Box>)}
+    <Stack direction="row" spacing={1}>
+      <Button disabled={saving} onClick={() => change({ rotation: 0 })}>יישור הכתובית</Button>
+      <Button disabled={saving} onClick={() => change({ positionXPercent: 50 })}>מרכוז אופקי</Button>
+    </Stack>
     <Button onClick={editor.reset} disabled={saving}>חזרה לעיצוב הכללי</Button>
     <Stack direction="row" spacing={1}>
       <Button variant="contained" onClick={() => void editor.save()} disabled={saving || !editor.dirty}>{saving ? 'שומר...' : 'שמירת עיצוב הכתובית'}</Button>

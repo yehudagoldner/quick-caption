@@ -94,6 +94,41 @@ for (const mobile of [false, true]) test(`${mobile ? 'mobile' : 'desktop'} indiv
 
 test.describe('touch appearance editing', () => {
   test.use({ hasTouch: true, isMobile: true });
+  test('first touch drags immediately; two fingers rotate and pinch, then one finger continues without a jump', async ({ page }) => {
+    const state = await setup(page, true);
+    const caption = page.getByTestId('caption-position');
+    const stage = page.getByTestId('media-stage');
+    const cdp = await page.context().newCDPSession(page);
+    const initial = (await caption.boundingBox())!;
+    const before = (await stage.boundingBox())!;
+    const x = initial.x + initial.width / 2, y = initial.y + initial.height / 2;
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ id: 1, x, y }] });
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ id: 1, x: x + 25, y: y - 25 }] });
+    // The drawer waits until release; the preview must not resize underneath a finger.
+    expect((await stage.boundingBox())!.height).toBeCloseTo(before.height, 0);
+    const moved = (await caption.boundingBox())!;
+    expect(moved.x - initial.x).toBeCloseTo(25, 0);
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    const panel = page.getByRole('region', { name: 'עיצוב כתובית נבחרת', exact: true });
+    await expect(panel).toBeVisible();
+    await expect(page.locator('.MuiDrawer-paper')).toHaveCSS('transform', 'none');
+    const fontSize = Number(await panel.getByLabel('גודל גופן לכתובית').inputValue());
+    const rect = (await caption.boundingBox())!, cx = rect.x + rect.width / 2, cy = rect.y + rect.height / 2;
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ id: 1, x: cx - 30, y: cy }, { id: 2, x: cx + 30, y: cy }] });
+    const second = { id: 2, x: cx + 45 * Math.cos(Math.PI / 6), y: cy + 22.5 };
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ id: 1, x: cx - 45 * Math.cos(Math.PI / 6), y: cy - 22.5 }, second] });
+    await expect(panel.getByRole('slider', { name: 'סיבוב', exact: true })).toHaveValue('30');
+    expect(Number(await panel.getByLabel('גודל גופן לכתובית').inputValue())).toBe(Math.round(fontSize * 1.5));
+    const position = Number(await panel.getByRole('slider', { name: 'מיקום אופקי', exact: true }).inputValue());
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [{ id: 1, x: cx - 45 * Math.cos(Math.PI / 6), y: cy - 22.5 }] });
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ ...second, x: second.x + 10 }] });
+    expect(Number(await panel.getByRole('slider', { name: 'מיקום אופקי', exact: true }).inputValue())).toBeGreaterThan(position);
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    await panel.getByRole('button', { name: 'שמירת עיצוב הכתובית', exact: true }).click();
+    await expect(panel).toHaveCount(0);
+    expect(state.saved()[0].style!.rotation).toBeCloseTo(30, 0);
+    expect(state.saved()[1].style).toBeUndefined();
+  });
   test('touch selects and drags a caption, and resizing preserves its draft', async ({ page }) => {
     const state = await setup(page, true);
     await page.getByTestId('caption-position').tap();
@@ -115,6 +150,39 @@ test.describe('touch appearance editing', () => {
     await expect(panel).toHaveCount(0);
     expect(state.saved()[0].style!.positionXPercent).toBe(position);
   });
+});
+
+test('mouse drags on the first press and rotation handle rotates around the caption center', async ({ page }) => {
+  const state = await setup(page, false);
+  const caption = page.getByTestId('caption-position');
+  const before = (await caption.boundingBox())!;
+  const x = before.x + before.width / 2, y = before.y + before.height / 2;
+  await page.mouse.move(x, y); await page.mouse.down();
+  await page.mouse.move(x + 30, y - 40, { steps: 6 });
+  const moved = (await caption.boundingBox())!;
+  expect(moved.x - before.x).toBeCloseTo(30, 0);
+  expect(moved.y - before.y).toBeCloseTo(-40, 0);
+  await page.mouse.up();
+  const panel = page.getByRole('region', { name: 'עיצוב כתובית נבחרת', exact: true });
+  await expect(panel).toBeVisible();
+  const rect = (await caption.boundingBox())!, pivot = { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
+  const handle = page.getByRole('button', { name: 'ידית סיבוב הכתובית' });
+  const hb = (await handle.boundingBox())!, hx = hb.x + hb.width / 2, hy = hb.y + hb.height / 2;
+  const dx = hx - pivot.x, dy = hy - pivot.y, angle = Math.PI / 6;
+  await page.mouse.move(hx, hy); await page.mouse.down();
+  await page.mouse.move(pivot.x + dx * Math.cos(angle) - dy * Math.sin(angle), pivot.y + dx * Math.sin(angle) + dy * Math.cos(angle), { steps: 8 });
+  await page.mouse.up();
+  await expect(panel.getByRole('slider', { name: 'סיבוב', exact: true })).toHaveValue('30');
+  const rotated = (await caption.boundingBox())!;
+  expect(rotated.x + rotated.width / 2).toBeCloseTo(pivot.x, 0);
+  expect(rotated.y + rotated.height / 2).toBeCloseTo(pivot.y, 0);
+  await handle.focus(); await page.keyboard.press('Shift+ArrowRight');
+  await expect(panel.getByRole('slider', { name: 'סיבוב', exact: true })).toHaveValue('45');
+  await page.screenshot({ path: 'test-results/caption-rotation-handle.png' });
+  await panel.getByRole('button', { name: 'שמירת עיצוב הכתובית', exact: true }).click();
+  await expect(panel).toHaveCount(0);
+  expect(state.saved()[0].style!.rotation).toBe(45);
+  expect(state.saved()[1].style).toBeUndefined();
 });
 
 test('dragging changes only the selected caption; failed saves retain the draft for retry', async ({ page }) => {

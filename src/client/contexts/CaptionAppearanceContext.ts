@@ -9,7 +9,9 @@ export const CaptionAppearanceContext = createContext<{
   dirty: boolean;
   saving: boolean;
   error: string | null;
-  select: (id: Segment['id']) => void;
+  controlsOpen: boolean;
+  showControls: () => void;
+  select: (id: Segment['id'], options?: { deferControls?: boolean }) => void;
   change: (patch: CaptionOverrides) => void;
   reset: () => void;
   save: () => Promise<void>;

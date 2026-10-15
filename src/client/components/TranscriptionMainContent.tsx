@@ -319,12 +319,12 @@ export function TranscriptionMainContent({
           )}
         </Stack>
 
-        {(sidebarOpen || appearance?.segment) && (
+        {(sidebarOpen || (appearance?.segment && appearance.controlsOpen)) && (
           <>
             <Divider orientation="vertical" flexItem sx={{ display: { xs: "none", md: "block" } }} />
 
             <Stack spacing={2} sx={{ width: { xs: "100%", md: 280, lg: 310 }, flexShrink: 0, minWidth: 0, maxHeight: { md: "100%" }, overflowY: "auto" }}>
-              {appearance?.segment ? <CaptionAppearanceEditor /> : <SubtitleEditor
+              {appearance?.segment && appearance.controlsOpen ? <CaptionAppearanceEditor /> : <SubtitleEditor
                 segments={editableSegments}
                 isEditable={isEditable && !hasTimelineDrafts && saveState !== "saving"}
                 saveState={saveState}
