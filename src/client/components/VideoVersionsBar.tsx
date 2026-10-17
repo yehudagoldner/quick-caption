@@ -24,14 +24,14 @@ export function VideoVersionsBar({ eligible, enabled, dismissed, activeId, crop,
     finally { if (job.current === controller) { job.current = null; setProgress(null); onBusy(false); } }
   };
   return <>
-    <Dialog open={eligible && !enabled && !dismissed} onClose={() => void perform(dismiss)} maxWidth="sm" fullWidth aria-labelledby="video-versions-title">
+    <Dialog open={eligible && !enabled && !dismissed} onClose={() => void perform(dismiss)} maxWidth="sm" fullWidth dir="rtl" slotProps={{ paper: { sx: { textAlign: 'right' } } }} aria-labelledby="video-versions-title">
       <DialogTitle id="video-versions-title">רוצה ליצור גרסאות נוספות?</DialogTitle>
-      <DialogContent><Typography>העלית סרטון רחב שמתאים למשל ל־YouTube. אפשר לחתוך ממנו גם גרסאות לפורמטים של TikTok, Reels, Shorts, Stories והפיד של Instagram ו־Facebook.</Typography>
+      <DialogContent><Typography>העלית סרטון רחב שמתאים למשל ל־<bdi dir="ltr">YouTube</bdi>. אפשר לחתוך ממנו גם גרסאות לפורמטים של <bdi dir="ltr">TikTok, Reels, Shorts, Stories</bdi> והפיד של <bdi dir="ltr">Instagram</bdi> ו־<bdi dir="ltr">Facebook</bdi>.</Typography>
         <Typography sx={{ mt: 1 }}>ליצור עבורך גרסאות נוספות?</Typography>
         <Typography variant="caption" color="text.secondary">הגרסאות הנוספות והעריכות שלהן נשמרות בדפדפן במכשיר הזה.</Typography>
         {error && <Alert severity="error">{error}</Alert>}
       </DialogContent>
-      <DialogActions><Button onClick={() => void perform(dismiss)}>המשך עם המקור</Button><Button variant="contained" disabled={disabled} onClick={() => void perform(create)}>כן, צור גרסאות</Button></DialogActions>
+      <DialogActions disableSpacing sx={{ gap: 1 }}><Button onClick={() => void perform(dismiss)}>המשך עם המקור</Button><Button variant="contained" disabled={disabled} onClick={() => void perform(create)}>כן, צור גרסאות</Button></DialogActions>
     </Dialog>
     {eligible && !enabled && dismissed && <Button size="small" disabled={disabled} onClick={() => void perform(create)}>יצירת גרסאות לרשתות</Button>}
     {enabled && <Box sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 2, px: 1 }}>
