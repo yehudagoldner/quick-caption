@@ -22,7 +22,7 @@ test('MySQL download records, per-user statistics and feedback survive media ret
   await downloads.recordDownload(event); await downloads.recordDownload(event);
   await assert.rejects(downloads.recordDownload({ ...event, userUid: 'other' }), { status: 404 });
   await assert.rejects(downloads.recordDownload({ ...event, videoId: 43 }), { status: 404 });
-  await assert.rejects(downloads.recordDownload({ ...event, videoId: 44 }), { status: 404 });
+  await downloads.recordDownload({ ...event, id: randomUUID(), videoId: 44 });
   await assert.rejects(downloads.recordDownload({ ...event, kind: 'subtitles', format: 'srt' }), { status: 409 });
   await downloads.recordDownload({ ...event, id: randomUUID() });
   await downloads.recordDownload({ ...event, id: randomUUID(), kind: 'subtitles', format: 'vtt' });
@@ -36,11 +36,11 @@ test('MySQL download records, per-user statistics and feedback survive media ret
   await db.execute('DELETE FROM videos');
   const stats = await admin.overview();
   assert.equal(Number(stats.uploads.videos), 2); assert.equal(Number(stats.uploads.audio), 1);
-  assert.equal(Number(stats.downloads.videos), 2); assert.equal(Number(stats.downloads.subtitles), 2); assert.equal(Number(stats.downloads.uniqueVideos), 1);
+  assert.equal(Number(stats.downloads.videos), 3); assert.equal(Number(stats.downloads.subtitles), 2); assert.equal(Number(stats.downloads.uniqueVideos), 2);
   assert.equal(Number(stats.feedback.count), 2); assert.equal(Number(stats.feedback.averageRating), 4);
   const owner = (await admin.users('owner', 0)).users[0];
-  assert.equal(Number(owner.uploadedVideos), 2); assert.equal(Number(owner.videoDownloads), 2); assert.equal(Number(owner.subtitleDownloads), 2); assert.equal(Number(owner.averageRating), 4);
-  assert.equal(Number(owner.downloadedVideos), 1);
+  assert.equal(Number(owner.uploadedVideos), 2); assert.equal(Number(owner.videoDownloads), 3); assert.equal(Number(owner.subtitleDownloads), 2); assert.equal(Number(owner.averageRating), 4);
+  assert.equal(Number(owner.downloadedVideos), 2);
   const other = (await admin.users('other', 0)).users[0];
   assert.equal(Number(other.uploadedVideos), 0); assert.equal(Number(other.videoDownloads), 0); assert.equal(other.averageRating, null);
   assert.equal(Number(other.downloadedVideos), 0);

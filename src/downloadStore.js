@@ -26,7 +26,8 @@ export function createDownloadStore(pool) {
     async recordDownload({ id, userUid, videoId, kind, format }) {
       const [[owned]] = await pool.execute(`SELECT a.video_id, a.user_uid, a.media_type FROM media_upload_activity a
         JOIN video_activity v ON v.video_id = a.video_id WHERE a.video_id = ? AND a.user_uid = ?`, [videoId, userUid]);
-      if (!owned || owned.user_uid !== userUid || kind === 'video' && owned.media_type !== 'video') {
+      // Audio projects download as audiogram videos.
+      if (!owned || owned.user_uid !== userUid || kind === 'video' && !['video', 'audio'].includes(owned.media_type)) {
         throw failure(404, 'הסרטון לא נמצא או שאין הרשאה להוריד אותו.');
       }
       await pool.execute(`INSERT INTO media_downloads (id, user_uid, video_id, kind, format) VALUES (?, ?, ?, ?, ?)
