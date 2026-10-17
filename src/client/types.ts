@@ -13,6 +13,9 @@ export type Word = {
   segmentId?: Segment["id"];
   wordIndex?: number;
   timingSource?: "original" | "aligned" | "estimated";
+  sourceId?: string;
+  sourceStart?: number;
+  sourceEnd?: number;
 };
 
 export type SubtitlePayload = {

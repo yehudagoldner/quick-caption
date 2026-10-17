@@ -19,7 +19,7 @@ function read(key: string): Project {
 }
 
 // Matches existing per-project appearance/background storage. Never send a
-// derivative's captions through the original video's save endpoint.
+// derivative's caption layout through the original video's save endpoint.
 export function useVideoVersions(videoId: number | null, mediaUrl: string | null) {
   const key = `${import.meta.env.BASE_URL}video-versions:${apiUserUid()}:${videoId ?? mediaUrl}`;
   const loaded = useMemo(() => read(key), [key]);
@@ -35,8 +35,9 @@ export function useVideoVersions(videoId: number | null, mediaUrl: string | null
   };
   return {
     ...project, activeId, setActiveId,
+    getRevisions: () => latest.current.revisions,
     create: (revision: VideoRevision) => {
-      const revisions: Record<string, VideoRevision> = {}, crops: Record<string, VideoCrop> = {};
+      const revisions: Record<string, VideoRevision> = { original: structuredClone(revision) }, crops: Record<string, VideoCrop> = {};
       for (const format of VIDEO_FORMATS.filter(f => f.ratio)) {
         revisions[format.id] = structuredClone(revision);
         crops[format.id] = { format: format.id, x: .5, y: .5 };

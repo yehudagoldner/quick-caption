@@ -9,6 +9,7 @@ import { useProjectCaptionStyle } from "./useProjectCaptionStyle";
 import { EditHistory, snapshot, validateCaptionRange, wordsForSegment } from "../../timelineEditing.js";
 import { useVideoVersions } from './useVideoVersions';
 import { splitVideoVersions, type VideoRevision } from '../../videoVersions.js';
+import { editVideoTranscript, linkVideoRevisions } from '../../sharedVideoTranscript.js';
 
 type BurnedVideo = {
   url: string;
@@ -38,7 +39,7 @@ export function useTranscriptionState({
   const versionsRef = useRef(versions); versionsRef.current = versions;
   const versionHistories = useRef<Record<string, EditHistory>>({});
   const originalRevision = useRef<VideoRevision>({ segments: responseSegments, words: responseWords ?? [] });
-  const allSplitUndo = useRef<{ before: Record<string, VideoRevision>; after: Record<string, VideoRevision>; histories: Record<string, EditHistory> } | null>(null);
+  const sharedHistory = useRef<{ past: Record<string, VideoRevision>[]; future: Record<string, VideoRevision>[] }>({ past: [], future: [] });
   const [editableSegments, setEditableSegments] = useState<Segment[]>(responseSegments);
   const [wordTimingData, setEditableWords] = useState<Word[]>(responseWords ?? []);
   // Repair legacy/missing timing data on load and keep live text edits in sync.
@@ -99,7 +100,7 @@ export function useTranscriptionState({
     setReflowUndo(null);
     setSplitUndo(null);
     history.current = new EditHistory();
-    versionHistories.current = {}; allSplitUndo.current = null;
+    versionHistories.current = {}; sharedHistory.current = { past: [], future: [] };
     setHistoryVersion(v => v + 1);
   }, [mediaUrl, videoId]);
 
@@ -111,8 +112,57 @@ export function useTranscriptionState({
     };
   }, [burnedVideo]);
 
+  const collectVersions = () => {
+    const saved = versionsRef.current.getRevisions();
+    const linked = linkVideoRevisions({ ...saved, original: originalRevision.current }, saved.original);
+    originalRevision.current = linked.original;
+    return linked;
+  };
+  const saveVersionSet = async (before: Record<string, VideoRevision>, after: Record<string, VideoRevision>) => {
+    versionsRef.current.saveAll(after);
+    try {
+      if (JSON.stringify(before.original) !== JSON.stringify(after.original)) {
+        await onSaveSegments(after.original.segments, segmentsToSrt(after.original.segments), after.original.words);
+      }
+    } catch (error) {
+      versionsRef.current.saveAll(before);
+      throw error;
+    }
+    originalRevision.current = after.original;
+  };
+  const showRevision = (next: VideoRevision) => {
+    revision.current = next; ownsRevision.current = true;
+    setEditableSegments(next.segments); setEditableWords(next.words);
+  };
   const persistSegments = useCallback(
-    async (nextSegments: Segment[], nextWords?: Word[], options?: { throwOnError?: boolean; history?: boolean; quiet?: boolean }) => {
+    async (nextSegments: Segment[], nextWords?: Word[], options?: { throwOnError?: boolean; history?: boolean; quiet?: boolean; layoutOnly?: boolean }) => {
+      if (versionsRef.current.enabled && isEditable && videoId) {
+        const activeId = versionsRef.current.activeId;
+        const proposal = snapshot(nextSegments, synchronizeWords(nextSegments, nextWords ?? editableWords));
+        const previous = revision.current;
+        showRevision(proposal); setSaveState('saving'); setSaveError(null); pendingSaves.current++;
+        const queued = saveQueue.current.catch(() => {}).then(async () => {
+          const before = collectVersions();
+          const after = editVideoTranscript(before, activeId, proposal, { layoutOnly: options?.layoutOnly });
+          await saveVersionSet(before, after);
+          if (options?.history !== false && JSON.stringify(before) !== JSON.stringify(after)) {
+            sharedHistory.current.past = [...sharedHistory.current.past.slice(-99), before];
+            sharedHistory.current.future = [];
+          }
+          if (revision.current === proposal) showRevision(after[activeId]);
+          setHistoryVersion(v => v + 1);
+        });
+        saveQueue.current = queued;
+        try {
+          await queued;
+          if (pendingSaves.current === 1) { setSaveState('success'); setSaveError(null); }
+        } catch (error) {
+          if (options?.throwOnError && revision.current === proposal && pendingSaves.current === 1) showRevision(previous);
+          setSaveState('error'); setSaveError('שמירת השינוי בכל הגרסאות נכשלה. נסו שוב.');
+          if (options?.throwOnError) throw error;
+        } finally { pendingSaves.current--; }
+        return;
+      }
       console.log('💾 persistSegments called:', {
         segmentsCount: nextSegments.length,
         hasWords: !!nextWords,
@@ -125,7 +175,6 @@ export function useTranscriptionState({
       const previousRevision = revision.current;
       const previousHistory = { past: [...history.current.past], future: [...history.current.future] };
       const nextRevision = snapshot(nextSegments, synchronizedWords);
-      if (JSON.stringify(nextRevision) !== JSON.stringify(revision.current)) allSplitUndo.current = null;
       if (options?.history !== false) history.current.push(revision.current, nextRevision);
       revision.current = nextRevision;
       setHistoryVersion(v => v + 1);
@@ -192,28 +241,26 @@ export function useTranscriptionState({
       setHistoryVersion(v => v + 1);
     }
   };
-  const handleUndo = async () => {
-    const group = allSplitUndo.current;
-    if (!group) return restoreHistory('undo');
+  const restoreVersionHistory = async (direction: 'undo' | 'redo') => {
     if (pendingSaves.current) return;
+    const from = direction === 'undo' ? sharedHistory.current.past : sharedHistory.current.future;
+    const to = direction === 'undo' ? sharedHistory.current.future : sharedHistory.current.past;
+    const next = from.at(-1);
+    if (!next) return;
+    const before = collectVersions();
     setSaveState('saving'); pendingSaves.current++;
     try {
-      versionsRef.current.saveAll(group.before);
-      await onSaveSegments(group.before.original.segments, segmentsToSrt(group.before.original.segments), group.before.original.words);
-      originalRevision.current = group.before.original;
-      const restored = group.before[versionsRef.current.activeId];
-      revision.current = snapshot(restored.segments, restored.words);
-      setEditableSegments(restored.segments); setEditableWords(restored.words);
-      versionHistories.current = group.histories;
-      history.current = group.histories[versionsRef.current.activeId] ?? new EditHistory();
+      await saveVersionSet(before, next);
+      from.pop(); to.push(before);
+      showRevision(next[versionsRef.current.activeId]);
       setHistoryVersion(value => value + 1);
-      allSplitUndo.current = null; setSaveState('success'); setSelectedSegmentId(null);
+      setSaveState('success'); setSaveError(null); setSelectedSegmentId(null); setReflowUndo(null); setSplitUndo(null);
     } catch {
-      try { versionsRef.current.saveAll(group.after); } catch { /* Keep visible failure for retry. */ }
-      setSaveState('error'); setSaveError('ביטול הפיצול נכשל. נסו שוב.');
+      setSaveState('error'); setSaveError('שחזור השינוי בכל הגרסאות נכשל. נסו שוב.');
     } finally { pendingSaves.current--; }
   };
-  const handleRedo = () => restoreHistory("redo");
+  const handleUndo = () => versionsRef.current.enabled ? restoreVersionHistory('undo') : restoreHistory('undo');
+  const handleRedo = () => versionsRef.current.enabled ? restoreVersionHistory('redo') : restoreHistory('redo');
   const handleSaveSegment = async (segment: Segment, words: Word[]) => {
     const error = validateCaptionRange(segment, editableSegments, videoDuration ?? Infinity);
     if (error) throw new Error(error);
@@ -339,7 +386,7 @@ export function useTranscriptionState({
         );
 
         console.log('🔄 handleResegment - new segments count:', cleanedSegments.length);
-        await persistSegments(cleanedSegments, data.words ?? editableWords, { throwOnError: true });
+        await persistSegments(cleanedSegments, data.words ?? editableWords, { throwOnError: true, layoutOnly: true });
         setSaveState("success");
       } catch (error) {
         console.error("Failed to resegment:", error);
@@ -401,7 +448,7 @@ export function useTranscriptionState({
   const handleCaptionBatch = async (ids: Segment["id"][], action: CaptionBatchAction, splitTime?: number) => {
     if (!isEditable || pendingSaves.current) throw new Error("יש להמתין לסיום השמירה לפני הפעולה.");
     const next = editCaptionBatch(revision.current.segments, revision.current.words, ids, action, splitTime);
-    await persistSegments(next.segments, next.words, { throwOnError: true });
+    await persistSegments(next.segments, next.words, { throwOnError: true, layoutOnly: action !== 'delete' });
     setSelectedSegmentId(null);
     setActiveSegmentId(null);
   };
@@ -454,7 +501,7 @@ export function useTranscriptionState({
       const outside = editableWords.filter(w => w.segmentId !== segmentId);
       const splitWords = timed.map((word, i) => ({ ...word, segmentId: next[i < boundary ? 0 : 1].id }));
       try {
-        await persistSegments([...editableSegments.slice(0, index), ...next, ...editableSegments.slice(index + 1)], [...outside, ...splitWords], { throwOnError: true });
+        await persistSegments([...editableSegments.slice(0, index), ...next, ...editableSegments.slice(index + 1)], [...outside, ...splitWords], { throwOnError: true, layoutOnly: true });
       } catch (error) {
         setSplitUndo(null);
         setSelectedSegmentId(segmentId);
@@ -482,7 +529,7 @@ export function useTranscriptionState({
     setActiveSegmentId(splitUndo.segment.id);
     setSplitUndo(null);
     try {
-      await persistSegments(restored, words, { throwOnError: true });
+      await persistSegments(restored, words, { throwOnError: true, layoutOnly: true });
     } catch (error) {
       setSplitUndo(splitUndo);
       setSelectedSegmentId(splitUndo.leftId);
@@ -500,12 +547,12 @@ export function useTranscriptionState({
     setReflowUndo({ segments: editableSegments.map(s => ({ ...s })), words: editableWords.map(w => ({ ...w })), after: JSON.stringify([next.segments, next.words]) });
     setSelectedSegmentId(null);
     setActiveSegmentId(null);
-    await persistSegments(next.segments, next.words, { throwOnError: true });
+    await persistSegments(next.segments, next.words, { throwOnError: true, layoutOnly: true });
   };
   const handleUndoReflow = async () => {
     if (!reflowUndo || !canUndoReflow) return;
     try {
-      await persistSegments(reflowUndo.segments, reflowUndo.words, { throwOnError: true });
+      await persistSegments(reflowUndo.segments, reflowUndo.words, { throwOnError: true, layoutOnly: true });
     } catch (error) {
       // Persistence rolled back: retain the original undo for another attempt.
       setReflowUndo(reflowUndo);
@@ -523,7 +570,7 @@ export function useTranscriptionState({
       await persistSegments(editableSegments, editableWords, { throwOnError: true, history: false });
     }
     versionHistories.current[versions.activeId] = history.current;
-    const next = id === 'original' ? originalRevision.current : versionsRef.current.revisions[id];
+    const next = versionsRef.current.enabled ? collectVersions()[id] : id === 'original' ? originalRevision.current : versionsRef.current.revisions[id];
     if (!next) return;
     ownsRevision.current = true;
     history.current = versionHistories.current[id] ?? new EditHistory();
@@ -534,31 +581,30 @@ export function useTranscriptionState({
   };
   const splitAllVersions = async (time: number) => {
     if (!versions.enabled || pendingSaves.current || !isEditable || isBurning) return;
-    const before = { ...versions.revisions, original: originalRevision.current,
-      [versions.activeId]: snapshot(editableSegments, editableWords) };
-    const after = splitVideoVersions(before, time);
-    const histories = { ...versionHistories.current, [versions.activeId]: history.current };
+    const before = collectVersions();
+    const split = splitVideoVersions(before, time);
+    // Re-project canonical word timing after changing each local caption layout.
+    let after = before;
+    for (const [id, next] of Object.entries(split)) after = editVideoTranscript(after, id, next, { layoutOnly: true });
     setSaveState('saving'); pendingSaves.current++;
     try {
-      versions.saveAll(after);
-      await onSaveSegments(after.original.segments, segmentsToSrt(after.original.segments), after.original.words);
-      originalRevision.current = after.original;
-      const next = after[versions.activeId];
-      ownsRevision.current = true; revision.current = snapshot(next.segments, next.words);
-      setEditableSegments(next.segments); setEditableWords(next.words);
-      // Old histories refer to the pre-group state; the whole group has one undo.
-      versionHistories.current = {}; history.current = new EditHistory();
-      allSplitUndo.current = { before, after, histories }; setHistoryVersion(v => v + 1);
+      await saveVersionSet(before, after);
+      showRevision(after[versions.activeId]);
+      sharedHistory.current.past = [...sharedHistory.current.past.slice(-99), before];
+      sharedHistory.current.future = []; setHistoryVersion(v => v + 1);
       setSelectedSegmentId(null); setSaveState('success'); setSaveError(null);
     } catch (error) {
-      try { versions.saveAll(before); } catch { /* Keep the failure visible. */ }
       setSaveState('error'); setSaveError('פיצול בכל הגרסאות נכשל. נסו שוב.'); throw error;
     } finally { pendingSaves.current--; }
   };
 
   return {
     versions: { ...versions, switchVersion, splitAllVersions,
-      create: () => versions.create(snapshot(editableSegments, editableWords)) },
+      create: () => {
+        const original = linkVideoRevisions({ original: snapshot(editableSegments, editableWords) }).original;
+        versions.create(original); originalRevision.current = original; showRevision(original);
+        sharedHistory.current = { past: [], future: [] }; setHistoryVersion(v => v + 1);
+      } },
     fontId, setFontId, activeWordColor, setActiveWordColor, applyCaptionStyle,
     // State
     editableSegments,
@@ -619,7 +665,7 @@ export function useTranscriptionState({
     handleSaveSegment,
     handleUndo,
     handleRedo,
-    canUndo: Boolean(allSplitUndo.current) || historyVersion >= 0 && history.current.past.length > 0,
-    canRedo: historyVersion >= 0 && history.current.future.length > 0,
+    canUndo: historyVersion >= 0 && (versions.enabled ? sharedHistory.current.past.length > 0 : history.current.past.length > 0),
+    canRedo: historyVersion >= 0 && (versions.enabled ? sharedHistory.current.future.length > 0 : history.current.future.length > 0),
   };
 }

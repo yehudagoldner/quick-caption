@@ -28,7 +28,7 @@ export function VideoVersionsBar({ eligible, enabled, dismissed, activeId, crop,
       <DialogTitle id="video-versions-title">רוצה ליצור גרסאות נוספות?</DialogTitle>
       <DialogContent><Typography>העלית סרטון רחב שמתאים למשל ל־<bdi dir="ltr">YouTube</bdi>. אפשר לחתוך ממנו גם גרסאות לפורמטים של <bdi dir="ltr">TikTok, Reels, Shorts, Stories</bdi> והפיד של <bdi dir="ltr">Instagram</bdi> ו־<bdi dir="ltr">Facebook</bdi>.</Typography>
         <Typography sx={{ mt: 1 }}>ליצור עבורך גרסאות נוספות?</Typography>
-        <Typography variant="caption" color="text.secondary">הגרסאות הנוספות והעריכות שלהן נשמרות בדפדפן במכשיר הזה.</Typography>
+        <Typography variant="caption" color="text.secondary">המילים והתזמון שלהן משותפים לכל הגרסאות. החלוקה לכתוביות והחיתוך של הגרסאות הנוספות נשמרים בדפדפן במכשיר הזה.</Typography>
         {error && <Alert severity="error">{error}</Alert>}
       </DialogContent>
       <DialogActions disableSpacing sx={{ gap: 1 }}><Button onClick={() => void perform(dismiss)}>המשך עם המקור</Button><Button variant="contained" disabled={disabled} onClick={() => void perform(create)}>כן, צור גרסאות</Button></DialogActions>
@@ -41,6 +41,7 @@ export function VideoVersionsBar({ eligible, enabled, dismissed, activeId, crop,
         </Tabs>
         {crop && <FormControlLabel sx={{ mx: 1 }} control={<Switch size="small" checked={Boolean(crop.points?.length) || progress !== null} disabled={disabled || progress !== null} onChange={(_, checked) => void automatic(checked)} />} label="התאמה אוטומטית" />}
       </Stack>
+      <Typography variant="caption" color="text.secondary" display="block" dir="rtl" sx={{ textAlign: 'right' }}>תיקוני מילים ותזמון מילים מתעדכנים בכל הגרסאות. החלוקה והעיצוב נפרדים לכל גרסה.</Typography>
       {crop && <Typography variant="caption" color="text.secondary">גררו את המסגרת לבחירת האזור שיישאר. התאמה אוטומטית עוקבת אחר הפנים הבולטות בתמונה.</Typography>}
       {progress !== null && <Stack spacing={.5}><LinearProgress variant="determinate" value={progress} /><Stack direction="row" justifyContent="space-between"><Typography variant="caption" role="status">מתאים את המסגרת… {progress}%</Typography><Button size="small" onClick={() => job.current?.abort()}>ביטול</Button></Stack></Stack>}
     </Box>}

@@ -44,7 +44,7 @@ type UseTranscriptionHandlersProps = {
   setIsBurning: (burning: boolean) => void;
   setBurnProgress: (progress: BurnProgress) => void;
   setBurnedVideo: (video: BurnedVideo | null) => void;
-  persistSegments: (segments: Segment[], words?: Word[], options?: { throwOnError?: boolean }) => Promise<void>;
+  persistSegments: (segments: Segment[], words?: Word[], options?: { throwOnError?: boolean; layoutOnly?: boolean }) => Promise<void>;
   videoPlayer: HTMLVideoElement | null;
   mediaUrl: string | null;
   response: ApiResponse;
@@ -162,7 +162,7 @@ export function useTranscriptionHandlers({
         if (error) throw new Error(error);
       }
       const words = retimeCaptionChanges(editableSegments, newSegments, editableWords, options?.fitWords);
-      await persistSegments(newSegments, words, { throwOnError: true });
+      await persistSegments(newSegments, words, { throwOnError: true, layoutOnly: true });
     },
     [persistSegments, editableSegments, editableWords, videoPlayer],
   );

@@ -1,25 +1,26 @@
 import { test, expect, type Page } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import { prepareApp, segments } from './app-fixtures';
+import type { Word } from '../src/client/types';
 const landscape = Buffer.from(readFileSync('tests/fixtures/landscape-video.base64', 'utf8'), 'base64');
 
 async function setup(page: Page, width = 1440, media = landscape) {
   await page.setViewportSize({ width, height: 1000 }); await prepareApp(page);
-  let saved = structuredClone(segments); let fail = false; const burns: string[] = [];
+  let saved = structuredClone(segments); let savedWords: Word[] = []; let fail = false; const burns: string[] = [];
   await page.route('**/api/videos/42/media?**', route => {
     const range = route.request().headers().range?.match(/bytes=(\d+)-(\d*)/);
     const start = range ? Number(range[1]) : 0, end = range?.[2] ? Math.min(Number(range[2]), media.length - 1) : media.length - 1;
     return route.fulfill({ status: range ? 206 : 200, contentType: 'video/webm', headers: { 'Accept-Ranges': 'bytes', ...(range ? { 'Content-Range': `bytes ${start}-${end}/${media.length}` } : {}) }, body: media.subarray(start, end + 1) });
   });
-  await page.route('**/api/videos/load?**', route => route.fulfill({ json: { video: { id: 42, subtitle_json: saved, words_json: [], format: '.srt', stored_path: 'landscape.mp4' } } }));
+  await page.route('**/api/videos/load?**', route => route.fulfill({ json: { video: { id: 42, subtitle_json: saved, words_json: savedWords, format: '.srt', stored_path: 'landscape.mp4' } } }));
   await page.route(/\/api\/videos\/(?:42\/subtitles|update-subtitles)$/, route => {
     if (fail) return route.fulfill({ status: 500, json: { error: 'fixture failure' } });
-    saved = JSON.parse(route.request().postDataJSON().subtitleJson); return route.fulfill({ json: { success: true } });
+    saved = JSON.parse(route.request().postDataJSON().subtitleJson); savedWords = JSON.parse(route.request().postDataJSON().wordsJson ?? '[]'); return route.fulfill({ json: { success: true } });
   });
   await page.route('**/api/burn-subtitles', route => { burns.push(route.request().postDataBuffer()!.toString()); return route.fulfill({ contentType: 'video/mp4', body: landscape }); });
   await page.goto('/?screen=edit&video=review-token');
   await expect.poll(() => page.locator('video').evaluate((v: HTMLVideoElement) => v.readyState)).toBeGreaterThan(1);
-  return { saved: () => saved, fail: (value: boolean) => { fail = value; }, burns };
+  return { saved: () => saved, words: () => savedWords, fail: (value: boolean) => { fail = value; }, burns };
 }
 async function create(page: Page) { await page.getByRole('button', { name: 'כן, צור גרסאות', exact: true }).click(); await expect(page.getByRole('tablist', { name: 'גרסאות הסרטון' })).toBeVisible(); }
 async function select(page: Page, format: string) { await page.getByRole('tab', { name: new RegExp(format) }).click(); await expect(page.getByRole('tab', { name: new RegExp(format) })).toHaveAttribute('aria-selected', 'true'); }
@@ -129,4 +130,65 @@ test('export includes the selected crop and caption dimensions, and switching to
   await expect(page.getByTestId('video-crop-frame')).toHaveCount(0);
   await page.setViewportSize({ width: 1440, height: 1000 });
   await expect(page.getByRole('tab', { name: /מקור/ })).toHaveAttribute('aria-selected', 'true');
+});
+
+async function storedRevisions(page: Page) {
+  return page.evaluate(() => {
+    const key = Object.keys(localStorage).find(key => key.includes('video-versions:'))!;
+    return JSON.parse(localStorage.getItem(key)!).revisions;
+  });
+}
+
+test('shared text, insertions, deletions and word timing survive different splits, undo, redo and reload', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('caption-editor-preferences', JSON.stringify({ fps: 25 })));
+  const state = await setup(page); await create(page); await select(page, '9:16'); await selectAtOne(page);
+  await page.getByRole('button', { name: 'פיצול כתובית בנקודת הקו', exact: true }).click();
+  await expect(page.getByTestId('subtitle-clip')).toHaveCount(3);
+  await select(page, 'מקור');
+  const text = page.getByRole('textbox', { name: 'טקסט הכתובית', exact: true }).first();
+  await text.fill('שלומות עולם'); await text.blur();
+  await expect.poll(() => state.saved()[0].text).toBe('שלומות עולם');
+  await select(page, '9:16');
+  await expect(page.getByTestId('subtitle-clip')).toHaveCount(3);
+  await expect(text).toHaveValue('שלומות');
+  await select(page, 'מקור'); await page.getByTestId('subtitle-clip').first().click();
+  await page.getByRole('button', { name: 'מילה אקטיבית', exact: true }).click();
+  await page.getByTestId('word-clip').first().click();
+  await page.getByRole('button', { name: 'ערוך מילה ותזמון', exact: true }).click();
+  await page.getByRole('textbox', { name: 'תחילת המילה', exact: true }).fill('00:00:00:05');
+  await page.getByRole('button', { name: 'החל בטיוטה', exact: true }).click();
+  await expect.poll(() => state.words()[0]?.start).toBe(.2);
+  for (const r of Object.values(await storedRevisions(page)) as any[]) expect(r.words[0].sourceStart).toBe(.2);
+  await select(page, '9:16'); await page.getByRole('button', { name: 'ביטול פעולה', exact: true }).click();
+  await expect.poll(() => state.words()[0]?.start).toBe(0);
+  await page.getByRole('button', { name: 'ביצוע חוזר', exact: true }).click();
+  await expect.poll(() => state.words()[0]?.start).toBe(.2);
+  await page.reload(); await select(page, '9:16'); await expect(text).toHaveValue('שלומות');
+  await expect(page.getByTestId('subtitle-clip')).toHaveCount(3);
+  await select(page, 'מקור'); await text.fill('שלומות כל עולם'); await text.blur();
+  await expect.poll(() => state.saved()[0].text).toBe('שלומות כל עולם');
+  for (const r of Object.values(await storedRevisions(page)) as any[]) expect(r.words.map((w: Word) => w.word)).toEqual(['שלומות', 'כל', 'עולם', 'סרטון', 'לבדיקה']);
+  await text.fill('כל עולם'); await text.blur();
+  await expect.poll(() => state.saved()[0].text).toBe('כל עולם');
+  for (const r of Object.values(await storedRevisions(page)) as any[]) expect(r.words.map((w: Word) => w.word)).toEqual(['כל', 'עולם', 'סרטון', 'לבדיקה']);
+  await select(page, '9:16'); await expect(page.getByTestId('subtitle-clip')).toHaveCount(3);
+});
+
+test('failed shared correction and failed undo preserve all saved versions and can be retried', async ({ page }) => {
+  const state = await setup(page); await create(page); await select(page, '9:16');
+  const before = await storedRevisions(page); state.fail(true);
+  const text = page.getByRole('textbox', { name: 'טקסט הכתובית', exact: true }).first();
+  await text.fill('שלומות עולם'); await text.blur();
+  await expect(page.getByText('שמירת השינוי בכל הגרסאות נכשלה. נסו שוב.').first()).toBeVisible();
+  expect(state.saved()[0].text).toBe('שלום עולם');
+  expect(await storedRevisions(page)).toEqual(before);
+  state.fail(false); await page.getByRole('button', { name: 'נסה לשמור שוב', exact: true }).click();
+  await expect.poll(() => state.saved()[0].text).toBe('שלומות עולם');
+  const corrected = await storedRevisions(page); state.fail(true);
+  await page.getByRole('button', { name: 'ביטול פעולה', exact: true }).click();
+  await expect(page.getByText('שחזור השינוי בכל הגרסאות נכשל. נסו שוב.').first()).toBeVisible();
+  expect(await storedRevisions(page)).toEqual(corrected);
+  state.fail(false); await page.getByRole('button', { name: 'ביטול פעולה', exact: true }).click();
+  await expect.poll(() => state.saved()[0].text).toBe('שלום עולם');
+  for (const r of Object.values(await storedRevisions(page)) as any[]) expect(r.words[0].word).toBe('שלום');
 });
