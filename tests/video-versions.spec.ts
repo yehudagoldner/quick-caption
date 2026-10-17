@@ -184,23 +184,28 @@ test('hover download menu exports another version with its saved split and crop,
   await page.mouse.move(1, 1); await expect(menu).toHaveCount(0);
 });
 
-test('each version offers relevant platforms and a correctly cropped download fallback', async ({ page }) => {
+test('sharing shows brand icons, the rendered preview and an honest download fallback without homepage links', async ({ page }) => {
   await page.addInitScript(() => Object.defineProperty(navigator, 'canShare', { value: undefined }));
   const state = await setup(page); await create(page);
   for (const [label, platformNames] of [
-    ['מקור', ['YouTube']], ['9:16', ['TikTok', 'YouTube Shorts', 'Instagram Reels / Stories', 'Facebook Reels / Stories']],
+    ['מקור', ['YouTube']], ['9:16', ['TikTok', 'YouTube', 'Instagram', 'Facebook']],
     ['1:1', ['Instagram', 'Facebook']], ['4:5', ['Instagram', 'Facebook']],
   ] as const) {
     await select(page, label);
     await page.getByRole('button', { name: 'שיתוף הגרסה', exact: true }).click();
     const dialog = page.getByRole('dialog', { name: `שיתוף גרסת ${label}`, exact: true });
     await expect(dialog).toBeVisible();
-    await expect(dialog.getByRole('link')).toHaveCount(platformNames.length);
+    await expect(dialog.getByRole('link')).toHaveCount(0);
+    const platforms = dialog.getByRole('list', { name: 'פלטפורמות מתאימות' });
+    await expect(platforms.getByRole('listitem')).toHaveCount(platformNames.length);
     for (const platform of platformNames) {
-      const link = dialog.getByRole('link', { name: `פתיחת ${platform}`, exact: true });
-      await expect(link).toHaveAttribute('href', /^https:\/\//);
-      await expect(link).toHaveAttribute('rel', 'noopener noreferrer');
+      const item = platforms.getByRole('listitem').filter({ hasText: platform });
+      await expect(item.locator('svg')).toBeVisible();
     }
+    await expect(dialog.getByLabel('תצוגת הסרטון המוכן לשיתוף')).toHaveAttribute('src', /^blob:/);
+    await expect.poll(() => dialog.locator('video').evaluate((v: HTMLVideoElement) => v.readyState)).toBeGreaterThan(1);
+    await expect(dialog).toContainText('אינו זמין בדפדפן הזה');
+    await expect(dialog).toContainText('העלאה ישירה לחשבונות ברשתות עדיין לא מחוברת');
     await expect(dialog.getByRole('button', { name: 'שיתוף דרך המכשיר' })).toHaveCount(0);
     if (label === '9:16') {
       await expect(page.locator('.MuiDialog-container').filter({ has: dialog })).toHaveCSS('opacity', '1');
@@ -209,7 +214,7 @@ test('each version offers relevant platforms and a correctly cropped download fa
       await dialog.getByRole('button', { name: 'הורדת הקובץ לשיתוף' }).click();
       expect((await download).suggestedFilename()).toMatch(/-vertical\.mp4$/);
       await page.getByRole('button', { name: 'אולי אחר כך', exact: true }).click();
-      await expect(dialog).toBeVisible(); // Keep the platform links available after downloading.
+      await expect(dialog).toBeVisible();
     }
     await dialog.getByRole('button', { name: 'סגור', exact: true }).click();
   }
@@ -228,7 +233,7 @@ test('native version sharing uses an explicit gesture and retries cancellation w
     (window as any).shares = [];
     Object.defineProperty(navigator, 'canShare', { value: () => true });
     Object.defineProperty(navigator, 'share', { value: async (data: ShareData) => {
-      (window as any).shares.push({ name: data.files![0].name, size: data.files![0].size, inClick });
+      (window as any).shares.push({ name: data.files![0].name, size: data.files![0].size, inClick, hasUrl: Boolean(data.url), type: data.files![0].type });
       if ((window as any).shares.length === 1) throw new DOMException('Cancelled', 'AbortError');
     } });
   });
@@ -237,12 +242,18 @@ test('native version sharing uses an explicit gesture and retries cancellation w
   const dialog = page.getByRole('dialog', { name: 'שיתוף גרסת 4:5', exact: true });
   await expect(dialog).toBeVisible();
   expect(await page.evaluate(() => (window as any).shares)).toEqual([]);
+  await expect(page.locator('.MuiDialog-container').filter({ has: dialog })).toHaveCSS('opacity', '1');
+  await expect.poll(() => dialog.locator('video').evaluate((v: HTMLVideoElement) => v.readyState)).toBeGreaterThan(1);
+  await dialog.locator('video').evaluate(async (v: HTMLVideoElement) => { await v.play(); });
+  await expect.poll(() => dialog.locator('video').evaluate((v: HTMLVideoElement) => v.currentTime)).toBeGreaterThan(0);
+  await dialog.locator('video').evaluate((v: HTMLVideoElement) => v.pause());
+  await page.screenshot({ path: 'test-results/version-sharing-native.png' });
   const share = dialog.getByRole('button', { name: 'שיתוף דרך המכשיר' });
   await share.click(); await expect(dialog).toBeVisible(); await expect(dialog.getByRole('alert')).toHaveCount(0);
   await share.click(); await expect(dialog).toHaveCount(0);
   const shares = await page.evaluate(() => (window as any).shares);
   expect(shares).toHaveLength(2);
-  expect(shares.every((s: any) => s.inClick && s.size === landscape.length && s.name.endsWith('-portrait.mp4'))).toBe(true);
+  expect(shares.every((s: any) => s.inClick && !s.hasUrl && s.type === 'video/mp4' && s.size === landscape.length && s.name.endsWith('-portrait.mp4'))).toBe(true);
   expect(state.burns).toHaveLength(1);
 });
 

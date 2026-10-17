@@ -490,7 +490,7 @@ export function TranscriptionResult({
           <TranscriptionMainContent
             versionsBar={desktop && !audioOnly && <VideoVersionsBar eligible={Boolean(videoDimensions && videoDimensions.width / videoDimensions.height >= 1.3)}
               enabled={versions.enabled} dismissed={versions.dismissed} activeId={versions.activeId} crop={crop} mediaUrl={mediaUrl}
-              disabled={navigationBlocked || !isEditable} shareAllowed={fontReady && Boolean(mediaDimensions)} onBurnVideo={handleBurnVideo}
+              disabled={navigationBlocked || !isEditable} shareAllowed={fontReady && Boolean(mediaDimensions)} onBurnVideo={options => { videoPlayer?.pause(); return handleBurnVideo(options); }}
               create={versions.create} dismiss={versions.dismiss} select={selectVersion} updateCrop={versions.updateCrop} onBusy={setReframing} />}
             onNavigateAway={destination => navigationRef.current(destination)}
             fontId={fontId} onFontChange={setFontId} activeWordColor={activeWordColor}
