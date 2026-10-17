@@ -56,6 +56,7 @@ type UseTranscriptionHandlersProps = {
   offsetYPercent: number;
   marginPercent: number;
   videoDimensions: { width: number; height: number } | null;
+  audiogram?: (NonNullable<BurnOptions["audiogram"]> & { imageVersion: number }) | null;
   onBurn: (options: BurnOptions) => Promise<BurnResult>;
   onDownloadVideo?: (file: DownloadFile) => Promise<boolean>;
 };
@@ -94,6 +95,7 @@ export function useTranscriptionHandlers({
   offsetYPercent,
   marginPercent,
   videoDimensions,
+  audiogram = null,
   onBurn,
   onDownloadVideo,
 }: UseTranscriptionHandlersProps) {
@@ -208,6 +210,7 @@ export function useTranscriptionHandlers({
     marginPercent,
     width: videoDimensions?.width ?? null,
     height: videoDimensions?.height ?? null,
+    audiogram: audiogram && { ...audiogram.settings, image: audiogram.imageVersion && audiogram.image ? audiogram.imageVersion : null },
   });
   const currentBurnSignature = burnSignature();
   useEffect(() => {
@@ -251,6 +254,7 @@ export function useTranscriptionHandlers({
         marginPercent,
         videoWidth: videoDimensions?.width ?? null,
         videoHeight: videoDimensions?.height ?? null,
+        audiogram: audiogram && { settings: audiogram.settings, image: audiogram.image },
       });
       if (latestBurnSignature.current !== signature) {
         setBurnError("הכתוביות השתנו במהלך יצירת הווידאו. צרבו שוב את הגרסה המעודכנת.");
@@ -297,6 +301,7 @@ export function useTranscriptionHandlers({
     offsetYPercent,
     marginPercent,
     videoDimensions,
+    audiogram,
     burnedVideo,
     setBurnedVideo,
     downloadName,

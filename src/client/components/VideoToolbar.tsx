@@ -5,6 +5,9 @@ import { AUTO_CAPTION_FONT_SIZE, CAPTION_FONT_SIZES, type CaptionFontSizeSetting
 import { CaptionFontPicker } from "./CaptionFontPicker";
 import type { CaptionMotion, PopIntensity } from "../../captionMotion.js";
 import type { BurnProgress } from '../utils/burnRequest';
+import type { AudiogramSettings as AudiogramOptions } from "../../audiogram.js";
+import { AudiogramContext } from "../contexts/AudiogramContext";
+import { AudiogramSettings } from "./AudiogramSettings";
 import {
   Box,
   Button,
@@ -37,6 +40,7 @@ import {
   AutoFixHighRounded,
   SettingsRounded,
   CloseRounded,
+  WallpaperRounded,
 } from "@mui/icons-material";
 
 export type BurnOptions = {
@@ -57,6 +61,7 @@ export type BurnOptions = {
   marginPercent: number;
   videoWidth?: number | null;
   videoHeight?: number | null;
+  audiogram?: { settings: AudiogramOptions; image: Blob | null } | null;
 };
 
 type BurnedVideo = {
@@ -140,6 +145,9 @@ export function VideoToolbar({
   const [stylesAnchorEl, setStylesAnchorEl] = useState<HTMLElement | null>(null);
   const stylesId = useId();
   const stylesTitleId = useId();
+  const audiogram = useContext(AudiogramContext);
+  const [backgroundAnchorEl, setBackgroundAnchorEl] = useState<HTMLElement | null>(null);
+  const backgroundId = useId();
 
   // Popover states
   const [positionAnchorEl, setPositionAnchorEl] = useState<null | HTMLElement>(null);
@@ -207,6 +215,9 @@ export function VideoToolbar({
         {captionStyles && <Button size="small" variant="contained" startIcon={<PaletteRounded />}
           aria-haspopup="dialog" aria-expanded={Boolean(stylesAnchorEl)} aria-controls={stylesAnchorEl ? stylesId : undefined}
           onClick={event => setStylesAnchorEl(event.currentTarget)}>סגנונות</Button>}
+        {audiogram && <Button size="small" variant="outlined" startIcon={<WallpaperRounded />}
+          aria-haspopup="dialog" aria-expanded={Boolean(backgroundAnchorEl)} aria-controls={backgroundAnchorEl ? backgroundId : undefined}
+          onClick={event => setBackgroundAnchorEl(event.currentTarget)}>רקע</Button>}
         <Button
           variant="outlined"
           startIcon={<DownloadRounded />}
@@ -337,6 +348,14 @@ export function VideoToolbar({
           <IconButton aria-label="סגירת סגנונות" onClick={() => setStylesAnchorEl(null)} size="small"><CloseRounded /></IconButton>
         </Stack>
         {stylesAnchorEl && <Box sx={{ p: 2 }}>{captionStyles}</Box>}
+      </Popover>
+      <Popover open={Boolean(backgroundAnchorEl && audiogram)} anchorEl={backgroundAnchorEl} onClose={() => setBackgroundAnchorEl(null)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }} transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+        slotProps={{ paper: { id: backgroundId, role: 'dialog', dir: 'rtl', 'aria-label': 'רקע לסרטון', sx: { width: 340, maxWidth: 'calc(100vw - 32px)', maxHeight: 'calc(100dvh - 32px)', borderRadius: 3 } } }}>
+        <Stack direction="row" justifyContent="flex-end" sx={{ px: 1, pt: 1 }}>
+          <IconButton aria-label="סגירת הגדרות הרקע" onClick={() => setBackgroundAnchorEl(null)} size="small"><CloseRounded /></IconButton>
+        </Stack>
+        <Box sx={{ px: 2, pb: 2, mt: -3 }}><AudiogramSettings /></Box>
       </Popover>
       <Popover
         open={Boolean(settingsAnchorEl)}

@@ -4,6 +4,8 @@ import { VideoSeekBar } from "./VideoSeekBar";
 import { CaptionFontPicker } from "./CaptionFontPicker";
 import { CaptionAppearanceContext } from '../contexts/CaptionAppearanceContext';
 import { CaptionAppearanceEditor } from './CaptionAppearanceEditor';
+import { AudiogramContext } from '../contexts/AudiogramContext';
+import { AudiogramSettings } from './AudiogramSettings';
 import {
   Alert,
   Box,
@@ -201,6 +203,7 @@ export function MobileCaptionEditor({
   const [mode, setMode] = useState<MobileMode>("timing");
   const [globalStyleOpen, setStyleOpen] = useState(false);
   const appearance = useContext(CaptionAppearanceContext);
+  const audiogram = useContext(AudiogramContext);
   const individualStyleOpen = Boolean(appearance?.segment && appearance.controlsOpen);
   const styleOpen = globalStyleOpen || individualStyleOpen;
   const drawerHeight = individualStyleOpen ? 'min(44dvh, 400px)' : STYLE_DRAWER_HEIGHT;
@@ -709,6 +712,7 @@ export function MobileCaptionEditor({
         </Stack>
         <Box sx={{ px: 1.8, pb: "max(14.4px, env(safe-area-inset-bottom, 0px))", overflowY: "auto", minHeight: 0 }}>
           {individualStyleOpen ? <CaptionAppearanceEditor /> : <>
+          {audiogram && <Box sx={{ pb: 1.5, mb: 1.5, borderBottom: 1, borderColor: "divider" }}><AudiogramSettings /></Box>}
           {captionStyles}
           <Box sx={{ mt: captionStyles ? 2 : 0 }}><CaptionFontPicker disabled={isBurning} fontId={fontId} onFontChange={onFontChange} /></Box>
           <Box sx={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 0.9, my: 1.35, "& > *": { minWidth: 0 } }}>

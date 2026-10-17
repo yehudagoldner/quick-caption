@@ -3,7 +3,8 @@ import path from "path";
 import os from "os";
 import { promises as fsp } from "fs";
 import { randomUUID } from "crypto";
-import { buildBurnArguments, probeBurnDuration, runBurnFfmpeg } from "../src/burnVideo.js";
+import { buildAudiogramArguments, buildBurnArguments, probeBurnDuration, probeHasVideo, runBurnFfmpeg } from "../src/burnVideo.js";
+import { AUDIOGRAM_IMAGE_MAX_BYTES, AUDIOGRAM_IMAGE_TYPES, audiogramDimensions, sanitizeAudiogram } from "../src/audiogram.js";
 import { fileURLToPath } from "url";
 import { renderActiveWordSrt } from "../src/activeWordSubtitles.js";
 import { renderWordPopAss, sanitizeCaptionMotion, sanitizePopIntensity } from "../src/captionMotion.js";
@@ -56,16 +57,31 @@ export function createBurnSubtitlesRouter(upload, { resolveVideo } = {}) {
       expire();
     });
     next();
-  }, upload.single("media"), async (req, res) => {
+  }, upload.fields([{ name: "media", maxCount: 1 }, { name: "background", maxCount: 1 }]), async (req, res) => {
+    req.file = req.files?.media?.[0];
+    const background = req.files?.background?.[0];
+    const reject = async (status, error) => {
+      await Promise.all([safeUnlink(req.file?.path), safeUnlink(background?.path)]);
+      return res.status(status).json({ error });
+    };
     if (!req.file && !req.body?.videoId) {
-      return res.status(400).json({ error: "נדרש קובץ וידאו לצריבת כתוביות." });
+      return reject(400, "נדרש קובץ וידאו לצריבת כתוביות.");
     }
 
     let subtitleContent = req.body?.subtitleContent;
     if (!subtitleContent) {
-      await safeUnlink(req.file?.path);
-      return res.status(400).json({ error: "נדרש תוכן כתוביות לצריבה." });
+      return reject(400, "נדרש תוכן כתוביות לצריבה.");
     }
+
+    let audiogram = null;
+    if (req.body?.audiogram) {
+      try { audiogram = sanitizeAudiogram(JSON.parse(req.body.audiogram)); }
+      catch { return reject(400, "הגדרות הרקע אינן תקינות. רעננו את העמוד ונסו שוב."); }
+    }
+    if (background && (!audiogram || !AUDIOGRAM_IMAGE_TYPES.includes(background.mimetype) || background.size > AUDIOGRAM_IMAGE_MAX_BYTES)) {
+      return reject(400, "תמונת הרקע צריכה להיות JPG, PNG או WebP עד 10MB.");
+    }
+    const frame = audiogram ? audiogramDimensions(audiogram.format) : null;
 
     const motion = sanitizeCaptionMotion(req.body?.captionMotion);
     let timedSegments, timedWords;
@@ -78,8 +94,7 @@ export function createBurnSubtitlesRouter(upload, { resolveVideo } = {}) {
         timedWords = words;
         if (motion !== "pop" && req.body?.activeWordEnabled === 'true') subtitleContent = renderActiveWordSrt(segments, words, req.body.textDirection, req.body.activeWordColor);
       } catch {
-        await safeUnlink(req.file?.path);
-        return res.status(400).json({ error: "נתוני תזמון המילים אינם תקינים. נסו לשמור את הכתוביות ולצרוב שוב." });
+        return reject(400, "נתוני תזמון המילים אינם תקינים. נסו לשמור את הכתוביות ולצרוב שוב.");
       }
     }
 
@@ -88,12 +103,12 @@ export function createBurnSubtitlesRouter(upload, { resolveVideo } = {}) {
     const outlineColor = sanitizeColor(req.body?.outlineColor);
     const offsetYPercent = sanitizePercent(req.body?.offsetYPercent, 12);
     const marginPercent = sanitizePercent(req.body?.marginPercent, 5);
-    const videoWidth = sanitizeDimension(req.body?.videoWidth);
-    const videoHeight = sanitizeDimension(req.body?.videoHeight);
+    // An audiogram's frame is defined by its format, never by client-sent sizes.
+    const videoWidth = frame?.width ?? sanitizeDimension(req.body?.videoWidth);
+    const videoHeight = frame?.height ?? sanitizeDimension(req.body?.videoHeight);
     const styled = timedSegments?.some(segment => Object.keys(segment.style).length > 0);
     if ((motion === "pop" || styled) && (!videoWidth || !videoHeight)) {
-      await safeUnlink(req.file?.path);
-      return res.status(400).json({ error: "נדרש גודל וידאו תקין לעיצוב הכתוביות. המתינו לטעינת הסרטון ונסו שוב." });
+      return reject(400, "נדרש גודל וידאו תקין לעיצוב הכתוביות. המתינו לטעינת הסרטון ונסו שוב.");
     }
 
     const subtitlePath = path.join(TEMP_SUBTITLE_DIR, `${randomUUID()}.${motion === "pop" || styled ? "ass" : "srt"}`);
@@ -101,15 +116,19 @@ export function createBurnSubtitlesRouter(upload, { resolveVideo } = {}) {
     let source = req.file ? { ...req.file, temporary: true } : null;
     const { signal } = req.burnController;
     const job = req.burnJob;
-    const cleanup = () => Promise.all([source?.temporary && safeUnlink(source.path), safeUnlink(subtitlePath), safeUnlink(outputPath)]);
+    const cleanup = () => Promise.all([source?.temporary && safeUnlink(source.path), safeUnlink(background?.path), safeUnlink(subtitlePath), safeUnlink(outputPath)]);
+    const refuse = (status, publicMessage) => Object.assign(new Error(publicMessage), { status, publicMessage });
 
     try {
       if (!source) {
         const videoId = Number(req.body.videoId);
-        if (!Number.isSafeInteger(videoId) || videoId < 1 || !resolveVideo) return res.status(400).json({ error: 'נדרש סרטון שמור תקין.' });
+        if (!Number.isSafeInteger(videoId) || videoId < 1 || !resolveVideo) throw refuse(400, 'נדרש סרטון שמור תקין.');
         source = await resolveVideo({ videoId, userUid: req.identity?.uid, signal });
-        if (!source) return res.status(404).json({ error: 'הסרטון לא נמצא או שאין לכם הרשאה לצפות בו.' });
+        if (!source) throw refuse(404, 'הסרטון לא נמצא או שאין לכם הרשאה לצפות בו.');
       }
+      const hasVideo = await probeHasVideo(source.path, { signal });
+      if (hasVideo && audiogram) throw refuse(400, 'הגדרות רקע מתאימות לקובץ אודיו בלבד.');
+      if (!hasVideo && !audiogram) throw refuse(400, 'כדי ליצור סרטון מקובץ אודיו צריך לבחור רקע. רעננו את העמוד ונסו שוב.');
       // Wrap subtitle lines with RTL markers for proper Hebrew punctuation rendering
       const rtlSubtitleContent = styled
         ? renderStyledCaptionsAss(timedSegments, timedWords, { ...sanitizeCaptionOverrides(req.body),
@@ -135,7 +154,10 @@ export function createBurnSubtitlesRouter(upload, { resolveVideo } = {}) {
       const duration = await probeBurnDuration(source.path, { signal });
       job.stage = 'burning';
       job.percent = duration ? 0 : null;
-      await runBurnFfmpeg(buildBurnArguments(source.path, filter, outputPath), {
+      const args = audiogram
+        ? buildAudiogramArguments(source.path, { ...audiogram, ...frame, image: background?.path, duration }, filter, outputPath)
+        : buildBurnArguments(source.path, filter, outputPath);
+      await runBurnFfmpeg(args, {
         duration, signal, onProgress: percent => { job.percent = percent; },
       });
       job.stage = 'downloading';
@@ -154,8 +176,8 @@ export function createBurnSubtitlesRouter(upload, { resolveVideo } = {}) {
       job.stage = 'failed';
       await cleanup();
       if (signal.aborted || res.destroyed) return;
-      console.error("Burn subtitles route failed:", error);
-      res.status(error.status ?? 500).json({ error: "אירעה שגיאה בצריבת הכתוביות. נסו שוב." });
+      if (!error.publicMessage) console.error("Burn subtitles route failed:", error);
+      res.status(error.status ?? 500).json({ error: error.publicMessage ?? "אירעה שגיאה בצריבת הכתוביות. נסו שוב." });
     }
   });
 

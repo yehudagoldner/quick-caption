@@ -1,13 +1,58 @@
 import { spawn } from 'node:child_process';
+import { audiogramWaveBox } from './audiogram.js';
+
+const ENCODE_ARGUMENTS = ['-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23', '-pix_fmt', 'yuv420p',
+  '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart'];
 
 export function buildBurnArguments(input, filter, output) {
   return ['-hide_banner', '-loglevel', 'error', '-nostdin', '-y',
     '-progress', 'pipe:1', '-nostats', '-i', input,
     // Photos needs a compatible video/audio combination, not just an .mp4
     // extension. Padding retains the full frame for odd-sized source videos.
-    '-vf', `${filter},pad=ceil(iw/2)*2:ceil(ih/2)*2`,
-    '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23', '-pix_fmt', 'yuv420p',
-    '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart', output];
+    '-vf', `${filter},pad=ceil(iw/2)*2:ceil(ih/2)*2`, ...ENCODE_ARGUMENTS, output];
+}
+
+export function buildAudiogramArguments(audio, { width, height, background, image, imageFit, waveform, waveColor, duration }, filter, output) {
+  const hex = value => `0x${value.slice(1)}`;
+  // A bounded background ends the video with the audio even if -shortest overshoots.
+  const length = Number.isFinite(duration) && duration > 0 ? `:d=${duration.toFixed(3)}` : '';
+  const inputs = ['-i', audio, '-f', 'lavfi', '-i', `color=c=${hex(background)}:s=${width}x${height}:r=30${length}`];
+  const graph = [];
+  let frame = '[1:v]';
+  if (image) {
+    inputs.push('-loop', '1', '-framerate', '30', '-i', image);
+    graph.push(imageFit === 'cover'
+      ? `[2:v]scale=${width}:${height}:force_original_aspect_ratio=increase,crop=${width}:${height},setsar=1[image]`
+      : `[2:v]scale=${width}:${height}:force_original_aspect_ratio=decrease,setsar=1[image]`);
+    graph.push(`${frame}[image]overlay=(W-w)/2:(H-h)/2:shortest=1[pictured]`);
+    frame = '[pictured]';
+  }
+  if (waveform) {
+    const band = audiogramWaveBox(width, height);
+    graph.push(`[0:a]aformat=channel_layouts=mono,showwaves=s=${band.width}x${band.height}:mode=cline:draw=full:rate=30:scale=sqrt:colors=${hex(waveColor)},format=rgba[wave]`);
+    graph.push(`${frame}[wave]overlay=0:${band.top}:eof_action=pass[waved]`);
+    frame = '[waved]';
+  }
+  graph.push(`${frame}${filter}[captioned]`);
+  return ['-hide_banner', '-loglevel', 'error', '-nostdin', '-y', '-progress', 'pipe:1', '-nostats', ...inputs,
+    '-filter_complex', graph.join(';'), '-map', '[captioned]', '-map', '0:a:0', '-shortest', '-r', '30', ...ENCODE_ARGUMENTS, output];
+}
+
+// Cover art in MP3/M4A files is a still "video" stream; it does not make the source a video.
+export function probeHasVideo(input, { signal } = {}) {
+  return new Promise((resolve, reject) => {
+    const child = spawn('ffprobe', ['-v', 'error', '-select_streams', 'v', '-show_entries', 'stream=index:stream_disposition=attached_pic', '-of', 'json', input], { signal });
+    let output = '';
+    child.stdout.on('data', data => { output += data; });
+    child.stderr.resume();
+    child.on('error', reject);
+    child.on('close', code => {
+      try {
+        if (code !== 0) throw new Error('probe failed');
+        resolve((JSON.parse(output).streams ?? []).some(stream => !stream.disposition?.attached_pic));
+      } catch { resolve(true); } // An unreadable source fails in FFmpeg with the usual error.
+    });
+  });
 }
 
 export function probeBurnDuration(input, { signal } = {}) {

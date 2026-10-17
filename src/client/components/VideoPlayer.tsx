@@ -1,5 +1,6 @@
 import { useContext, useEffect, useMemo, useRef, useState } from "react";
-import { Alert, Box, Stack, Typography } from "@mui/material";
+import { Alert, Box, IconButton, Stack, Typography } from "@mui/material";
+import { PauseRounded, PlayArrowRounded } from "@mui/icons-material";
 import type { Segment, Word } from "../types";
 import { useActiveWord } from "../hooks/useActiveWord";
 import { escapeAssText, wordPopCues, wordPopScale, type CaptionMotion, type PopIntensity } from "../../captionMotion.js";
@@ -8,6 +9,8 @@ import { sanitizeCaptionOverrides } from '../../captionOverrides.js';
 import { useCaptionTransform } from '../hooks/useCaptionTransform';
 import { useCaptionLivePatch } from '../hooks/useCaptionLivePreview';
 import { CaptionSelectionFrame, CaptionTransformGuides } from './CaptionTransformControls';
+import { AudiogramContext } from '../contexts/AudiogramContext';
+import { AudiogramBackdrop } from './AudiogramBackdrop';
 
 type VideoPlayerProps = {
   compact?: boolean;
@@ -31,6 +34,29 @@ type VideoPlayerProps = {
 };
 
 const SIZE_DVH = { full: 48, mid: 28, mini: 16 } as const;
+const PLAY_BAR_HEIGHT = 36;
+
+// Native audio controls would cover the bottom of an audiogram frame, where captions sit.
+function AudiogramPlayBar({ media, currentTime, width }: { media: React.RefObject<HTMLVideoElement | null>; currentTime: number; width: string | { xs: string; sm: string } }) {
+  const [state, setState] = useState({ playing: false, duration: 0 });
+  useEffect(() => {
+    const element = media.current;
+    if (!element) return;
+    const sync = () => setState({ playing: !element.paused, duration: Number.isFinite(element.duration) ? element.duration : 0 });
+    const events = ["play", "pause", "ended", "durationchange", "loadedmetadata"];
+    events.forEach(name => element.addEventListener(name, sync));
+    sync();
+    return () => events.forEach(name => element.removeEventListener(name, sync));
+  }, [media]);
+  const clock = (seconds: number) => `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, "0")}`;
+  return <Stack direction="row" alignItems="center" spacing={.5} sx={{ width, height: PLAY_BAR_HEIGHT, flexShrink: 0, maxWidth: "100%" }}>
+    <IconButton size="small" aria-label={state.playing ? "השהיית האודיו" : "ניגון האודיו"}
+      onClick={() => { const element = media.current; if (!element) return; if (element.paused) void element.play().catch(() => {}); else element.pause(); }}>
+      {state.playing ? <PauseRounded /> : <PlayArrowRounded />}
+    </IconButton>
+    <Typography variant="caption" color="text.secondary" dir="ltr">{clock(currentTime)} / {clock(state.duration)}</Typography>
+  </Stack>;
+}
 const VIDEO_PLAYER_CHANGED = "quickcaption:video-player-changed";
 
 function CaptionPreview({ activeSegmentText, activeSegmentId, words, currentTime, activeWordEnabled, activeWordColor = "#ffd700", captionMotion = "none", popIntensity = "gentle" }: Pick<VideoPlayerProps,
@@ -62,6 +88,12 @@ export function VideoPlayer({ compact, size, fill, hideMeta, mediaUrl, activeSeg
   const [dimensions, setDimensions] = useState({ width: 16, height: 9 });
   const [isAudio, setIsAudio] = useState(false);
   const [error, setError] = useState(false);
+  const audiogram = useContext(AudiogramContext);
+  // Audio with an audiogram frame behaves like a video of that size.
+  const canvas = isAudio ? audiogram : null;
+  const audioOnly = isAudio && !canvas;
+  const frame = canvas ? canvas.dimensions : dimensions;
+  const hasCanvas = Boolean(canvas);
   const activeCaption = useMemo(() => segments
     ? segments.find(segment => segment.text && currentTime >= segment.start && currentTime < segment.end)
     : activeSegmentText ? { id: activeSegmentId, text: activeSegmentText } : null, [segments, currentTime, activeSegmentText, activeSegmentId]);
@@ -74,7 +106,7 @@ export function VideoPlayer({ compact, size, fill, hideMeta, mediaUrl, activeSeg
   const live = appearanceSelected ? livePatch : null;
   const transformValues = live ? { ...committedValues, ...live } : committedValues;
   const { mode: transformMode, ...transformEvents } = useCaptionTransform({ stage: stageRef, caption: captionRef,
-    segmentId: activeCaption?.id ?? null, selected: appearanceSelected, disabled: !appearance || appearance.disabled || isAudio,
+    segmentId: activeCaption?.id ?? null, selected: appearanceSelected, disabled: !appearance || appearance.disabled || audioOnly,
     values: transformValues,
     select: () => { if (activeCaption?.id != null) appearance?.select(activeCaption.id, { deferControls: true }); },
     preview: patch => appearance?.live.set(patch), commit: patch => appearance?.commit(patch), showControls: () => appearance?.showControls(),
@@ -134,28 +166,31 @@ export function VideoPlayer({ compact, size, fill, hideMeta, mediaUrl, activeSeg
       if (next.width && next.height) setDimensions(previous => previous.width === next.width && previous.height === next.height ? previous : next);
       onLoadedMetadata?.(next, Number.isFinite(video.duration) ? video.duration : 0);
     };
+    // An audio element is only a control bar; captions are laid out on the stage.
+    const target = hasCanvas && stageRef.current ? stageRef.current : video;
     const resize = () => {
-      const rect = video.getBoundingClientRect();
+      const rect = target.getBoundingClientRect();
       if (rect.width && rect.height) onResize?.({ width: rect.width, height: rect.height });
     };
     update(); resize();
     video.addEventListener("loadedmetadata", update);
     const observer = new ResizeObserver(resize);
-    observer.observe(video);
+    observer.observe(target);
     return () => { video.removeEventListener("loadedmetadata", update); observer.disconnect(); };
-  }, [mediaUrl, onLoadedMetadata, onResize]);
+  }, [mediaUrl, onLoadedMetadata, onResize, hasCanvas]);
 
-  const ratio = dimensions.width / dimensions.height;
+  const ratio = frame.width / frame.height;
   const heightDvh = size ? SIZE_DVH[size] : compact ? 22 : 48;
+  const availableHeight = canvas ? `(100cqh - ${PLAY_BAR_HEIGHT}px)` : "100cqh";
   const stageSize = fill
     ? {
-        width: isAudio ? "100%" : `min(100cqw, calc(100cqh * ${ratio}))`,
-        height: isAudio ? "100%" : `min(100cqh, calc(100cqw / ${ratio}))`,
+        width: audioOnly ? "100%" : `min(100cqw, calc(${availableHeight} * ${ratio}))`,
+        height: audioOnly ? "100%" : `min(calc(${availableHeight}), calc(100cqw / ${ratio}))`,
         maxWidth: "100%",
         maxHeight: "100%",
       }
     : {
-        width: isAudio ? "100%" : { xs: `min(100%, ${Math.min(640, 500 * ratio)}px, calc(${heightDvh}dvh * ${ratio}))`, sm: `min(100%, ${Math.min(640, 500 * ratio)}px, calc(${size ? SIZE_DVH[size] : 48}dvh * ${ratio}))` },
+        width: audioOnly ? "100%" : { xs: `min(100%, ${Math.min(640, 500 * ratio)}px, calc(${heightDvh}dvh * ${ratio}))`, sm: `min(100%, ${Math.min(640, 500 * ratio)}px, calc(${size ? SIZE_DVH[size] : 48}dvh * ${ratio}))` },
       };
   return <Stack spacing={fill ? 0 : 1} alignItems="center" justifyContent="center" sx={{
     position: "relative",
@@ -165,18 +200,20 @@ export function VideoPlayer({ compact, size, fill, hideMeta, mediaUrl, activeSeg
     height: fill ? "100%" : undefined,
     ...(fill ? { containerType: "size" } : {}),
   }}>
-    {isAudio && !hideMeta && <Typography variant="subtitle2">אודיו בלבד — תצוגה מקדימה של הכתוביות</Typography>}
+    {audioOnly && !hideMeta && <Typography variant="subtitle2">אודיו בלבד — תצוגה מקדימה של הכתוביות</Typography>}
     {error && <Alert severity="error" sx={fill ? { position: "absolute", zIndex: 2, mx: 1 } : undefined}>לא ניתן לנגן את המדיה. בדקו שהקובץ זמין ובפורמט שנתמך בדפדפן.</Alert>}
     <Box ref={stageRef} data-testid="media-stage" {...transformEvents} sx={{ position: "relative", bgcolor: "common.black", color: "white", borderRadius: 2, overflow: "hidden", mx: "auto", flexShrink: 0,
       ...(appearance && !appearance.disabled ? { touchAction: 'none', WebkitTouchCallout: 'none', WebkitUserSelect: 'none', userSelect: 'none', WebkitTapHighlightColor: 'transparent' } : {}),
       cursor: appearanceSelected ? transformMode === 'move' ? 'grabbing' : 'move' : undefined,
       ...stageSize,
-      aspectRatio: isAudio || fill ? undefined : `${dimensions.width} / ${dimensions.height}`, minHeight: isAudio && !fill ? 180 : undefined }}>
+      aspectRatio: audioOnly || fill ? undefined : `${frame.width} / ${frame.height}`, minHeight: audioOnly && !fill ? 180 : undefined }}>
       {mediaUrl ? <>
-        <Box component="video" ref={videoRef} controls={!appearance?.segment} controlsList="nofullscreen" playsInline preload="metadata" src={mediaUrl}
+        {canvas && <AudiogramBackdrop settings={canvas.settings} imageUrl={canvas.imageUrl} currentTime={currentTime} />}
+        <Box component="video" ref={videoRef} controls={!appearance?.segment && !canvas} controlsList="nofullscreen" playsInline preload="metadata" src={mediaUrl}
           onSeeking={e => onTimeUpdate?.(e.currentTarget.currentTime)}
           onTimeUpdate={e => onTimeUpdate?.(e.currentTarget.currentTime)} onError={() => setError(true)}
-          sx={{ width: "100%", height: isAudio ? 54 : "100%", display: "block", objectFit: "contain", ...(isAudio ? { position: "absolute", bottom: 0 } : {}) }} />
+          sx={canvas ? { position: "absolute", width: 1, height: 1, opacity: 0, pointerEvents: "none" }
+            : { width: "100%", height: isAudio ? 54 : "100%", display: "block", objectFit: "contain", ...(isAudio ? { position: "absolute", bottom: 0 } : {}) }} />
         {activeCaption && <Box ref={captionRef} data-testid="caption-position" role={appearance ? 'button' : undefined}
           tabIndex={appearance && !appearance.disabled ? 0 : undefined} aria-label={appearance ? 'עריכת עיצוב הכתובית בתצוגה' : undefined}
           aria-pressed={appearance ? appearanceSelected : undefined}
@@ -187,7 +224,7 @@ export function VideoPlayer({ compact, size, fill, hideMeta, mediaUrl, activeSeg
             }
           }}
           style={liveCaptionStyle}
-          sx={{ ...previewStyle, ...(isAudio ? { fontSize: 24, bottom: 75, width: "90%" } : {}),
+          sx={{ ...previewStyle, ...(audioOnly ? { fontSize: 24, bottom: 75, width: "90%" } : {}),
             ...(appearance ? { width: 'max-content', maxWidth: 'none', pointerEvents: 'auto', cursor: appearance.disabled ? 'default' : transformMode === 'move' ? 'grabbing' : 'move', touchAction: 'none', userSelect: 'none',
               borderRadius: '4px', transition: 'box-shadow .15s',
               ...(!appearanceSelected && !appearance.disabled ? { '@media (hover: hover)': { '&:hover': { boxShadow: '0 0 0 1.5px rgba(255, 255, 255, .7)' } } } : {}),
@@ -197,12 +234,13 @@ export function VideoPlayer({ compact, size, fill, hideMeta, mediaUrl, activeSeg
           <CaptionPreview key={activeCaption.id} activeSegmentId={activeCaption.id} activeSegmentText={activeCaption.text}
             words={words} currentTime={currentTime} activeWordEnabled={activeWordEnabled} activeWordColor={highlight}
             captionMotion={captionMotion} popIntensity={popIntensity} />
-          {appearanceSelected && !isAudio && !appearance?.disabled && <CaptionSelectionFrame mode={transformMode} />}
+          {appearanceSelected && !audioOnly && !appearance?.disabled && <CaptionSelectionFrame mode={transformMode} />}
         </Box>}
-        {appearanceSelected && !isAudio && <CaptionTransformGuides mode={transformMode} values={transformValues} />}
+        {appearanceSelected && !audioOnly && <CaptionTransformGuides mode={transformMode} values={transformValues} />}
       </> : <Typography sx={{ p: 3 }}>אין תצוגה זמינה לקובץ הנוכחי.</Typography>}
     </Box>
-    {!isAudio && !hideMeta && <Typography variant="caption" color="text.secondary" dir="ltr">{dimensions.width} × {dimensions.height} · {ratio === 1 ? "וידאו מרובע" : ratio < 1 ? "וידאו אנכי" : "וידאו אופקי"}</Typography>}
+    {canvas && mediaUrl && <AudiogramPlayBar media={videoRef} currentTime={currentTime} width={stageSize.width} />}
+    {!audioOnly && !hideMeta && <Typography variant="caption" color="text.secondary" dir="ltr">{frame.width} × {frame.height} · {ratio === 1 ? "וידאו מרובע" : ratio < 1 ? "וידאו אנכי" : "וידאו אופקי"}</Typography>}
   </Stack>;
 }
 

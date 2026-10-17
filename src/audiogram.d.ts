@@ -1,0 +1,10 @@
+export type AudiogramFormat = "vertical" | "square" | "landscape";
+export type AudiogramSettings = { format: AudiogramFormat; background: string; imageFit: "contain" | "cover"; waveform: boolean; waveColor: string };
+export const AUDIOGRAM_FORMATS: Readonly<Record<AudiogramFormat, Readonly<{ width: number; height: number }>>>;
+export const AUDIOGRAM_DEFAULTS: Readonly<AudiogramSettings>;
+export const AUDIOGRAM_WAVE: Readonly<{ topPercent: number; heightPercent: number }>;
+export const AUDIOGRAM_IMAGE_TYPES: readonly string[];
+export const AUDIOGRAM_IMAGE_MAX_BYTES: number;
+export function sanitizeAudiogram(raw: unknown): AudiogramSettings;
+export function audiogramDimensions(format: AudiogramFormat): { width: number; height: number };
+export function audiogramWaveBox(width: number, height: number): { top: number; width: number; height: number };

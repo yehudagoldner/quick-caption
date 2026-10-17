@@ -1,5 +1,5 @@
 import { apiFetch, apiHeaders, apiAuthEpoch } from "../api";
-import { requestBurn } from '../utils/burnRequest';
+import { appendAudiogram, requestBurn } from '../utils/burnRequest';
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type MouseEvent } from "react";
 import { io } from "socket.io-client";
 import type { ManagerOptions, SocketOptions } from "socket.io-client";
@@ -617,6 +617,7 @@ export function useTranscriptionWorkflow(): TranscriptionWorkflow {
       if (typeof options.videoHeight === "number" && options.videoHeight > 0) {
         formData.append("videoHeight", String(Math.round(options.videoHeight)));
       }
+      appendAudiogram(formData, options.audiogram);
 
       return requestBurn(BURN_ENDPOINT, formData, options.onProgress);
     },

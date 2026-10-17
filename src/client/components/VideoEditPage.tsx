@@ -7,7 +7,7 @@ import type { AuthUser } from "../hooks/useTranscriptionWorkflow";
 import type { ApiResponse, Segment } from "../types";
 import type { BurnOptions } from "./TranscriptionResult";
 import { subtitleDownloadName } from "../utils/subtitleExport";
-import { requestBurn } from '../utils/burnRequest';
+import { appendAudiogram, requestBurn } from '../utils/burnRequest';
 
 interface VideoEditPageProps {
   user: AuthUser;
@@ -142,6 +142,7 @@ export function VideoEditPage({ user, videoToken, onSaveSegments, onNewUpload, o
     if (typeof options.videoHeight === "number" && options.videoHeight > 0) {
       formData.append("videoHeight", String(Math.round(options.videoHeight)));
     }
+    appendAudiogram(formData, options.audiogram);
 
     return requestBurn(`${API_BASE_URL || ''}/api/burn-subtitles`, formData, options.onProgress);
   };

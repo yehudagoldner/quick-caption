@@ -5,20 +5,18 @@ import { MAX_MEDIA_BYTES, MEDIA_SIZE_ERROR } from './mediaPolicy.js';
 export function createMediaUpload(dest, maxBytes = MAX_MEDIA_BYTES) {
   // Multer/Busboy releases differ at equality. Bound the stream, then enforce
   // the inclusive advertised limit independently of that boundary behavior.
-  const upload = multer({ dest, limits: { fileSize: maxBytes + 1, files: 1 } });
+  const bounded = receive => (req, res, next) => receive(req, res, async error => {
+    if (error) return next(error);
+    const files = [req.file, ...Object.values(req.files ?? {}).flat()].filter(Boolean);
+    const oversized = files.find(file => file.size > maxBytes);
+    if (!oversized) return next();
+    try { await Promise.all(files.map(file => unlink(file.path))); }
+    catch (cleanupError) { if (cleanupError.code !== 'ENOENT') return next(cleanupError); }
+    next(new multer.MulterError('LIMIT_FILE_SIZE', oversized.fieldname));
+  });
   return {
-    single(field) {
-      const receive = upload.single(field);
-      return (req, res, next) => receive(req, res, async error => {
-        if (error) return next(error);
-        if (req.file?.size > maxBytes) {
-          try { await unlink(req.file.path); }
-          catch (cleanupError) { if (cleanupError.code !== 'ENOENT') return next(cleanupError); }
-          return next(new multer.MulterError('LIMIT_FILE_SIZE', field));
-        }
-        next();
-      });
-    },
+    single: field => bounded(multer({ dest, limits: { fileSize: maxBytes + 1, files: 1 } }).single(field)),
+    fields: fields => bounded(multer({ dest, limits: { fileSize: maxBytes + 1, files: fields.reduce((total, field) => total + (field.maxCount ?? 1), 0) } }).fields(fields)),
   };
 }
 

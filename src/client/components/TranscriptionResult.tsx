@@ -1,4 +1,4 @@
-import { useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Alert, Button, Card, CardContent, Snackbar, Stack, Typography, useMediaQuery, useTheme } from "@mui/material";
 import type { ApiResponse, Segment } from "../types";
 import { useVideoPlayer } from "./VideoPlayer";
@@ -30,6 +30,8 @@ import type { BurnProgress } from '../utils/burnRequest';
 import { CaptionAppearanceContext } from '../contexts/CaptionAppearanceContext';
 import { sanitizeCaptionOverrides, type CaptionOverrides } from '../../captionOverrides.js';
 import { createCaptionLivePreview } from '../hooks/useCaptionLivePreview';
+import { useProjectAudiogram } from '../hooks/useProjectAudiogram';
+import { AudiogramContext } from '../contexts/AudiogramContext';
 
 export type { BurnOptions };
 type BurnResult = { blob: Blob; filename?: string; };
@@ -164,6 +166,11 @@ export function TranscriptionResult({
     onSaveSegments,
   });
 
+  const audiogram = useProjectAudiogram(videoId);
+  const [audioOnly, setAudioOnly] = useState(false);
+  useEffect(() => { setAudioOnly(false); }, [mediaUrl]);
+  // Audio is laid out, previewed and burned on the audiogram's frame.
+  const mediaDimensions = audioOnly ? audiogram.dimensions : videoDimensions;
   const fontId = projectFontId ?? preferences.fontId;
   const { ready: fontReady, error: fontLoadError } = useCaptionFont(fontId);
   const activeSegment = useMemo(() => findSegment(editableSegments, currentTime) ?? null, [editableSegments, currentTime]);
@@ -219,11 +226,11 @@ export function TranscriptionResult({
   const sizingSegments = useMemo(() => captionMotion === "pop"
     ? editableWords.map((word, index) => ({ id: index, start: word.start, end: word.end, text: word.word }))
     : editableSegments, [captionMotion, editableWords, editableSegments]);
-  const fittedFontSize = useAutoCaptionFontSize({ segments: sizingSegments, videoDimensions, marginPercent, offsetYPercent, fontId });
+  const fittedFontSize = useAutoCaptionFontSize({ segments: sizingSegments, videoDimensions: mediaDimensions, marginPercent, offsetYPercent, fontId });
   // Reserve room for the largest bounce and keep single words at a readable
   // default size rather than stretching a short word across the entire frame.
-  const autoFontSize = captionMotion === "pop" && videoDimensions
-    ? Math.max(12, Math.floor(Math.min(fittedFontSize / popPeakScale(popIntensity), videoDimensions.height * .095)))
+  const autoFontSize = captionMotion === "pop" && mediaDimensions
+    ? Math.max(12, Math.floor(Math.min(fittedFontSize / popPeakScale(popIntensity), mediaDimensions.height * .095)))
     : fittedFontSize;
   const effectiveFontSize = fontSize === AUTO_CAPTION_FONT_SIZE ? autoFontSize : fontSize;
 
@@ -237,7 +244,7 @@ export function TranscriptionResult({
     positionXPercent: activeOverrides.positionXPercent,
     rotation: activeOverrides.rotation,
     marginPercent,
-    videoDimensions,
+    videoDimensions: mediaDimensions,
     renderDimensions,
   });
 
@@ -345,13 +352,19 @@ export function TranscriptionResult({
     outlineColor,
     offsetYPercent,
     marginPercent,
-    videoDimensions,
+    videoDimensions: mediaDimensions,
+    audiogram: audioOnly ? { settings: audiogram.settings, image: audiogram.image, imageVersion: audiogram.imageVersion } : null,
     onBurn,
     setBurnProgress,
   });
+  const handleLoadedMetadata = useCallback((dimensions: { width: number; height: number }, duration: number) => {
+    setAudioOnly(!dimensions.width || !dimensions.height);
+    handleVideoLoadedMetadata(dimensions, duration);
+  }, [handleVideoLoadedMetadata]);
 
   return (
     <DownloadContext.Provider value={downloads.actions}>
+    <AudiogramContext.Provider value={audioOnly ? { ...audiogram, disabled: isBurning } : null}>
     <CaptionAppearanceContext.Provider value={{
       segment: appearanceSegment,
       values: { fontId, fontSize: effectiveFontSize, fontColor, outlineColor, activeWordColor, positionXPercent: 50, offsetYPercent, rotation: 0, ...appearanceStyle },
@@ -445,7 +458,7 @@ export function TranscriptionResult({
             isBurning={isBurning}
             burnError={burnError}
             burnedVideo={burnedVideo}
-            videoDimensions={videoDimensions}
+            videoDimensions={mediaDimensions}
             saveState={saveState}
             saveError={saveError}
             downloadUrl={downloadUrl}
@@ -459,7 +472,7 @@ export function TranscriptionResult({
                 if (wasEnded) void videoPlayer.play().catch(() => setLoopEnabled(false));
               } else handleVideoTimeUpdate(time);
             }}
-            onVideoLoadedMetadata={handleVideoLoadedMetadata}
+            onVideoLoadedMetadata={handleLoadedMetadata}
             onVideoResize={handleVideoResize}
             onTimelineSegmentsChange={handleTimelineSegmentsChange}
             onTimelineTimeChange={time => {
@@ -507,6 +520,7 @@ export function TranscriptionResult({
     </Snackbar>
     {downloads.feedbackDownloadId && <DownloadFeedbackDialog key={downloads.feedbackDownloadId} open onClose={downloads.closeFeedback} onSubmit={downloads.saveFeedback} />}
     </CaptionAppearanceContext.Provider>
+    </AudiogramContext.Provider>
     </DownloadContext.Provider>
   );
 }
