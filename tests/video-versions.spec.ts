@@ -53,6 +53,28 @@ test('desktop: create, drag, independent split, split all, undo across versions 
 test('mobile and tablet do not offer versions for a wide upload', async ({ page }) => {
   for (const width of [390, 800]) { await setup(page, width); await expect(page.getByRole('dialog', { name: 'רוצה ליצור גרסאות נוספות?' })).toHaveCount(0); await expect(page.getByRole('tablist', { name: 'גרסאות הסרטון' })).toHaveCount(0); }
 });
+test('both split actions stay inside the editor at desktop widths with the sidebar open', async ({ page }) => {
+  await setup(page, 1024); await create(page);
+  for (const width of [900, 1024, 1440]) {
+    await page.setViewportSize({ width, height: 1000 });
+    for (const format of ['מקור', '9:16']) {
+      await select(page, format); await selectAtOne(page);
+      const track = await page.getByTestId('timeline-tracks').boundingBox();
+      for (const name of ['פיצול כתובית בנקודת הקו', 'פיצול בכל הגרסאות']) {
+        const button = page.getByRole('button', { name, exact: true });
+        await expect(button).toBeEnabled();
+        const bounds = (await button.boundingBox())!;
+        expect(bounds.x).toBeGreaterThanOrEqual(track!.x - 1);
+        expect(bounds.x + bounds.width).toBeLessThanOrEqual(track!.x + track!.width + 1);
+        expect(await button.evaluate(element => {
+          const r = element.getBoundingClientRect();
+          return element.contains(document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2));
+        })).toBe(true);
+      }
+      if (width === 1024 && format === '9:16') await page.screenshot({ path: 'test-results/video-versions-split-actions.png' });
+    }
+  }
+});
 test('unavailable browser storage never prevents continuing with the original', async ({ page }) => {
   await page.addInitScript(() => { Storage.prototype.setItem = () => { throw new DOMException('Quota exceeded', 'QuotaExceededError'); }; });
   await setup(page);

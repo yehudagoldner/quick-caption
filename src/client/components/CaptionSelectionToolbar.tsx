@@ -18,10 +18,17 @@ export function CaptionSelectionToolbar({ count, disabled, canAdd, canMerge, can
     ['מחיקת כתוביות נבחרות', 'Delete / Backspace', <DeleteOutlineRounded />, remove, !count],
   ] as const;
   return <>
-    <Box role="toolbar" aria-label="פעולות בחירת כתוביות" sx={{ display: 'flex', alignItems: 'center', gap: .25, marginInlineStart: 'auto', flexShrink: 0, '& .MuiIconButton-root': { width: 30, height: 30, p: .5 }, '& .MuiSvgIcon-root': { fontSize: 19 } }}>
+    <Box role="toolbar" aria-label="פעולות בחירת כתוביות" sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: .25, marginInlineStart: 'auto', flexShrink: 0, maxWidth: '100%', minWidth: 0, '& .MuiIconButton-root': { width: 30, height: 30, p: .5 }, '& .MuiSvgIcon-root': { fontSize: 19 } }}>
       <Typography variant="caption" role="status" sx={{ minWidth: 48 }}>{count ? `${count} נבחרו` : 'בחירה'}</Typography>
       <Tooltip title="הוסף כתובית"><span><IconButton aria-label="הוסף כתובית" disabled={disabled || !canAdd} onClick={add} color="primary"><AddRounded /></IconButton></span></Tooltip>
-      {commands.map(([label, key, icon, action, unavailable]) => <Box key={label} sx={{ display: 'flex', alignItems: 'center' }}><Tooltip title={`${label} · ${key}`}><span><IconButton aria-label={label} disabled={disabled || unavailable} onClick={action} color={label.startsWith('מחיקת') ? 'error' : 'default'}>{icon}</IconButton></span></Tooltip>{action === split && splitAll && <Button size="small" disabled={disabled || !canSplit} onClick={splitAll} sx={{ whiteSpace: 'nowrap', fontSize: 11 }}>פיצול בכל הגרסאות</Button>}</Box>)}
+      {commands.map(([label, key, icon, action, unavailable]) => <Box key={label} sx={{ display: 'flex', alignItems: 'center', gap: .5 }}>
+        <Tooltip title={`${label} · ${key}`}><span>
+          {action === split && splitAll
+            ? <Button size="small" aria-label={label} disabled={disabled || unavailable} onClick={action} sx={{ whiteSpace: 'nowrap', gap: .5 }}>{icon}פיצול בגרסה זו</Button>
+            : <IconButton aria-label={label} disabled={disabled || unavailable} onClick={action} color={label.startsWith('מחיקת') ? 'error' : 'default'}>{icon}</IconButton>}
+        </span></Tooltip>
+        {action === split && splitAll && <Button size="small" variant="outlined" disabled={disabled || !canSplit} onClick={splitAll} sx={{ whiteSpace: 'nowrap' }}>פיצול בכל הגרסאות</Button>}
+      </Box>)}
       <Tooltip title="קיצורי מקלדת"><IconButton aria-label="קיצורי מקלדת" onClick={() => setHelp(true)}><KeyboardRounded /></IconButton></Tooltip>
     </Box>
     <Dialog open={help} onClose={() => setHelp(false)} maxWidth="sm" fullWidth aria-labelledby="timeline-shortcuts-title">

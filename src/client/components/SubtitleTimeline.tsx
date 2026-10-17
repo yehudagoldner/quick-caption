@@ -345,7 +345,7 @@ export function SubtitleTimeline({ activeWordEnabled, segments, words = [], disa
     {!compactDesktop && <Box dir="ltr" sx={{ px: 1 }}><VideoSeekBar currentTime={time} duration={total} fps={fps} mediaUrl={mediaUrl} onSeek={onRequestTimeChange} /></Box>}
     {!compactTiming && <AudioWaveform mediaUrl={mediaUrl} duration={total} currentTime={time} onSeek={seek} />}
     <Box data-testid="timeline-tracks" sx={{ minWidth: 0 }}>
-    <Stack data-testid="main-timeline-zoom" direction="row" gap={1} alignItems="center" sx={{ height: compactTiming ? 36 : 40, px: 1, bgcolor: "action.hover", minWidth: 0 }}>
+    <Stack data-testid="main-timeline-zoom" direction="row" gap={1} alignItems="center" sx={{ flexWrap: "wrap", minHeight: compactTiming ? 36 : 40, py: .5, px: 1, bgcolor: "action.hover", minWidth: 0 }}>
       {!compactTiming && <Typography variant="caption" sx={{ whiteSpace: "nowrap" }}>זום ציר ראשי</Typography>}
       <ThemeProvider theme={ltrTheme}><Box dir="ltr" sx={{ flex: 1, minWidth: 40, maxWidth: 240, px: 1 }}>
         <Slider size="small" aria-label="זום ציר ראשי" min={0} max={maximumZoom} value={effectiveZoom}
