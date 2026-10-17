@@ -72,7 +72,7 @@ test('export moves only one word, retaining mixed RTL layout and rotation in nor
         if (moved) Object.assign(current[0].style, { offsetX: 1.2, offsetY: -1 });
         await writeFile(source, renderStyledCaptionsAss(segments, current, options));
         const filter = buildSubtitlesFilter(source, { ...options, fontColor: '&H00FFFFFF', outlineColor: '&H00000000', wholeTextLayout: true });
-        const result = spawnSync('ffmpeg', ['-v', 'error', '-f', 'lavfi', '-i', 'color=black:s=640x360:d=3', '-vf', filter, '-ss', mode === 'active' ? '1.5' : '.5', '-frames:v', '1', '-pix_fmt', 'rgb24', '-threads', '1', '-f', 'rawvideo', 'pipe:1'], { maxBuffer: 640 * 360 * 4 });
+        const result = spawnSync('ffmpeg', ['-v', 'error', '-f', 'lavfi', '-i', 'color=black:s=640x360:d=3', '-vf', filter, '-ss', mode === 'active' ? '1.5' : '0.5', '-frames:v', '1', '-pix_fmt', 'rgb24', '-threads', '1', '-f', 'rawvideo', 'pipe:1'], { maxBuffer: 640 * 360 * 4 });
         assert.equal(result.status, 0, result.stderr?.toString());
         const red = [], white = [];
         for (let i = 0; i < result.stdout.length; i += 3) {
