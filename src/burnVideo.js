@@ -14,14 +14,16 @@ export function buildBurnArguments(input, filter, output, filterScript) {
 
 export function probeVideoDimensions(input, { signal } = {}) {
   return new Promise((resolve, reject) => {
-    const child = spawn('ffprobe', ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=width,height,sample_aspect_ratio:stream_side_data=rotation', '-of', 'json', input], { signal });
+    // Older deployed FFprobe versions do not recognize stream_side_data as a
+    // show_entries section. show_streams includes rotation on both versions.
+    const child = spawn('ffprobe', ['-v', 'error', '-select_streams', 'v:0', '-show_streams', '-of', 'json', input], { signal });
     let output = '';
     child.stdout.on('data', data => { output += data; }); child.stderr.resume(); child.on('error', reject);
     child.on('close', code => {
       try {
         const stream = JSON.parse(output).streams?.[0];
         if (code !== 0 || !stream?.width || !stream?.height) throw new Error('Invalid video dimensions');
-        const rotation = Math.abs(Number(stream.side_data_list?.find(data => data.rotation != null)?.rotation ?? 0)) % 180;
+        const rotation = Math.abs(Number(stream.side_data_list?.find(data => data.rotation != null)?.rotation ?? stream.tags?.rotate ?? 0)) % 180;
         const [numerator, denominator] = (stream.sample_aspect_ratio || '1:1').split(':').map(Number);
         const width = Math.round(stream.width * (numerator > 0 && denominator > 0 ? numerator / denominator : 1)), height = stream.height;
         resolve(rotation === 90 ? { width: height, height: width } : { width, height });
