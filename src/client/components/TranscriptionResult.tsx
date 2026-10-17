@@ -71,6 +71,10 @@ export function TranscriptionResult({
   const { preferences } = useEditorPreferences();
   const desktop = useMediaQuery(useTheme().breakpoints.up("md"));
   const [reframing, setReframing] = useState(false);
+  const [versionDownloadPending, setVersionDownloadPending] = useState(false);
+  const [requestedDownload, setRequestedDownload] = useState<{ id: string } | null>(null);
+  const downloadFlight = useRef(false);
+  const consumedDownload = useRef<object | null>(null);
   const downloads = useDownloadExperience(videoId);
   const [burnProgress, setBurnProgress] = useState<BurnProgress>({ stage: 'preparing', percent: null });
   const [timelineDrafts, setHasTimelineDrafts] = useState(false);
@@ -310,7 +314,7 @@ export function TranscriptionResult({
   const handleMyVideos = () => leaveEditor(onMyVideos);
   const navigationRef = useRef(leaveEditor);
   navigationRef.current = leaveEditor;
-  const navigationBlocked = isBurning || reframing || hasTimelineDrafts || saveState === "saving";
+  const navigationBlocked = isBurning || versionDownloadPending || reframing || hasTimelineDrafts || saveState === "saving";
   useEffect(() => {
     if (narrow) return;
     registerNavigation(async destination => {
@@ -380,6 +384,29 @@ export function TranscriptionResult({
     await versions.switchVersion(id);
   };
   const selectVersionRef = useRef(selectVersion); selectVersionRef.current = selectVersion;
+  const downloadVersion = async (id: string) => {
+    if (downloadFlight.current || navigationBlocked || !desktop || !versions.enabled || !fontReady || !isEditable) return;
+    downloadFlight.current = true;
+    setVersionDownloadPending(true);
+    try {
+      await selectVersion(id);
+      // Export in the next committed render, after the selected version's
+      // captions, crop, dimensions and automatic font size have all updated.
+      setRequestedDownload({ id });
+    } catch {
+      setBurnError('לא ניתן לעבור לגרסה להורדה. שמרו את השינויים ונסו שוב.');
+      downloadFlight.current = false; setVersionDownloadPending(false);
+    }
+  };
+  useEffect(() => {
+    if (!requestedDownload || consumedDownload.current === requestedDownload) return;
+    consumedDownload.current = requestedDownload;
+    const finish = () => { downloadFlight.current = false; setRequestedDownload(null); setVersionDownloadPending(false); };
+    if (!desktop || versions.activeId !== requestedDownload.id || !fontReady) {
+      setBurnError('לא ניתן להכין את הגרסה שנבחרה. נסו שוב.'); finish(); return;
+    }
+    void handleBurnVideo().finally(finish);
+  }, [requestedDownload, versions.activeId, desktop, fontReady, handleBurnVideo, setBurnError]);
   useEffect(() => {
     if (!desktop && versions.activeId !== 'original' && !navigationBlocked) void selectVersionRef.current('original').catch(() => {});
   }, [desktop, versions.activeId, navigationBlocked]);
@@ -389,7 +416,7 @@ export function TranscriptionResult({
     <VideoVersionContext.Provider value={desktop && versions.enabled ? { activeId: versions.activeId, crop,
       disabled: navigationBlocked || !isEditable, updateCrop: value => {
         try { versions.updateCrop(value); } catch { setBurnError('שמירת מסגרת החיתוך נכשלה. בדקו שיש מקום פנוי במכשיר.'); }
-      }, splitAll: versions.splitAllVersions } : null}>
+      }, splitAll: versions.splitAllVersions, download: downloadVersion } : null}>
     <AudiogramContext.Provider value={audioOnly ? { ...audiogram, disabled: isBurning } : null}>
     <WordAppearanceContext.Provider value={desktop ? {
       versionId: versions.activeId,
@@ -441,7 +468,7 @@ export function TranscriptionResult({
       retry: () => { void appearanceFlush.current(); },
       close: closeAppearance,
     }}>
-    <BurnProgressDialog open={isBurning} progress={burnProgress} />
+    <BurnProgressDialog open={isBurning || versionDownloadPending} progress={isBurning ? burnProgress : { stage: 'preparing', percent: null }} />
     <Card ref={playbackRoot} elevation={narrow ? 0 : 3} sx={{ overflow: "visible", ...(narrow ? { bgcolor: "transparent", boxShadow: "none" } : {}) }}>
       <CardContent sx={narrow ? { p: 0, "&:last-child": { pb: 0 } } : { p: { md: 1.5 }, "&:last-child": { pb: { md: 1.5 } } }}>
         <Stack spacing={narrow ? 0 : 1.5}>
@@ -463,7 +490,8 @@ export function TranscriptionResult({
           <TranscriptionMainContent
             versionsBar={desktop && !audioOnly && <VideoVersionsBar eligible={Boolean(videoDimensions && videoDimensions.width / videoDimensions.height >= 1.3)}
               enabled={versions.enabled} dismissed={versions.dismissed} activeId={versions.activeId} crop={crop} mediaUrl={mediaUrl}
-              disabled={navigationBlocked || !isEditable} create={versions.create} dismiss={versions.dismiss} select={selectVersion} updateCrop={versions.updateCrop} onBusy={setReframing} />}
+              disabled={navigationBlocked || !isEditable} shareAllowed={fontReady && Boolean(mediaDimensions)} onBurnVideo={handleBurnVideo}
+              create={versions.create} dismiss={versions.dismiss} select={selectVersion} updateCrop={versions.updateCrop} onBusy={setReframing} />}
             onNavigateAway={destination => navigationRef.current(destination)}
             fontId={fontId} onFontChange={setFontId} activeWordColor={activeWordColor}
             onActiveWordColorChange={setActiveWordColor}

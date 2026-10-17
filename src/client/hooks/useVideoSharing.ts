@@ -65,14 +65,15 @@ export function useVideoSharing(canShare: boolean, onBurnVideo: (options: { down
     }
   };
 
-  const downloadReadyVideo = async () => {
+  const downloadReadyVideo = async (options?: { keepOpen?: boolean }) => {
     if (!readyToShare || flight.current) return;
     flight.current = true;
     setSharing(true);
     setShareError(null);
     try {
-      if (await downloads.downloadVideo(readyToShare)) setReadyToShare(null);
-      else setShareError("ההורדה נכשלה. נסו שוב.");
+      if (await downloads.downloadVideo(readyToShare)) {
+        if (!options?.keepOpen) setReadyToShare(null);
+      } else setShareError("ההורדה נכשלה. נסו שוב.");
     } catch {
       setShareError("ההורדה נכשלה. נסו שוב.");
     } finally {

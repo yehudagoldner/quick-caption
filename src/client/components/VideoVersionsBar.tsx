@@ -2,10 +2,12 @@ import { useEffect, useRef, useState } from 'react';
 import { Alert, Box, Button, Dialog, DialogActions, DialogContent, DialogTitle, FormControlLabel, LinearProgress, Stack, Switch, Tab, Tabs, Typography } from '@mui/material';
 import { VIDEO_FORMATS, type VideoCrop } from '../../videoVersions.js';
 import { autoReframe } from '../utils/autoReframe';
+import { VideoVersionShare } from './VideoVersionShare';
 
-export function VideoVersionsBar({ eligible, enabled, dismissed, activeId, crop, mediaUrl, disabled, create, dismiss, select, updateCrop, onBusy }: {
+export function VideoVersionsBar({ eligible, enabled, dismissed, activeId, crop, mediaUrl, disabled, shareAllowed, onBurnVideo, create, dismiss, select, updateCrop, onBusy }: {
   eligible: boolean; enabled: boolean; dismissed: boolean; activeId: string; crop: VideoCrop | null; mediaUrl: string | null; disabled: boolean;
   create: () => void; dismiss: () => void; select: (id: string) => Promise<void>; updateCrop: (crop: VideoCrop) => void; onBusy: (busy: boolean) => void;
+  shareAllowed: boolean; onBurnVideo: (options: { download: boolean; reuse: boolean }) => Promise<{ url: string; name: string } | null | void>;
 }) {
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState<number | null>(null);
@@ -39,6 +41,7 @@ export function VideoVersionsBar({ eligible, enabled, dismissed, activeId, crop,
         <Tabs value={activeId} onChange={(_, id) => void perform(() => select(id))} variant="scrollable" scrollButtons="auto" aria-label="גרסאות הסרטון" sx={{ flex: 1, minWidth: 0 }}>
           {VIDEO_FORMATS.map(format => <Tab key={format.id} value={format.id} disabled={disabled || progress !== null} label={<Box><Typography variant="body2">{format.label}</Typography><Typography variant="caption">{format.platforms}</Typography></Box>} />)}
         </Tabs>
+        <VideoVersionShare key={activeId} activeId={activeId} disabled={disabled || !shareAllowed || progress !== null} onBurnVideo={onBurnVideo} />
         {crop && <FormControlLabel sx={{ mx: 1 }} control={<Switch size="small" checked={Boolean(crop.points?.length) || progress !== null} disabled={disabled || progress !== null} onChange={(_, checked) => void automatic(checked)} />} label="התאמה אוטומטית" />}
       </Stack>
       <Typography variant="caption" color="text.secondary" display="block" dir="rtl" sx={{ textAlign: 'right' }}>תיקוני מילים ותזמון מילים מתעדכנים בכל הגרסאות. החלוקה והעיצוב נפרדים לכל גרסה.</Typography>

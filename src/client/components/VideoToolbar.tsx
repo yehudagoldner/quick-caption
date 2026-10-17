@@ -1,5 +1,5 @@
 import { useContext, useId, useState, type ChangeEvent, type ReactNode } from "react";
-import { DownloadContext } from "../contexts/DownloadContext";
+import { VideoDownloadMenu } from './VideoDownloadMenu';
 import type { Segment, Word } from "../types";
 import { AUTO_CAPTION_FONT_SIZE, CAPTION_FONT_SIZES, type CaptionFontSizeSetting } from "../../captionStyle.js";
 import { CaptionFontPicker } from "./CaptionFontPicker";
@@ -13,7 +13,6 @@ import {
   Button,
   IconButton,
   FormLabel,
-  Menu,
   MenuItem,
   Paper,
   Popover,
@@ -28,14 +27,11 @@ import {
   Typography,
 } from "@mui/material";
 import {
-  DownloadRounded,
   HeightRounded,
   SpaceBarRounded,
   FormatSizeRounded,
   PaletteRounded,
   ViewSidebarRounded,
-  MovieFilterRounded,
-  SubtitlesRounded,
   RecordVoiceOverRounded,
   AutoFixHighRounded,
   SettingsRounded,
@@ -136,10 +132,6 @@ export function VideoToolbar({
   onToggleActiveWord,
   onAIEdit,
 }: VideoToolbarProps) {
-  const downloads = useContext(DownloadContext);
-  // Download menu state
-  const [downloadAnchorEl, setDownloadAnchorEl] = useState<null | HTMLElement>(null);
-  const downloadMenuOpen = Boolean(downloadAnchorEl);
   const [settingsAnchorEl, setSettingsAnchorEl] = useState<HTMLElement | null>(null);
   const settingsId = useId();
   const settingsTitleId = useId();
@@ -159,19 +151,6 @@ export function VideoToolbar({
   const [aiEditError, setAiEditError] = useState<string | null>(null);
   const [aiEditInstructions, setAiEditInstructions] = useState("");
   const [isAIEditing, setIsAIEditing] = useState(false);
-
-  const handleDownloadClick = (event: React.MouseEvent<HTMLElement>) => {
-    setDownloadAnchorEl(event.currentTarget);
-  };
-
-  const handleDownloadClose = () => {
-    setDownloadAnchorEl(null);
-  };
-
-  const handleBurnAndDownload = async () => {
-    handleDownloadClose();
-    onBurnVideo();
-  };
 
   const handleApplyAIEdit = async () => {
     if (onAIEdit && aiEditInstructions.trim()) {
@@ -219,16 +198,7 @@ export function VideoToolbar({
         {audiogram && <Button size="small" variant="outlined" startIcon={<WallpaperRounded />}
           aria-haspopup="dialog" aria-expanded={Boolean(backgroundAnchorEl)} aria-controls={backgroundAnchorEl ? backgroundId : undefined}
           onClick={event => setBackgroundAnchorEl(event.currentTarget)}>רקע</Button>}
-        <Button
-          variant="outlined"
-          startIcon={<DownloadRounded />}
-          onClick={handleDownloadClick}
-          disabled={pendingEdits}
-          size="small"
-          sx={{ justifyContent: "flex-start", minWidth: "fit-content" }}
-        >
-          הורדה
-        </Button>
+        <VideoDownloadMenu {...{ pendingEdits, isBurning, mediaUrl, canBurn, fontReady, downloadUrl, downloadName, burnedVideo, onBurnVideo }} />
 
         <Button
           variant={settingsAnchorEl ? "outlined" : "text"}
@@ -385,38 +355,6 @@ export function VideoToolbar({
           {burnError}
         </Alert>
       )}
-
-      {/* Download Menu */}
-      <Menu
-        anchorEl={downloadAnchorEl}
-        open={downloadMenuOpen}
-        onClose={handleDownloadClose}
-        anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
-        transformOrigin={{ vertical: "top", horizontal: "right" }}
-      >
-        <MenuItem component="a" href={downloadUrl ?? undefined} download={downloadName} onClick={event => {
-          event.preventDefault(); handleDownloadClose();
-          if (downloadUrl) void downloads.downloadSubtitles({ url: downloadUrl, name: downloadName });
-        }} disabled={!downloadUrl}>
-          <SubtitlesRounded sx={{ mr: 1 }} />
-          הורד קובץ כתוביות
-        </MenuItem>
-        <MenuItem onClick={handleBurnAndDownload} disabled={isBurning || !mediaUrl || !canBurn || !fontReady}>
-          <MovieFilterRounded sx={{ mr: 1 }} />
-          {canBurn ? (fontReady ? "הורד סרטון עם כתוביות" : "ממתינים לטעינת הפונט") : "צריבה זמינה לקובץ וידאו בלבד"}
-        </MenuItem>
-        {burnedVideo && (
-          <MenuItem
-            component="a"
-            href={burnedVideo.url}
-            download={burnedVideo.name}
-            onClick={event => { event.preventDefault(); handleDownloadClose(); void downloads.downloadVideo(burnedVideo); }}
-          >
-            <DownloadRounded sx={{ mr: 1 }} />
-            הורד סרטון צרוב מוכן
-          </MenuItem>
-        )}
-      </Menu>
 
       {/* Position Popover */}
       <Popover
