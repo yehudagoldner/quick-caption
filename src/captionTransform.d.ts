@@ -5,6 +5,9 @@ export type TransformBounds = { left: number; top: number; width: number; height
 export function normalizeCaptionAngle(angle: number): number;
 export function snapCaptionAngle(angle: number, stepped?: boolean): number;
 export function captionAnchor(values: CaptionTransformValues, bounds: TransformBounds): Point;
+export const CAPTION_SNAP_PIXELS: number;
+export function captionPivot(values: CaptionTransformValues, bounds: TransformBounds, height: number): Point;
+export function scaleCaption(values: CaptionTransformValues, start: Point, current: Point, pivot: Point, bounds: TransformBounds): CaptionOverrides;
 export function moveCaption(values: CaptionTransformValues, dx: number, dy: number, bounds: TransformBounds): CaptionOverrides;
 export function rotateCaption(values: CaptionTransformValues, start: Point, current: Point, pivot: Point, bounds: TransformBounds, stepped?: boolean): CaptionOverrides;
 export function pinchCaption(values: CaptionTransformValues, start: Point[], current: Point[], bounds: TransformBounds): CaptionOverrides;

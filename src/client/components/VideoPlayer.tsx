@@ -6,7 +6,8 @@ import { escapeAssText, wordPopCues, wordPopScale, type CaptionMotion, type PopI
 import { CaptionAppearanceContext } from '../contexts/CaptionAppearanceContext';
 import { sanitizeCaptionOverrides } from '../../captionOverrides.js';
 import { useCaptionTransform } from '../hooks/useCaptionTransform';
-import { CaptionTransformHandle } from './CaptionTransformHandle';
+import { useCaptionLivePatch } from '../hooks/useCaptionLivePreview';
+import { CaptionSelectionFrame, CaptionTransformGuides } from './CaptionTransformControls';
 
 type VideoPlayerProps = {
   compact?: boolean;
@@ -67,14 +68,23 @@ export function VideoPlayer({ compact, size, fill, hideMeta, mediaUrl, activeSeg
   const appearanceSelected = Boolean(appearance?.segment && appearance.segment.id === activeCaption?.id);
   const highlight = appearanceSelected ? appearance!.values.activeWordColor
     : sanitizeCaptionOverrides(segments?.find(segment => segment.id === activeCaption?.id)?.style).activeWordColor ?? activeWordColor;
-  const transformValues = { positionXPercent: 50, offsetYPercent: 20, rotation: 0, fontSize: 105, ...appearance?.values,
+  const committedValues = { positionXPercent: 50, offsetYPercent: 20, rotation: 0, fontSize: 105, ...appearance?.values,
     ...(!appearanceSelected ? sanitizeCaptionOverrides(segments?.find(segment => segment.id === activeCaption?.id)?.style) : {}) };
-  const { active: transforming, ...transformEvents } = useCaptionTransform({ stage: stageRef, caption: captionRef,
+  const livePatch = useCaptionLivePatch(appearance?.live);
+  const live = appearanceSelected ? livePatch : null;
+  const transformValues = live ? { ...committedValues, ...live } : committedValues;
+  const { mode: transformMode, ...transformEvents } = useCaptionTransform({ stage: stageRef, caption: captionRef,
     segmentId: activeCaption?.id ?? null, selected: appearanceSelected, disabled: !appearance || appearance.disabled || isAudio,
     values: transformValues,
     select: () => { if (activeCaption?.id != null) appearance?.select(activeCaption.id, { deferControls: true }); },
-    change: patch => appearance?.change(patch), showControls: () => appearance?.showControls(),
+    preview: patch => appearance?.live.set(patch), commit: patch => appearance?.commit(patch), showControls: () => appearance?.showControls(),
   });
+  const basePreviewFontSize = parseFloat(String(previewStyle.fontSize));
+  const liveCaptionStyle = live ? {
+    left: `${transformValues.positionXPercent}%`, bottom: `${transformValues.offsetYPercent}%`,
+    transform: `translate(-50%, 0) rotate(${transformValues.rotation}deg)`,
+    ...(live.fontSize != null && Number.isFinite(basePreviewFontSize) ? { fontSize: `${basePreviewFontSize * live.fontSize / committedValues.fontSize}px` } : {}),
+  } : undefined;
   const timeUpdateRef = useRef(onTimeUpdate);
   useEffect(() => { timeUpdateRef.current = onTimeUpdate; }, [onTimeUpdate]);
 
@@ -158,7 +168,8 @@ export function VideoPlayer({ compact, size, fill, hideMeta, mediaUrl, activeSeg
     {isAudio && !hideMeta && <Typography variant="subtitle2">אודיו בלבד — תצוגה מקדימה של הכתוביות</Typography>}
     {error && <Alert severity="error" sx={fill ? { position: "absolute", zIndex: 2, mx: 1 } : undefined}>לא ניתן לנגן את המדיה. בדקו שהקובץ זמין ובפורמט שנתמך בדפדפן.</Alert>}
     <Box ref={stageRef} data-testid="media-stage" {...transformEvents} sx={{ position: "relative", bgcolor: "common.black", color: "white", borderRadius: 2, overflow: "hidden", mx: "auto", flexShrink: 0,
-      touchAction: appearance && !appearance.disabled ? 'none' : undefined,
+      ...(appearance && !appearance.disabled ? { touchAction: 'none', WebkitTouchCallout: 'none', WebkitUserSelect: 'none', userSelect: 'none', WebkitTapHighlightColor: 'transparent' } : {}),
+      cursor: appearanceSelected ? transformMode === 'move' ? 'grabbing' : 'move' : undefined,
       ...stageSize,
       aspectRatio: isAudio || fill ? undefined : `${dimensions.width} / ${dimensions.height}`, minHeight: isAudio && !fill ? 180 : undefined }}>
       {mediaUrl ? <>
@@ -175,18 +186,20 @@ export function VideoPlayer({ compact, size, fill, hideMeta, mediaUrl, activeSeg
               event.preventDefault(); event.stopPropagation(); appearance.select(activeCaption.id);
             }
           }}
+          style={liveCaptionStyle}
           sx={{ ...previewStyle, ...(isAudio ? { fontSize: 24, bottom: 75, width: "90%" } : {}),
-            ...(appearance ? { width: 'max-content', maxWidth: 'none', pointerEvents: 'auto', cursor: appearance.disabled ? 'default' : transforming ? 'grabbing' : 'grab', touchAction: 'none', userSelect: 'none',
-              outline: appearanceSelected ? '2px solid #38bdf8' : undefined, outlineOffset: 3,
+            ...(appearance ? { width: 'max-content', maxWidth: 'none', pointerEvents: 'auto', cursor: appearance.disabled ? 'default' : transformMode === 'move' ? 'grabbing' : 'move', touchAction: 'none', userSelect: 'none',
+              borderRadius: '4px', transition: 'box-shadow .15s',
+              ...(!appearanceSelected && !appearance.disabled ? { '@media (hover: hover)': { '&:hover': { boxShadow: '0 0 0 1.5px rgba(255, 255, 255, .7)' } } } : {}),
               // Enlarge the touch target without changing caption layout or export geometry.
               '&::after': { content: '""', position: 'absolute', inset: '-12px', touchAction: 'none' },
-              '&:focus-visible': { outline: '2px solid #38bdf8' } } : {}) }}>
+              '&:focus-visible': { outline: '2px solid #38bdf8', outlineOffset: 8 } } : {}) }}>
           <CaptionPreview key={activeCaption.id} activeSegmentId={activeCaption.id} activeSegmentText={activeCaption.text}
             words={words} currentTime={currentTime} activeWordEnabled={activeWordEnabled} activeWordColor={highlight}
             captionMotion={captionMotion} popIntensity={popIntensity} />
+          {appearanceSelected && !isAudio && !appearance?.disabled && <CaptionSelectionFrame mode={transformMode} />}
         </Box>}
-        {appearanceSelected && appearance && !isAudio && <CaptionTransformHandle stage={stageRef} caption={captionRef}
-          values={transformValues} active={transforming} disabled={appearance.disabled} onRotate={rotation => appearance.change({ rotation })} />}
+        {appearanceSelected && !isAudio && <CaptionTransformGuides mode={transformMode} values={transformValues} />}
       </> : <Typography sx={{ p: 3 }}>אין תצוגה זמינה לקובץ הנוכחי.</Typography>}
     </Box>
     {!isAudio && !hideMeta && <Typography variant="caption" color="text.secondary" dir="ltr">{dimensions.width} × {dimensions.height} · {ratio === 1 ? "וידאו מרובע" : ratio < 1 ? "וידאו אנכי" : "וידאו אופקי"}</Typography>}

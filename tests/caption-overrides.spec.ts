@@ -39,11 +39,15 @@ for (const mobile of [false, true]) test(`${mobile ? 'mobile' : 'desktop'} indiv
   await caption.click();
   const panel = page.getByRole('region', { name: 'עיצוב כתובית נבחרת', exact: true });
   await expect(panel).toBeVisible();
-  await panel.getByLabel('צבע הכתובית', { exact: true }).fill('#ff0000');
-  await panel.getByLabel('צבע מסגרת הכתובית', { exact: true }).fill('#00ff00');
   await panel.getByLabel('גודל גופן לכתובית').fill('64');
   await panel.getByRole('combobox', { name: 'סוג פונט' }).fill('Fredoka');
   await page.getByRole('option', { name: 'Fredoka', exact: true }).click();
+  await panel.getByRole('tab', { name: 'צבע' }).click();
+  await panel.getByRole('button', { name: 'צבע הכתובית: #ff3b30' }).click();
+  await expect(page.getByTestId('subtitle-overlay')).toHaveCSS('color', 'rgb(255, 59, 48)');
+  await panel.getByLabel('צבע הכתובית', { exact: true }).fill('#ff0000');
+  await panel.getByLabel('צבע מסגרת הכתובית', { exact: true }).fill('#00ff00');
+  await panel.getByRole('tab', { name: 'מיקום' }).click();
   await panel.getByRole('slider', { name: 'סיבוב', exact: true }).fill('25');
   await panel.getByRole('slider', { name: 'מיקום אופקי', exact: true }).fill('40');
   await panel.getByRole('slider', { name: 'גובה מהתחתית', exact: true }).fill('35');
@@ -115,7 +119,7 @@ test.describe('touch appearance editing', () => {
     expect(moved.x - initial.x).toBeCloseTo(24, 0);
     expect(moved.y - initial.y).toBeCloseTo(36, 0);
     const pivot = { x: moved.x + moved.width / 2, y: moved.y + moved.height / 2 };
-    const handle = (await page.getByRole('button', { name: 'ידית סיבוב הכתובית' }).boundingBox())!;
+    const handle = (await page.locator('[data-caption-handle="rotate"]').boundingBox())!;
     const hx = handle.x + handle.width / 2, hy = handle.y + handle.height / 2;
     await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: hx, y: hy }] });
     for (let i = 1; i <= 12; i++) {
@@ -123,6 +127,7 @@ test.describe('touch appearance editing', () => {
       await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: pivot.x + dx * Math.cos(angle) - dy * Math.sin(angle), y: pivot.y + dx * Math.sin(angle) + dy * Math.cos(angle) }] });
     }
     await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    await panel.getByRole('tab', { name: 'מיקום' }).click();
     await expect(panel.getByRole('slider', { name: 'סיבוב', exact: true })).toHaveValue('30');
     await panel.getByRole('button', { name: 'שמירת עיצוב הכתובית', exact: true }).click();
     await expect(panel).toHaveCount(0);
@@ -153,8 +158,11 @@ test.describe('touch appearance editing', () => {
     await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ id: 1, x: cx - 30, y: cy }, { id: 2, x: cx + 30, y: cy }] });
     const second = { id: 2, x: cx + 45 * Math.cos(Math.PI / 6), y: cy + 22.5 };
     await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ id: 1, x: cx - 45 * Math.cos(Math.PI / 6), y: cy - 22.5 }, second] });
-    await expect(panel.getByRole('slider', { name: 'סיבוב', exact: true })).toHaveValue('30');
+    // Mid-gesture the preview follows live; the panel reads the same live values.
     expect(Number(await panel.getByLabel('גודל גופן לכתובית').inputValue())).toBe(Math.round(fontSize * 1.5));
+    await expect(page.getByRole('status').filter({ hasText: '30°' })).toBeVisible();
+    await panel.getByRole('tab', { name: 'מיקום' }).evaluate((tab: HTMLElement) => tab.click());
+    await expect(panel.getByRole('slider', { name: 'סיבוב', exact: true })).toHaveValue('30');
     const position = Number(await panel.getByRole('slider', { name: 'מיקום אופקי', exact: true }).inputValue());
     await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [{ id: 1, x: cx - 45 * Math.cos(Math.PI / 6), y: cy - 22.5 }] });
     await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ ...second, x: second.x + 10 }] });
@@ -170,6 +178,7 @@ test.describe('touch appearance editing', () => {
     await page.getByTestId('caption-position').tap();
     const panel = page.getByRole('region', { name: 'עיצוב כתובית נבחרת', exact: true });
     await expect(panel).toBeVisible();
+    await panel.getByRole('tab', { name: 'מיקום' }).tap();
     await expect(page.locator('.MuiDrawer-paper')).toHaveCSS('transform', 'none');
     const bounds = await page.getByTestId('caption-position').boundingBox();
     const x = bounds!.x + bounds!.width / 2, y = bounds!.y + bounds!.height / 2;
@@ -181,6 +190,7 @@ test.describe('touch appearance editing', () => {
     expect(position).toBeGreaterThan(50);
     await page.setViewportSize({ width: 1366, height: 900 });
     await expect(panel).toBeVisible();
+    await panel.getByRole('tab', { name: 'מיקום' }).click();
     expect(Number(await panel.getByRole('slider', { name: 'מיקום אופקי', exact: true }).inputValue())).toBe(position);
     await panel.getByRole('button', { name: 'שמירת עיצוב הכתובית', exact: true }).click();
     await expect(panel).toHaveCount(0);
@@ -202,23 +212,55 @@ test('mouse drags on the first press and rotation handle rotates around the capt
   const panel = page.getByRole('region', { name: 'עיצוב כתובית נבחרת', exact: true });
   await expect(panel).toBeVisible();
   const rect = (await caption.boundingBox())!, pivot = { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
-  const handle = page.getByRole('button', { name: 'ידית סיבוב הכתובית' });
+  const handle = page.locator('[data-caption-handle="rotate"]');
   const hb = (await handle.boundingBox())!, hx = hb.x + hb.width / 2, hy = hb.y + hb.height / 2;
   const dx = hx - pivot.x, dy = hy - pivot.y, angle = Math.PI / 6;
   await page.mouse.move(hx, hy); await page.mouse.down();
   await page.mouse.move(pivot.x + dx * Math.cos(angle) - dy * Math.sin(angle), pivot.y + dx * Math.sin(angle) + dy * Math.cos(angle), { steps: 8 });
+  await expect(page.getByRole('status').filter({ hasText: '30°' })).toBeVisible();
   await page.mouse.up();
+  await panel.getByRole('tab', { name: 'מיקום' }).click();
   await expect(panel.getByRole('slider', { name: 'סיבוב', exact: true })).toHaveValue('30');
   const rotated = (await caption.boundingBox())!;
   expect(rotated.x + rotated.width / 2).toBeCloseTo(pivot.x, 0);
   expect(rotated.y + rotated.height / 2).toBeCloseTo(pivot.y, 0);
-  await handle.focus(); await page.keyboard.press('Shift+ArrowRight');
-  await expect(panel.getByRole('slider', { name: 'סיבוב', exact: true })).toHaveValue('45');
+  await panel.getByRole('slider', { name: 'סיבוב', exact: true }).focus();
+  await page.keyboard.press('ArrowUp');
+  await expect(panel.getByRole('slider', { name: 'סיבוב', exact: true })).toHaveValue('31');
   await page.screenshot({ path: 'test-results/caption-rotation-handle.png' });
   await panel.getByRole('button', { name: 'שמירת עיצוב הכתובית', exact: true }).click();
   await expect(panel).toHaveCount(0);
-  expect(state.saved()[0].style!.rotation).toBe(45);
+  expect(state.saved()[0].style!.rotation).toBe(31);
   expect(state.saved()[1].style).toBeUndefined();
+});
+
+test('corner handles scale around the caption center and center guides snap while dragging', async ({ page }) => {
+  const state = await setup(page, false);
+  const caption = page.getByTestId('caption-position');
+  await caption.click();
+  const panel = page.getByRole('region', { name: 'עיצוב כתובית נבחרת', exact: true });
+  const fontSize = Number(await panel.getByLabel('גודל גופן לכתובית').inputValue());
+  const rect = (await caption.boundingBox())!, center = { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
+  const corner = (await page.locator('[data-caption-handle="scale"]').last().boundingBox())!;
+  const cx = corner.x + corner.width / 2, cy = corner.y + corner.height / 2;
+  await page.mouse.move(cx, cy); await page.mouse.down();
+  await page.mouse.move(center.x + (cx - center.x) * 1.5, center.y + (cy - center.y) * 1.5, { steps: 6 });
+  await page.mouse.up();
+  await expect.poll(async () => Math.abs(Number(await panel.getByLabel('גודל גופן לכתובית').inputValue()) - fontSize * 1.5)).toBeLessThanOrEqual(1);
+  const scaledSize = Number(await panel.getByLabel('גודל גופן לכתובית').inputValue());
+  const scaled = (await caption.boundingBox())!;
+  expect(scaled.x + scaled.width / 2).toBeCloseTo(center.x, 0);
+  expect(scaled.y + scaled.height / 2).toBeCloseTo(center.y, 0);
+  const stage = (await page.getByTestId('media-stage').boundingBox())!;
+  await page.mouse.move(scaled.x + scaled.width / 2, scaled.y + scaled.height / 2); await page.mouse.down();
+  await page.mouse.move(scaled.x + scaled.width / 2 + 40, scaled.y + scaled.height / 2, { steps: 4 });
+  await page.mouse.move(stage.x + stage.width / 2 + 3, scaled.y + scaled.height / 2, { steps: 4 });
+  await expect(page.getByTestId('caption-guide-vertical')).toBeVisible();
+  await page.mouse.up();
+  await expect(page.getByTestId('caption-guide-vertical')).toHaveCount(0);
+  await panel.getByRole('button', { name: 'שמירת עיצוב הכתובית', exact: true }).click();
+  await expect(panel).toHaveCount(0);
+  expect(state.saved()[0].style).toMatchObject({ fontSize: scaledSize, positionXPercent: 50 });
 });
 
 test('dragging changes only the selected caption; failed saves retain the draft for retry', async ({ page }) => {
@@ -230,6 +272,7 @@ test('dragging changes only the selected caption; failed saves retain the draft 
   const bounds = await caption.boundingBox();
   await page.mouse.move(bounds!.x + bounds!.width / 2, bounds!.y + bounds!.height / 2);
   await page.mouse.down(); await page.mouse.move(bounds!.x + bounds!.width / 2 + 20, bounds!.y + bounds!.height / 2 - 20, { steps: 4 }); await page.mouse.up();
+  await panel.getByRole('tab', { name: 'מיקום' }).click();
   expect(Number(await panel.getByRole('slider', { name: 'מיקום אופקי', exact: true }).inputValue())).toBeGreaterThan(50);
   expect(Number(await panel.getByRole('slider', { name: 'גובה מהתחתית', exact: true }).inputValue())).toBeGreaterThan(20);
   state.fail(true);

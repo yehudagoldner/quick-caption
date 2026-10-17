@@ -203,7 +203,7 @@ export function MobileCaptionEditor({
   const appearance = useContext(CaptionAppearanceContext);
   const individualStyleOpen = Boolean(appearance?.segment && appearance.controlsOpen);
   const styleOpen = globalStyleOpen || individualStyleOpen;
-  const drawerHeight = individualStyleOpen ? '48dvh' : STYLE_DRAWER_HEIGHT;
+  const drawerHeight = individualStyleOpen ? 'min(44dvh, 400px)' : STYLE_DRAWER_HEIGHT;
   const closeStyle = () => { appearance?.close(); setStyleOpen(false); };
   const [moreOpen, setMoreOpen] = useState(false);
   const [downloadOpen, setDownloadOpen] = useState(false);

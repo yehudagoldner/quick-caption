@@ -1,4 +1,4 @@
-import { useContext, useEffect, useMemo, useRef, useState } from "react";
+import { useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Alert, Button, Card, CardContent, Snackbar, Stack, Typography, useMediaQuery, useTheme } from "@mui/material";
 import type { ApiResponse, Segment } from "../types";
 import { useVideoPlayer } from "./VideoPlayer";
@@ -29,6 +29,7 @@ import { BurnProgressDialog } from './BurnProgressDialog';
 import type { BurnProgress } from '../utils/burnRequest';
 import { CaptionAppearanceContext } from '../contexts/CaptionAppearanceContext';
 import { sanitizeCaptionOverrides, type CaptionOverrides } from '../../captionOverrides.js';
+import { createCaptionLivePreview } from '../hooks/useCaptionLivePreview';
 
 export type { BurnOptions };
 type BurnResult = { blob: Blob; filename?: string; };
@@ -68,9 +69,11 @@ export function TranscriptionResult({
   const [appearanceSaving, setAppearanceSaving] = useState(false);
   const [appearanceError, setAppearanceError] = useState<string | null>(null);
   const [appearanceControlsOpen, setAppearanceControlsOpen] = useState(false);
+  const [appearanceLive] = useState(createCaptionLivePreview);
   const appearanceDirty = Boolean(appearanceDraft && JSON.stringify(appearanceDraft.style) !== appearanceDraft.original);
   const hasTimelineDrafts = timelineDrafts || Boolean(appearanceDraft) || appearanceSaving;
   useEffect(() => { setAppearanceDraft(null); setAppearanceError(null); setAppearanceControlsOpen(false); }, [videoId, mediaUrl]);
+  useLayoutEffect(() => { if (appearanceDraft) appearanceLive.clearSettled(); else appearanceLive.set(null); }, [appearanceDraft, appearanceLive]);
   const [loopEnabled, setLoopEnabled] = useState(false);
   const loopEnabledRef = useRef(loopEnabled);
   loopEnabledRef.current = loopEnabled;
@@ -298,6 +301,7 @@ export function TranscriptionResult({
     <CaptionAppearanceContext.Provider value={{
       segment: appearanceSegment,
       values: { fontId, fontSize: effectiveFontSize, fontColor, outlineColor, activeWordColor, positionXPercent: 50, offsetYPercent, rotation: 0, ...appearanceDraft?.style },
+      live: appearanceLive,
       disabled: !isEditable || isBurning || timelineDrafts || appearanceSaving || saveState === 'saving',
       dirty: appearanceDirty, saving: appearanceSaving, error: appearanceError,
       controlsOpen: appearanceControlsOpen,
@@ -308,14 +312,20 @@ export function TranscriptionResult({
         if (!segment) return;
         if (!options?.deferControls) setAppearanceControlsOpen(true);
         if (appearanceDraft?.id === id) return;
+        appearanceLive.set(null);
         setAppearanceControlsOpen(!options?.deferControls);
         loopEnabledRef.current = false; videoPlayer?.pause(); setLoopEnabled(false);
         const style = sanitizeCaptionOverrides(segment.style);
         setAppearanceDraft({ id, style, original: JSON.stringify(style) }); setAppearanceError(null);
       },
       change: patch => { if (!appearanceSaving) setAppearanceDraft(previous => previous ? { ...previous, style: sanitizeCaptionOverrides({ ...previous.style, ...patch }) } : null); },
-      reset: () => setAppearanceDraft(previous => previous ? { ...previous, style: {} } : null),
-      close: () => { if (!appearanceSaving) { setAppearanceDraft(null); setAppearanceError(null); setAppearanceControlsOpen(false); } },
+      commit: patch => {
+        if (appearanceSaving || !appearanceDraft) { appearanceLive.set(null); return; }
+        appearanceLive.settle();
+        setAppearanceDraft(previous => previous ? { ...previous, style: sanitizeCaptionOverrides({ ...previous.style, ...patch }) } : null);
+      },
+      reset: () => { appearanceLive.set(null); setAppearanceDraft(previous => previous ? { ...previous, style: {} } : null); },
+      close: () => { if (!appearanceSaving) { appearanceLive.set(null); setAppearanceDraft(null); setAppearanceError(null); setAppearanceControlsOpen(false); } },
       save: async () => {
         if (!appearanceDraft || !appearanceSegment || appearanceSaving) return;
         setAppearanceSaving(true); setAppearanceError(null);
