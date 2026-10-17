@@ -22,6 +22,7 @@ type BurnedVideo = {
 };
 
 type UseTranscriptionHandlersProps = {
+  crop?: BurnOptions['crop'];
   fontId: string;
   activeWordColor: string;
   editableSegments: Segment[];
@@ -62,6 +63,7 @@ type UseTranscriptionHandlersProps = {
 };
 
 export function useTranscriptionHandlers({
+  crop,
   fontId, activeWordColor,
   editableSegments,
   editableWords,
@@ -194,6 +196,7 @@ export function useTranscriptionHandlers({
 
   const burnedSignature = useRef<string | null>(null);
   const burnSignature = () => JSON.stringify({
+    crop,
     segments: editableSegments.map(segment => [segment.id, segment.start, segment.end, segment.text, segment.style]),
     words: editableWords.map(word => [word.word, word.start, word.end, word.segmentId]),
     mediaUrl,
@@ -237,6 +240,7 @@ export function useTranscriptionHandlers({
     setBurnError(null);
     try {
       const result = await onBurn({
+        crop,
         onProgress: setBurnProgress,
         captionMotion,
         popIntensity,
@@ -262,7 +266,7 @@ export function useTranscriptionHandlers({
       }
       const url = URL.createObjectURL(result.blob);
       const baseName = downloadName.replace(/\.[^.]+$/, "") || "video";
-      const filename = result.filename ?? `${baseName}-burned.mp4`;
+      const filename = crop ? `${baseName}-${crop.format}.mp4` : result.filename ?? `${baseName}-burned.mp4`;
       const next = { url, name: filename };
       burnedSignature.current = signature;
       setBurnedVideo(next);
@@ -279,6 +283,7 @@ export function useTranscriptionHandlers({
       setIsBurning(false);
     }
   }, [
+    crop,
     response.subtitle?.content,
     mediaUrl,
     setBurnError,

@@ -22,8 +22,8 @@ function read(key: string | null): Style {
   } catch { return { ...defaults }; }
 }
 
-export function useProjectCaptionStyle(videoId: number | null) {
-  const key = videoId ? `${import.meta.env.BASE_URL === "/" ? "" : import.meta.env.BASE_URL}caption-style:${apiUserUid()}:${videoId}` : null;
+export function useProjectCaptionStyle(videoId: number | null, version = 'original') {
+  const key = videoId ? `${import.meta.env.BASE_URL === "/" ? "" : import.meta.env.BASE_URL}caption-style:${apiUserUid()}:${videoId}${version === 'original' ? '' : ':' + version}` : null;
   const loaded = useMemo(() => read(key), [key]);
   const [state, setState] = useState(() => ({ key, value: loaded }));
   const value = state.key === key ? state.value : loaded;

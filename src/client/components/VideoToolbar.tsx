@@ -44,6 +44,7 @@ import {
 } from "@mui/icons-material";
 
 export type BurnOptions = {
+  crop?: import('../../videoVersions.js').VideoCrop | null;
   onProgress?: (progress: BurnProgress) => void;
   activeWordColor?: string;
   captionMotion?: CaptionMotion;

@@ -32,6 +32,9 @@ import { sanitizeCaptionOverrides, type CaptionOverrides } from '../../captionOv
 import { createCaptionLivePreview } from '../hooks/useCaptionLivePreview';
 import { useProjectAudiogram } from '../hooks/useProjectAudiogram';
 import { AudiogramContext } from '../contexts/AudiogramContext';
+import { VideoVersionContext } from '../contexts/VideoVersionContext';
+import { VideoVersionsBar } from './VideoVersionsBar';
+import { cropRectangle } from '../../videoVersions.js';
 
 export type { BurnOptions };
 type BurnResult = { blob: Blob; filename?: string; };
@@ -64,6 +67,8 @@ export function TranscriptionResult({
   isEditable,
 }: TranscriptionResultProps) {
   const { preferences } = useEditorPreferences();
+  const desktop = useMediaQuery(useTheme().breakpoints.up("md"));
+  const [reframing, setReframing] = useState(false);
   const downloads = useDownloadExperience(videoId);
   const [burnProgress, setBurnProgress] = useState<BurnProgress>({ stage: 'preparing', percent: null });
   const [timelineDrafts, setHasTimelineDrafts] = useState(false);
@@ -98,6 +103,7 @@ export function TranscriptionResult({
   const savedWords = useMemo(() => synchronizeWords(savedSegments, response.words), [savedSegments, response.words]);
 
   const {
+    versions,
     fontId: projectFontId, setFontId, activeWordColor, setActiveWordColor, applyCaptionStyle,
     editableSegments,
     editableWords,
@@ -170,7 +176,11 @@ export function TranscriptionResult({
   const [audioOnly, setAudioOnly] = useState(false);
   useEffect(() => { setAudioOnly(false); }, [mediaUrl]);
   // Audio is laid out, previewed and burned on the audiogram's frame.
-  const mediaDimensions = audioOnly ? audiogram.dimensions : videoDimensions;
+  const crop = desktop && versions.activeId !== 'original' ? versions.crops[versions.activeId] ?? null : null;
+  const mediaDimensions = audioOnly ? audiogram.dimensions : videoDimensions && crop ? cropRectangle(videoDimensions, crop) : videoDimensions;
+  const captionRenderDimensions = renderDimensions && videoDimensions && crop && mediaDimensions
+    ? { width: renderDimensions.width * mediaDimensions.width / videoDimensions.width, height: renderDimensions.height * mediaDimensions.height / videoDimensions.height }
+    : renderDimensions;
   const fontId = projectFontId ?? preferences.fontId;
   const { ready: fontReady, error: fontLoadError } = useCaptionFont(fontId);
   const activeSegment = useMemo(() => findSegment(editableSegments, currentTime) ?? null, [editableSegments, currentTime]);
@@ -245,7 +255,7 @@ export function TranscriptionResult({
     rotation: activeOverrides.rotation,
     marginPercent,
     videoDimensions: mediaDimensions,
-    renderDimensions,
+    renderDimensions: captionRenderDimensions,
   });
 
   useEffect(() => {
@@ -262,7 +272,6 @@ export function TranscriptionResult({
 
   const { isPlaying, handlePlayPause } = useVideoControls(videoPlayer);
   const narrow = useNarrowViewport();
-  const desktop = useMediaQuery(useTheme().breakpoints.up("md"));
   const playbackRoot = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!desktop || !videoPlayer) return;
@@ -298,7 +307,7 @@ export function TranscriptionResult({
   const handleMyVideos = () => leaveEditor(onMyVideos);
   const navigationRef = useRef(leaveEditor);
   navigationRef.current = leaveEditor;
-  const navigationBlocked = isBurning || hasTimelineDrafts || saveState === "saving";
+  const navigationBlocked = isBurning || reframing || hasTimelineDrafts || saveState === "saving";
   useEffect(() => {
     if (narrow) return;
     registerNavigation(async destination => {
@@ -354,6 +363,7 @@ export function TranscriptionResult({
     marginPercent,
     videoDimensions: mediaDimensions,
     audiogram: audioOnly ? { settings: audiogram.settings, image: audiogram.image, imageVersion: audiogram.imageVersion } : null,
+    crop,
     onBurn,
     setBurnProgress,
   });
@@ -361,9 +371,22 @@ export function TranscriptionResult({
     setAudioOnly(!dimensions.width || !dimensions.height);
     handleVideoLoadedMetadata(dimensions, duration);
   }, [handleVideoLoadedMetadata]);
+  const selectVersion = async (id: string) => {
+    if (hasTimelineDrafts || reframing || isBurning) return;
+    closeAppearance(); setLoopEnabled(false); loopEnabledRef.current = false;
+    await versions.switchVersion(id);
+  };
+  const selectVersionRef = useRef(selectVersion); selectVersionRef.current = selectVersion;
+  useEffect(() => {
+    if (!desktop && versions.activeId !== 'original' && !navigationBlocked) void selectVersionRef.current('original').catch(() => {});
+  }, [desktop, versions.activeId, navigationBlocked]);
 
   return (
     <DownloadContext.Provider value={downloads.actions}>
+    <VideoVersionContext.Provider value={desktop && versions.enabled ? { activeId: versions.activeId, crop,
+      disabled: navigationBlocked || !isEditable, updateCrop: value => {
+        try { versions.updateCrop(value); } catch { setBurnError('שמירת מסגרת החיתוך נכשלה. בדקו שיש מקום פנוי במכשיר.'); }
+      }, splitAll: versions.splitAllVersions } : null}>
     <AudiogramContext.Provider value={audioOnly ? { ...audiogram, disabled: isBurning } : null}>
     <CaptionAppearanceContext.Provider value={{
       segment: appearanceSegment,
@@ -416,12 +439,15 @@ export function TranscriptionResult({
           {!narrow && !desktop && activeWordEnabled && !hasEstimatedTimingWarning && editableWords.some(word => word.timingSource === "estimated") && <Alert severity="info">לחלק מהמילים הושלם תזמון משוער. אפשר לדייק אותן בציר המילים של המקטע; הטקסט המתוקן נשמר במלואו.</Alert>}
 
           <TranscriptionMainContent
+            versionsBar={desktop && !audioOnly && <VideoVersionsBar eligible={Boolean(videoDimensions && videoDimensions.width / videoDimensions.height >= 1.3)}
+              enabled={versions.enabled} dismissed={versions.dismissed} activeId={versions.activeId} crop={crop} mediaUrl={mediaUrl}
+              disabled={navigationBlocked || !isEditable} create={versions.create} dismiss={versions.dismiss} select={selectVersion} updateCrop={versions.updateCrop} onBusy={setReframing} />}
             onNavigateAway={destination => navigationRef.current(destination)}
             fontId={fontId} onFontChange={setFontId} activeWordColor={activeWordColor}
             onActiveWordColorChange={setActiveWordColor}
             captionStyles={<CaptionStylePicker appearance={{ fontId, fontSize, fontColor, outlineColor, activeWordColor, activeWordEnabled, offsetYPercent, marginPercent, captionMotion, popIntensity }} onApply={applyCaptionStyle} disabled={isBurning} />}
             fontReady={fontReady}
-            hasTimelineDrafts={hasTimelineDrafts}
+            hasTimelineDrafts={hasTimelineDrafts || reframing}
             timelineEditing={{ onSaveSegment: handleSaveSegment, onUndo: handleUndo, onRedo: handleRedo, canUndo, canRedo,
               onDraftStateChange: setHasTimelineDrafts, loopEnabled,
               onPlayFrom: time => { handleTimelineTimeChange(time); void videoPlayer?.play().catch(() => setBurnError("לא ניתן להתחיל ניגון.")); },
@@ -494,7 +520,7 @@ export function TranscriptionResult({
             onOutlineColorChange={handleOutlineColorChange}
             onOffsetYChange={handleOffsetYChange}
             onMarginChange={handleMarginChange}
-            onBurnVideo={handleBurnVideo}
+            onBurnVideo={reframing ? async () => null : handleBurnVideo}
             onAddSubtitle={handleAddSubtitle}
             onDeleteSegment={handleDeleteSegment}
             onCaptionBatch={handleCaptionBatch}
@@ -521,6 +547,7 @@ export function TranscriptionResult({
     {downloads.feedbackDownloadId && <DownloadFeedbackDialog key={downloads.feedbackDownloadId} open onClose={downloads.closeFeedback} onSubmit={downloads.saveFeedback} />}
     </CaptionAppearanceContext.Provider>
     </AudiogramContext.Provider>
+    </VideoVersionContext.Provider>
     </DownloadContext.Provider>
   );
 }

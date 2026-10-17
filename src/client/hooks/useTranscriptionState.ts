@@ -7,6 +7,8 @@ import { synchronizeWords } from "../../wordAlignment.js";
 import { editCaptionBatch, type CaptionBatchAction } from "../../captionBatchEditing.js";
 import { useProjectCaptionStyle } from "./useProjectCaptionStyle";
 import { EditHistory, snapshot, validateCaptionRange, wordsForSegment } from "../../timelineEditing.js";
+import { useVideoVersions } from './useVideoVersions';
+import { splitVideoVersions, type VideoRevision } from '../../videoVersions.js';
 
 type BurnedVideo = {
   url: string;
@@ -32,6 +34,11 @@ export function useTranscriptionState({
   videoId,
   onSaveSegments,
 }: UseTranscriptionStateProps) {
+  const versions = useVideoVersions(videoId, mediaUrl);
+  const versionsRef = useRef(versions); versionsRef.current = versions;
+  const versionHistories = useRef<Record<string, EditHistory>>({});
+  const originalRevision = useRef<VideoRevision>({ segments: responseSegments, words: responseWords ?? [] });
+  const allSplitUndo = useRef<{ before: Record<string, VideoRevision>; after: Record<string, VideoRevision>; histories: Record<string, EditHistory> } | null>(null);
   const [editableSegments, setEditableSegments] = useState<Segment[]>(responseSegments);
   const [wordTimingData, setEditableWords] = useState<Word[]>(responseWords ?? []);
   // Repair legacy/missing timing data on load and keep live text edits in sync.
@@ -46,7 +53,7 @@ export function useTranscriptionState({
   const { fontSize, setFontSize, fontColor, setFontColor, outlineColor, setOutlineColor,
     offsetYPercent, setOffsetYPercent, marginPercent, setMarginPercent,
     captionMotion, setCaptionMotion, popIntensity, setPopIntensity,
-    fontId, setFontId, activeWordEnabled, setActiveWordEnabled, activeWordColor, setActiveWordColor, applyCaptionStyle } = useProjectCaptionStyle(videoId);
+    fontId, setFontId, activeWordEnabled, setActiveWordEnabled, activeWordColor, setActiveWordColor, applyCaptionStyle } = useProjectCaptionStyle(videoId, versions.activeId);
   // Saved props are acknowledgements, not replacements for a newer local edit.
   const ownsRevision = useRef(false);
   const project = useRef(videoId);
@@ -75,7 +82,7 @@ export function useTranscriptionState({
       project.current = videoId;
       ownsRevision.current = false;
     }
-    if (ownsRevision.current || pendingSaves.current) return;
+    if (ownsRevision.current || pendingSaves.current || versionsRef.current.activeId !== 'original') return;
     // Normalize legacy overlaps from the previous QA behavior on load.
     const cleaned = fixSegmentOverlaps(responseSegments.map(segment => ({ ...segment, text: cleanSegmentText(segment.text) })))
       .filter(segment => segment.end > segment.start);
@@ -83,7 +90,8 @@ export function useTranscriptionState({
     setEditableSegments(cleaned);
     setEditableWords(words);
     revision.current = snapshot(cleaned, words);
-  }, [responseSegments, responseWords, videoId]);
+    originalRevision.current = revision.current;
+  }, [responseSegments, responseWords, videoId, versions.activeId]);
 
   useEffect(() => {
     setActiveSegmentId(null);
@@ -91,6 +99,7 @@ export function useTranscriptionState({
     setReflowUndo(null);
     setSplitUndo(null);
     history.current = new EditHistory();
+    versionHistories.current = {}; allSplitUndo.current = null;
     setHistoryVersion(v => v + 1);
   }, [mediaUrl, videoId]);
 
@@ -116,6 +125,7 @@ export function useTranscriptionState({
       const previousRevision = revision.current;
       const previousHistory = { past: [...history.current.past], future: [...history.current.future] };
       const nextRevision = snapshot(nextSegments, synchronizedWords);
+      if (JSON.stringify(nextRevision) !== JSON.stringify(revision.current)) allSplitUndo.current = null;
       if (options?.history !== false) history.current.push(revision.current, nextRevision);
       revision.current = nextRevision;
       setHistoryVersion(v => v + 1);
@@ -132,8 +142,12 @@ export function useTranscriptionState({
         setSaveError(null);
       }
       pendingSaves.current++;
+      const savingVersion = versionsRef.current.activeId;
       const queued = saveQueue.current.catch(() => {}).then(async () => {
-        await onSaveSegments(nextSegments, segmentsToSrt(nextSegments), synchronizedWords);
+        if (savingVersion === 'original') {
+          await onSaveSegments(nextSegments, segmentsToSrt(nextSegments), synchronizedWords);
+          originalRevision.current = nextRevision;
+        } else versionsRef.current.save(savingVersion, nextRevision);
       });
       saveQueue.current = queued;
       try {
@@ -178,7 +192,27 @@ export function useTranscriptionState({
       setHistoryVersion(v => v + 1);
     }
   };
-  const handleUndo = () => restoreHistory("undo");
+  const handleUndo = async () => {
+    const group = allSplitUndo.current;
+    if (!group) return restoreHistory('undo');
+    if (pendingSaves.current) return;
+    setSaveState('saving'); pendingSaves.current++;
+    try {
+      versionsRef.current.saveAll(group.before);
+      await onSaveSegments(group.before.original.segments, segmentsToSrt(group.before.original.segments), group.before.original.words);
+      originalRevision.current = group.before.original;
+      const restored = group.before[versionsRef.current.activeId];
+      revision.current = snapshot(restored.segments, restored.words);
+      setEditableSegments(restored.segments); setEditableWords(restored.words);
+      versionHistories.current = group.histories;
+      history.current = group.histories[versionsRef.current.activeId] ?? new EditHistory();
+      setHistoryVersion(value => value + 1);
+      allSplitUndo.current = null; setSaveState('success'); setSelectedSegmentId(null);
+    } catch {
+      try { versionsRef.current.saveAll(group.after); } catch { /* Keep visible failure for retry. */ }
+      setSaveState('error'); setSaveError('ביטול הפיצול נכשל. נסו שוב.');
+    } finally { pendingSaves.current--; }
+  };
   const handleRedo = () => restoreHistory("redo");
   const handleSaveSegment = async (segment: Segment, words: Word[]) => {
     const error = validateCaptionRange(segment, editableSegments, videoDuration ?? Infinity);
@@ -222,7 +256,7 @@ export function useTranscriptionState({
       return;
     }
 
-    const original = responseSegments.find((segment) => segment.id === segmentId);
+    const original = (versionsRef.current.activeId === 'original' ? responseSegments : versionsRef.current.revisions[versionsRef.current.activeId]?.segments ?? []).find((segment) => segment.id === segmentId);
     const updated = editableSegments.find((segment) => segment.id === segmentId);
 
     if (!original || !updated || original.text === updated.text) {
@@ -482,7 +516,49 @@ export function useTranscriptionState({
     setActiveSegmentId(null);
   };
 
+  const switchVersion = async (id: string) => {
+    if (id === versions.activeId || pendingSaves.current || isBurning) return;
+    const saved = versions.activeId === 'original' ? originalRevision.current : versionsRef.current.revisions[versions.activeId];
+    if (saveState === 'error' || JSON.stringify(saved) !== JSON.stringify(snapshot(editableSegments, editableWords))) {
+      await persistSegments(editableSegments, editableWords, { throwOnError: true, history: false });
+    }
+    versionHistories.current[versions.activeId] = history.current;
+    const next = id === 'original' ? originalRevision.current : versionsRef.current.revisions[id];
+    if (!next) return;
+    ownsRevision.current = true;
+    history.current = versionHistories.current[id] ?? new EditHistory();
+    revision.current = snapshot(next.segments, next.words);
+    setEditableSegments(next.segments); setEditableWords(next.words);
+    setSelectedSegmentId(null); setActiveSegmentId(null); setReflowUndo(null); setSplitUndo(null);
+    setHistoryVersion(v => v + 1); versions.setActiveId(id);
+  };
+  const splitAllVersions = async (time: number) => {
+    if (!versions.enabled || pendingSaves.current || !isEditable || isBurning) return;
+    const before = { ...versions.revisions, original: originalRevision.current,
+      [versions.activeId]: snapshot(editableSegments, editableWords) };
+    const after = splitVideoVersions(before, time);
+    const histories = { ...versionHistories.current, [versions.activeId]: history.current };
+    setSaveState('saving'); pendingSaves.current++;
+    try {
+      versions.saveAll(after);
+      await onSaveSegments(after.original.segments, segmentsToSrt(after.original.segments), after.original.words);
+      originalRevision.current = after.original;
+      const next = after[versions.activeId];
+      ownsRevision.current = true; revision.current = snapshot(next.segments, next.words);
+      setEditableSegments(next.segments); setEditableWords(next.words);
+      // Old histories refer to the pre-group state; the whole group has one undo.
+      versionHistories.current = {}; history.current = new EditHistory();
+      allSplitUndo.current = { before, after, histories }; setHistoryVersion(v => v + 1);
+      setSelectedSegmentId(null); setSaveState('success'); setSaveError(null);
+    } catch (error) {
+      try { versions.saveAll(before); } catch { /* Keep the failure visible. */ }
+      setSaveState('error'); setSaveError('פיצול בכל הגרסאות נכשל. נסו שוב.'); throw error;
+    } finally { pendingSaves.current--; }
+  };
+
   return {
+    versions: { ...versions, switchVersion, splitAllVersions,
+      create: () => versions.create(snapshot(editableSegments, editableWords)) },
     fontId, setFontId, activeWordColor, setActiveWordColor, applyCaptionStyle,
     // State
     editableSegments,
@@ -543,7 +619,7 @@ export function useTranscriptionState({
     handleSaveSegment,
     handleUndo,
     handleRedo,
-    canUndo: historyVersion >= 0 && history.current.past.length > 0,
+    canUndo: Boolean(allSplitUndo.current) || historyVersion >= 0 && history.current.past.length > 0,
     canRedo: historyVersion >= 0 && history.current.future.length > 0,
   };
 }

@@ -3,7 +3,8 @@ import path from "path";
 import os from "os";
 import { promises as fsp } from "fs";
 import { randomUUID } from "crypto";
-import { buildAudiogramArguments, buildBurnArguments, probeBurnDuration, probeHasVideo, runBurnFfmpeg } from "../src/burnVideo.js";
+import { buildAudiogramArguments, buildBurnArguments, probeBurnDuration, probeHasVideo, probeVideoDimensions, runBurnFfmpeg } from "../src/burnVideo.js";
+import { cropFilter, cropRectangle, validateVideoCrop } from '../src/videoVersions.js';
 import { AUDIOGRAM_IMAGE_MAX_BYTES, AUDIOGRAM_IMAGE_TYPES, audiogramDimensions, sanitizeAudiogram } from "../src/audiogram.js";
 import { fileURLToPath } from "url";
 import { renderActiveWordSrt } from "../src/activeWordSubtitles.js";
@@ -74,6 +75,11 @@ export function createBurnSubtitlesRouter(upload, { resolveVideo } = {}) {
     }
 
     let audiogram = null;
+    let crop = null;
+    if (req.body?.crop) {
+      try { crop = validateVideoCrop(JSON.parse(req.body.crop)); }
+      catch { return reject(400, 'הגדרות החיתוך אינן תקינות.'); }
+    }
     if (req.body?.audiogram) {
       try { audiogram = sanitizeAudiogram(JSON.parse(req.body.audiogram)); }
       catch { return reject(400, "הגדרות הרקע אינן תקינות. רעננו את העמוד ונסו שוב."); }
@@ -82,6 +88,7 @@ export function createBurnSubtitlesRouter(upload, { resolveVideo } = {}) {
       return reject(400, "תמונת הרקע צריכה להיות JPG, PNG או WebP עד 10MB.");
     }
     const frame = audiogram ? audiogramDimensions(audiogram.format) : null;
+    if (crop && audiogram) return reject(400, 'חיתוך גרסאות זמין לסרטון בלבד.');
 
     const motion = sanitizeCaptionMotion(req.body?.captionMotion);
     let timedSegments, timedWords;
@@ -104,8 +111,8 @@ export function createBurnSubtitlesRouter(upload, { resolveVideo } = {}) {
     const offsetYPercent = sanitizePercent(req.body?.offsetYPercent, 12);
     const marginPercent = sanitizePercent(req.body?.marginPercent, 5);
     // An audiogram's frame is defined by its format, never by client-sent sizes.
-    const videoWidth = frame?.width ?? sanitizeDimension(req.body?.videoWidth);
-    const videoHeight = frame?.height ?? sanitizeDimension(req.body?.videoHeight);
+    let videoWidth = frame?.width ?? sanitizeDimension(req.body?.videoWidth);
+    let videoHeight = frame?.height ?? sanitizeDimension(req.body?.videoHeight);
     const styled = timedSegments?.some(segment => Object.keys(segment.style).length > 0);
     if ((motion === "pop" || styled) && (!videoWidth || !videoHeight)) {
       return reject(400, "נדרש גודל וידאו תקין לעיצוב הכתוביות. המתינו לטעינת הסרטון ונסו שוב.");
@@ -113,10 +120,11 @@ export function createBurnSubtitlesRouter(upload, { resolveVideo } = {}) {
 
     const subtitlePath = path.join(TEMP_SUBTITLE_DIR, `${randomUUID()}.${motion === "pop" || styled ? "ass" : "srt"}`);
     const outputPath = path.join(TEMP_OUTPUT_DIR, `${randomUUID()}.mp4`);
+    const filterScript = crop ? path.join(TEMP_SUBTITLE_DIR, `${randomUUID()}.filter`) : null;
     let source = req.file ? { ...req.file, temporary: true } : null;
     const { signal } = req.burnController;
     const job = req.burnJob;
-    const cleanup = () => Promise.all([source?.temporary && safeUnlink(source.path), safeUnlink(background?.path), safeUnlink(subtitlePath), safeUnlink(outputPath)]);
+    const cleanup = () => Promise.all([source?.temporary && safeUnlink(source.path), safeUnlink(background?.path), safeUnlink(subtitlePath), safeUnlink(outputPath), safeUnlink(filterScript)]);
     const refuse = (status, publicMessage) => Object.assign(new Error(publicMessage), { status, publicMessage });
 
     try {
@@ -129,6 +137,11 @@ export function createBurnSubtitlesRouter(upload, { resolveVideo } = {}) {
       const hasVideo = await probeHasVideo(source.path, { signal });
       if (hasVideo && audiogram) throw refuse(400, 'הגדרות רקע מתאימות לקובץ אודיו בלבד.');
       if (!hasVideo && !audiogram) throw refuse(400, 'כדי ליצור סרטון מקובץ אודיו צריך לבחור רקע. רעננו את העמוד ונסו שוב.');
+      if (crop) {
+        const dimensions = await probeVideoDimensions(source.path, { signal });
+        const rectangle = cropRectangle(dimensions, crop);
+        videoWidth = rectangle.width; videoHeight = rectangle.height;
+      }
       // Wrap subtitle lines with RTL markers for proper Hebrew punctuation rendering
       const rtlSubtitleContent = styled
         ? renderStyledCaptionsAss(timedSegments, timedWords, { ...sanitizeCaptionOverrides(req.body),
@@ -152,11 +165,12 @@ export function createBurnSubtitlesRouter(upload, { resolveVideo } = {}) {
       });
 
       const duration = await probeBurnDuration(source.path, { signal });
+      if (crop) await fsp.writeFile(filterScript, `scale=trunc(iw*sar/2)*2:ih,setsar=1,${cropFilter(crop)},${filter},pad=ceil(iw/2)*2:ceil(ih/2)*2`, 'utf8');
       job.stage = 'burning';
       job.percent = duration ? 0 : null;
       const args = audiogram
         ? buildAudiogramArguments(source.path, { ...audiogram, ...frame, image: background?.path, duration }, filter, outputPath)
-        : buildBurnArguments(source.path, filter, outputPath);
+        : buildBurnArguments(source.path, filter, outputPath, filterScript);
       await runBurnFfmpeg(args, {
         duration, signal, onProgress: percent => { job.percent = percent; },
       });
@@ -164,7 +178,7 @@ export function createBurnSubtitlesRouter(upload, { resolveVideo } = {}) {
       job.percent = 100;
 
       const originalBase = path.parse(source.originalname ?? "video").name;
-      const downloadName = `${originalBase}-subtitled.mp4`;
+      const downloadName = `${originalBase}${crop ? '-' + crop.format : ''}-subtitled.mp4`;
       res.download(outputPath, downloadName, async (error) => {
         if (error) {
           console.error("Failed to send burned video:", error);

@@ -143,6 +143,7 @@ export function VideoEditPage({ user, videoToken, onSaveSegments, onNewUpload, o
       formData.append("videoHeight", String(Math.round(options.videoHeight)));
     }
     appendAudiogram(formData, options.audiogram);
+    if (options.crop) formData.append('crop', JSON.stringify(options.crop));
 
     return requestBurn(`${API_BASE_URL || ''}/api/burn-subtitles`, formData, options.onProgress);
   };

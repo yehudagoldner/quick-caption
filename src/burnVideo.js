@@ -4,12 +4,30 @@ import { audiogramWaveBox } from './audiogram.js';
 const ENCODE_ARGUMENTS = ['-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23', '-pix_fmt', 'yuv420p',
   '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart'];
 
-export function buildBurnArguments(input, filter, output) {
+export function buildBurnArguments(input, filter, output, filterScript) {
   return ['-hide_banner', '-loglevel', 'error', '-nostdin', '-y',
     '-progress', 'pipe:1', '-nostats', '-i', input,
     // Photos needs a compatible video/audio combination, not just an .mp4
     // extension. Padding retains the full frame for odd-sized source videos.
-    '-vf', `${filter},pad=ceil(iw/2)*2:ceil(ih/2)*2`, ...ENCODE_ARGUMENTS, output];
+    ...(filterScript ? ['-filter_script:v', filterScript] : ['-vf', `${filter},pad=ceil(iw/2)*2:ceil(ih/2)*2`]), ...ENCODE_ARGUMENTS, output];
+}
+
+export function probeVideoDimensions(input, { signal } = {}) {
+  return new Promise((resolve, reject) => {
+    const child = spawn('ffprobe', ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=width,height,sample_aspect_ratio:stream_side_data=rotation', '-of', 'json', input], { signal });
+    let output = '';
+    child.stdout.on('data', data => { output += data; }); child.stderr.resume(); child.on('error', reject);
+    child.on('close', code => {
+      try {
+        const stream = JSON.parse(output).streams?.[0];
+        if (code !== 0 || !stream?.width || !stream?.height) throw new Error('Invalid video dimensions');
+        const rotation = Math.abs(Number(stream.side_data_list?.find(data => data.rotation != null)?.rotation ?? 0)) % 180;
+        const [numerator, denominator] = (stream.sample_aspect_ratio || '1:1').split(':').map(Number);
+        const width = Math.round(stream.width * (numerator > 0 && denominator > 0 ? numerator / denominator : 1)), height = stream.height;
+        resolve(rotation === 90 ? { width: height, height: width } : { width, height });
+      } catch (error) { reject(error); }
+    });
+  });
 }
 
 export function buildAudiogramArguments(audio, { width, height, background, image, imageFit, waveform, waveColor, duration }, filter, output) {

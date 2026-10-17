@@ -11,6 +11,9 @@ import { useCaptionLivePatch } from '../hooks/useCaptionLivePreview';
 import { CaptionSelectionFrame, CaptionTransformGuides } from './CaptionTransformControls';
 import { AudiogramContext } from '../contexts/AudiogramContext';
 import { AudiogramBackdrop } from './AudiogramBackdrop';
+import { VideoVersionContext } from '../contexts/VideoVersionContext';
+import { VideoCropFrame } from './VideoCropFrame';
+import { cropRectangle } from '../../videoVersions.js';
 
 type VideoPlayerProps = {
   compact?: boolean;
@@ -82,6 +85,9 @@ function CaptionPreview({ activeSegmentText, activeSegmentId, words, currentTime
 
 export function VideoPlayer({ compact, size, fill, hideMeta, mediaUrl, activeSegmentText, activeSegmentId, segments, previewStyle, words, currentTime, activeWordEnabled, activeWordColor = "#ffd700", captionMotion = "none", popIntensity = "gentle", onTimeUpdate, onLoadedMetadata, onResize }: VideoPlayerProps) {
   const appearance = useContext(CaptionAppearanceContext);
+  const version = useContext(VideoVersionContext);
+  const crop = version?.crop;
+  const cropStageRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
   const captionRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -105,7 +111,7 @@ export function VideoPlayer({ compact, size, fill, hideMeta, mediaUrl, activeSeg
   const livePatch = useCaptionLivePatch(appearance?.live);
   const live = appearanceSelected ? livePatch : null;
   const transformValues = live ? { ...committedValues, ...live } : committedValues;
-  const { mode: transformMode, ...transformEvents } = useCaptionTransform({ stage: stageRef, caption: captionRef,
+  const { mode: transformMode, ...transformEvents } = useCaptionTransform({ stage: crop ? cropStageRef : stageRef, caption: captionRef,
     segmentId: activeCaption?.id ?? null, selected: appearanceSelected, disabled: !appearance || appearance.disabled || audioOnly,
     values: transformValues,
     select: () => { if (activeCaption?.id != null) appearance?.select(activeCaption.id, { deferControls: true }); },
@@ -180,6 +186,7 @@ export function VideoPlayer({ compact, size, fill, hideMeta, mediaUrl, activeSeg
   }, [mediaUrl, onLoadedMetadata, onResize, hasCanvas]);
 
   const ratio = frame.width / frame.height;
+  const cropRect = crop ? cropRectangle(dimensions, crop, currentTime) : null;
   const heightDvh = size ? SIZE_DVH[size] : compact ? 22 : 48;
   const availableHeight = canvas ? `(100cqh - ${PLAY_BAR_HEIGHT}px)` : "100cqh";
   const stageSize = fill
@@ -209,11 +216,14 @@ export function VideoPlayer({ compact, size, fill, hideMeta, mediaUrl, activeSeg
       aspectRatio: audioOnly || fill ? undefined : `${frame.width} / ${frame.height}`, minHeight: audioOnly && !fill ? 180 : undefined }}>
       {mediaUrl ? <>
         {canvas && <AudiogramBackdrop settings={canvas.settings} imageUrl={canvas.imageUrl} currentTime={currentTime} />}
-        <Box component="video" ref={videoRef} controls={!appearance?.segment && !canvas} controlsList="nofullscreen" playsInline preload="metadata" src={mediaUrl}
+        <Box component="video" ref={videoRef} controls={!appearance?.segment && !canvas && !crop} controlsList="nofullscreen" playsInline preload="metadata" src={mediaUrl}
           onSeeking={e => onTimeUpdate?.(e.currentTarget.currentTime)}
           onTimeUpdate={e => onTimeUpdate?.(e.currentTarget.currentTime)} onError={() => setError(true)}
           sx={canvas ? { position: "absolute", width: 1, height: 1, opacity: 0, pointerEvents: "none" }
             : { width: "100%", height: isAudio ? 54 : "100%", display: "block", objectFit: "contain", ...(isAudio ? { position: "absolute", bottom: 0 } : {}) }} />
+        {crop && <VideoCropFrame key={version?.activeId} dimensions={dimensions} time={currentTime} />}
+        <Box ref={cropStageRef} data-testid="version-caption-stage" sx={cropRect ? { position: 'absolute', zIndex: 2, pointerEvents: 'none', overflow: 'hidden',
+          left: `${cropRect.x / dimensions.width * 100}%`, top: `${cropRect.y / dimensions.height * 100}%`, width: `${cropRect.width / dimensions.width * 100}%`, height: `${cropRect.height / dimensions.height * 100}%` } : { display: 'contents' }}>
         {activeCaption && <Box ref={captionRef} data-testid="caption-position" role={appearance ? 'button' : undefined}
           tabIndex={appearance && !appearance.disabled ? 0 : undefined} aria-label={appearance ? 'עריכת עיצוב הכתובית בתצוגה' : undefined}
           aria-pressed={appearance ? appearanceSelected : undefined}
@@ -230,13 +240,15 @@ export function VideoPlayer({ compact, size, fill, hideMeta, mediaUrl, activeSeg
               ...(!appearanceSelected && !appearance.disabled ? { '@media (hover: hover)': { '&:hover': { boxShadow: '0 0 0 1.5px rgba(255, 255, 255, .7)' } } } : {}),
               // Enlarge the touch target without changing caption layout or export geometry.
               '&::after': { content: '""', position: 'absolute', inset: '-12px', touchAction: 'none' },
-              '&:focus-visible': { outline: '2px solid #38bdf8', outlineOffset: 8 } } : {}) }}>
+              '&:focus-visible': { outline: '2px solid #38bdf8', outlineOffset: 8 } } : {}),
+            ...(crop ? { whiteSpace: 'pre-wrap', width: previewStyle.width, maxWidth: previewStyle.maxWidth } : {}) }}>
           <CaptionPreview key={activeCaption.id} activeSegmentId={activeCaption.id} activeSegmentText={activeCaption.text}
             words={words} currentTime={currentTime} activeWordEnabled={activeWordEnabled} activeWordColor={highlight}
             captionMotion={captionMotion} popIntensity={popIntensity} />
           {appearanceSelected && !audioOnly && !appearance?.disabled && <CaptionSelectionFrame mode={transformMode} />}
         </Box>}
         {appearanceSelected && !audioOnly && <CaptionTransformGuides mode={transformMode} values={transformValues} />}
+        </Box>
       </> : <Typography sx={{ p: 3 }}>אין תצוגה זמינה לקובץ הנוכחי.</Typography>}
     </Box>
     {canvas && mediaUrl && <AudiogramPlayBar media={videoRef} currentTime={currentTime} width={stageSize.width} />}

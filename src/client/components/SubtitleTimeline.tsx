@@ -1,6 +1,7 @@
 import "react-virtualized/styles.css";
 import "./SubtitleTimeline.css";
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { VideoVersionContext } from '../contexts/VideoVersionContext';
 import { Alert, Box, Button, Dialog, DialogActions, DialogContent, DialogTitle, IconButton, InputAdornment, Slider, Stack, TextField, ThemeProvider, Tooltip, Typography, createTheme, useTheme } from "@mui/material";
 import { PlayArrowRounded, PauseRounded, UndoRounded, RedoRounded, RepeatRounded, CloseRounded, RestartAltRounded, EditOutlined, OpenInFullRounded } from "@mui/icons-material";
 import { Timeline, type TimelineRow, type TimelineState } from "@xzdarcy/react-timeline-editor";
@@ -42,6 +43,7 @@ export function SubtitleTimeline({ activeWordEnabled, segments, words = [], disa
   selectedSegmentId, onSegmentSelect, onRequestTimeChange, onSegmentsChange, onAddSubtitle, onCaptionBatch, onSaveSegment,
   isPlaying, onPlayPause, onPlayFrom, loopEnabled, onLoopChange,   onUndo, onRedo, canUndo, canRedo, onDraftStateChange, layout = "full", compactDesktop = false,
 }: SubtitleTimelineProps) {
+  const version = useContext(VideoVersionContext);
   const { preferences } = useEditorPreferences();
   const fps = preferences.fps;
   const theme = useTheme();
@@ -74,6 +76,7 @@ export function SubtitleTimeline({ activeWordEnabled, segments, words = [], disa
     if (expandedSegmentId !== null && expandedSegmentId !== selectedSegmentId) setExpandedSegmentId(null);
   }, [selectedSegmentId, expandedSegmentId]);
   const locked = disabled || busy || saving;
+  useEffect(() => { setSelection([]); setDrafts({}); setExpandedSegmentId(null); }, [version?.activeId]);
   const dirty = Object.keys(drafts).length > 0;
   const groupLocked = !!locked || dirty || movePreview !== null;
   useEffect(() => { setSelection([]); selectionAnchor.current = null; setMovePreview(null); dragging.current = null; }, [mediaUrl]);
@@ -351,6 +354,7 @@ export function SubtitleTimeline({ activeWordEnabled, segments, words = [], disa
       <Button size="small" aria-label="תצוגת 30 שניות" aria-pressed={zoom === null} variant={zoom === null ? "contained" : "text"} onClick={() => setZoom(null)} sx={{ whiteSpace: "nowrap", minWidth: 0 }}>30 שנ׳</Button>
       <Button size="small" aria-label="התאם את כל ההקלטה" aria-pressed={zoom === 0} onClick={() => { setZoom(0); scrollLeft.current = 0; timeline.current?.setScrollLeft(0); }} sx={{ whiteSpace: "nowrap", minWidth: 0 }}>הכול</Button>
       <CaptionSelectionToolbar count={selection.length} disabled={groupLocked} canMerge={canMergeCaptions(segments, selection)} canSplit={canSplitCaptionAtTime(selectedCaption, time)}
+        splitAll={version ? () => { setSaving(true); void version.splitAll(time).then(() => { setError(null); applySelection([]); }).catch(e => setError(e.message || 'הפיצול נכשל.')).finally(() => setSaving(false)); } : undefined}
         canAdd={time < total} add={() => { if (isPlaying) onPlayPause?.(); onLoopChange(false); void Promise.resolve().then(() => onAddSubtitle("הכנס טקסט כאן", time, Math.min(total, time + 0.5))).then(() => setError(null)).catch(e => setError(e.message || "לא ניתן להוסיף כתובית כאן.")); }}
         selectAll={() => applySelection(segments.map(s => s.id))} clear={clearSelection} merge={() => void runSelectionAction("merge")} split={() => void runSelectionAction("split")} remove={() => void runSelectionAction("delete")} move={nudge} />
     </Stack>

@@ -618,6 +618,7 @@ export function useTranscriptionWorkflow(): TranscriptionWorkflow {
         formData.append("videoHeight", String(Math.round(options.videoHeight)));
       }
       appendAudiogram(formData, options.audiogram);
+      if (options.crop) formData.append('crop', JSON.stringify(options.crop));
 
       return requestBurn(BURN_ENDPOINT, formData, options.onProgress);
     },
