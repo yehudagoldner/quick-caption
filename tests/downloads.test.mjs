@@ -48,7 +48,9 @@ test('download and rating APIs authenticate ownership, validate inputs and dedup
   for (const invalid of [{ id: 'invalid' }, { videoId: 0 }, { videoId: '42' }, { kind: 'other' }, { format: 'exe' }, { kind: 'subtitles', format: 'mp4' }]) {
     assert.equal((await request('', { ...body, ...invalid })).status, 400);
   }
-  assert.equal((await request('', { ...body, videoId: 44 })).status, 404); // Audio is not a burned-video download.
+  // Audio projects download as audiogram videos.
+  assert.equal((await request('', { ...body, id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', videoId: 44 })).status, 200);
+  pool.downloads.delete('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb');
   const first = await request('', body); assert.equal(first.status, 200);
   assert.deepEqual(await first.json(), { success: true, downloadId: id });
   assert.equal((await request('', body)).status, 200);
