@@ -10,14 +10,16 @@ const time = seconds => {
   return `${Math.floor(cs / 360000)}:${String(Math.floor(cs / 6000) % 60).padStart(2, '0')}:${String(Math.floor(cs / 100) % 60).padStart(2, '0')}.${String(cs % 100).padStart(2, '0')}`;
 };
 
-export function captionOverrideTags(style, defaults) {
+export function captionOverrideTags(style, defaults, offset, forcePosition = false) {
   const own = sanitizeCaptionOverrides(style);
   const value = { positionXPercent: 50, rotation: 0, ...defaults, ...own };
   const font = getCaptionFont(value.fontId);
   const tags = [`\\fn${font.family}`, `\\b${font.id !== 'assistant' && font.weight >= 600 ? 1 : 0}`,
     `\\fs${value.fontSize}`, `\\1c${color(value.fontColor)}`, `\\3c${color(value.outlineColor)}`, `\\frz${-value.rotation}`];
-  if (own.positionXPercent !== undefined || own.offsetYPercent !== undefined || own.rotation !== undefined) {
-    tags.push(`\\pos(${(value.positionXPercent * value.videoWidth / 100).toFixed(2)},${((100 - value.offsetYPercent) * value.videoHeight / 100).toFixed(2)})`);
+  if (forcePosition || offset?.offsetX || offset?.offsetY || own.positionXPercent !== undefined || own.offsetYPercent !== undefined || own.rotation !== undefined) {
+    const angle = value.rotation * Math.PI / 180;
+    const x = (offset?.offsetX ?? 0) * value.fontSize * font.emRatio, y = (offset?.offsetY ?? 0) * value.fontSize * font.emRatio;
+    tags.push(`\\pos(${(value.positionXPercent * value.videoWidth / 100 + x * Math.cos(angle) - y * Math.sin(angle)).toFixed(2)},${((100 - value.offsetYPercent) * value.videoHeight / 100 + x * Math.sin(angle) + y * Math.cos(angle)).toFixed(2)})`);
   }
   return tags.join('');
 }
@@ -39,7 +41,7 @@ export function renderStyledCaptionsAss(segments, sourceWords, options) {
     const byId = new Map(segments.map(segment => [segment.id, segment]));
     return renderWordPopAss(segments, sourceWords, { ...options, styleTags: word => {
       const segment = byId.get(word.segmentId);
-      return tagsFor(segment) + wordTags(word.style, sanitizeCaptionOverrides(segment?.style), defaults);
+      return captionOverrideTags(segment?.style, defaults, sanitizeWordOverrides(word.style)) + wordTags(word.style, sanitizeCaptionOverrides(segment?.style), defaults);
     } });
   }
   const header = renderWordPopAss([], [], options);
@@ -50,6 +52,8 @@ export function renderStyledCaptionsAss(segments, sourceWords, options) {
     const base = color(own.fontColor ?? defaults.fontColor);
     const highlight = color(own.activeWordColor ?? defaults.activeWordColor);
     const owned = words.filter(word => word.segmentId === segment.id);
+    const moved = owned.filter(word => { const style = sanitizeWordOverrides(word.style); return style.offsetX || style.offsetY; });
+    const movedIndexes = new Set(moved.map(word => word.wordIndex));
     const font = getCaptionFont(own.fontId ?? defaults.fontId);
     const resetWord = `\\fs${own.fontSize ?? defaults.fontSize}\\b${font.id !== 'assistant' && font.weight >= 600 ? 1 : 0}\\1c${base}`;
     const start = Math.max(0, Math.round(segment.start * 100));
@@ -60,20 +64,27 @@ export function renderStyledCaptionsAss(segments, sourceWords, options) {
       const from = boundaries[i] / 100, to = boundaries[i + 1] / 100;
       if (to <= from) continue;
       const active = options.activeWordEnabled ? activeWordAtTime(owned, (from + to) / 2)?.wordIndex : undefined;
+      // Every layer retains the complete shaped text, including invisible
+      // words. This preserves Hebrew/English order, line widths and baselines.
+      // Only the chosen word is visible on its translated layer.
+      const textFor = onlyIndex => {
       let index = 0;
-      const text = segment.text.replace(/\r\n?/g, '\n').split('\n').map(line => {
+      return segment.text.replace(/\r\n?/g, '\n').split('\n').map(line => {
         const content = line.split(/(\s+)/).map(part => {
           if (!part.trim()) return part;
           const escaped = escapeAssText(part);
           const wordIndex = index++;
           const tags = wordTags(owned.find(word => word.wordIndex === wordIndex)?.style, own, defaults);
           const activeTags = wordIndex === active ? `\\1c${highlight}` : '';
-          return tags ? `{${tags}${activeTags}}${escaped}{${resetWord}}`
-            : activeTags ? `{${activeTags}}${escaped}{\\1c${base}}` : escaped;
+          const alpha = moved.length ? `\\alpha&H${(onlyIndex === undefined ? !movedIndexes.has(wordIndex) : wordIndex === onlyIndex) ? '00' : 'FF'}&` : '';
+          return tags ? `{${alpha}${tags}${activeTags}}${escaped}{${resetWord}}`
+            : activeTags || alpha ? `{${alpha}${activeTags}}${escaped}{\\1c${base}}` : escaped;
         }).join('');
         return `${options.direction === 'ltr' ? '\u202a' : '\u202b'}${content}\u202c`;
       }).join('\\N');
-      events.push(`Dialogue: 0,${time(from)},${time(to)},Default,,0,0,0,,{\\an2${tagsFor(segment)}}${text}`);
+      };
+      events.push(`Dialogue: 0,${time(from)},${time(to)},Default,,0,0,0,,{\\an2${moved.length ? captionOverrideTags(segment.style, defaults, null, true) : tagsFor(segment)}}${textFor()}`);
+      for (const word of moved) events.push(`Dialogue: 1,${time(from)},${time(to)},Default,,0,0,0,,{\\an2${captionOverrideTags(segment.style, defaults, sanitizeWordOverrides(word.style), true)}}${textFor(word.wordIndex)}`);
     }
   }
   return header + events.join('\n') + '\n';

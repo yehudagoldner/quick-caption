@@ -39,8 +39,9 @@ export function WordAppearanceToolbar({ segmentId, words, close }: { segmentId: 
           onChange={(event: React.ChangeEvent<HTMLInputElement>) => void apply({ fontColor: event.target.value })}
           sx={{ width: 28, height: 28, padding: 0, border: 0, cursor: 'pointer' }} />
         <Button size="small" disabled={editor.disabled || !styles.some(style => Object.keys(style).length)} onClick={() => void apply(null)}>איפוס לעיצוב הכתובית</Button>
+        <Button size="small" disabled={editor.disabled || !styles.some(style => style.offsetX || style.offsetY)} onClick={() => void apply({ offsetX: 0, offsetY: 0 })}>איפוס מיקום</Button>
       </Stack>
-      <Typography variant="caption" color="text.secondary" role="status">{editor.saving ? 'שומר...' : 'בגרסה הנוכחית · Ctrl / ⌘ + לחיצה לבחירת כמה מילים · הגודל יחסי לכתובית'}</Typography>
+      <Typography variant="caption" color="text.secondary" role="status">{editor.saving ? 'שומר...' : 'גררו מילה נבחרת להזזה · Ctrl / ⌘ + לחיצה לבחירת כמה מילים · בגרסה הנוכחית'}</Typography>
       {failed && <Alert severity="error" action={<Button disabled={editor.disabled} onClick={() => void apply(failed.patch)}>נסו שוב</Button>}>שמירת עיצוב המילים נכשלה. אפשר לנסות שוב.</Alert>}
     </Stack>
   </Paper>;

@@ -36,7 +36,7 @@ import { VideoVersionContext } from '../contexts/VideoVersionContext';
 import { VideoVersionsBar } from './VideoVersionsBar';
 import { cropRectangle } from '../../videoVersions.js';
 import { WordAppearanceContext } from '../contexts/WordAppearanceContext';
-import { styleCaptionWords } from '../../wordOverrides.js';
+import { styleCaptionWords, moveCaptionWords } from '../../wordOverrides.js';
 
 export type { BurnOptions };
 type BurnResult = { blob: Blob; filename?: string; };
@@ -395,6 +395,13 @@ export function TranscriptionResult({
       versionId: versions.activeId,
       disabled: !isEditable || isBurning || hasTimelineDrafts || saveState === 'saving',
       saving: wordSaving,
+      move: async (segmentId, indexes, delta) => {
+        if (!isEditable || isBurning || hasTimelineDrafts || saveState === 'saving') return;
+        setWordSaving(true);
+        try {
+          await persistSegments(editableSegments, moveCaptionWords(editableWords, segmentId, indexes, delta), { throwOnError: true, layoutOnly: true });
+        } finally { setWordSaving(false); }
+      },
       change: async (segmentId, indexes, patch) => {
         if (!isEditable || isBurning || hasTimelineDrafts || saveState === 'saving') return;
         setWordSaving(true);

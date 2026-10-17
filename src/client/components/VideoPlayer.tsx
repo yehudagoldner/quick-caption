@@ -1,5 +1,5 @@
 import { Fragment, useContext, useEffect, useMemo, useRef, useState } from "react";
-import { Alert, Box, IconButton, Stack, Typography } from "@mui/material";
+import { Alert, Box, Button, IconButton, Stack, Typography } from "@mui/material";
 import { PauseRounded, PlayArrowRounded } from "@mui/icons-material";
 import type { Segment, Word } from "../types";
 import { useActiveWord } from "../hooks/useActiveWord";
@@ -11,7 +11,8 @@ import { useCaptionLivePatch } from '../hooks/useCaptionLivePreview';
 import { CaptionSelectionFrame, CaptionTransformGuides } from './CaptionTransformControls';
 import { WordAppearanceContext } from '../contexts/WordAppearanceContext';
 import { WordAppearanceToolbar } from './WordAppearanceToolbar';
-import { sanitizeWordOverrides } from '../../wordOverrides.js';
+import { sanitizeWordOverrides, type WordDelta } from '../../wordOverrides.js';
+import { useWordDrag } from '../hooks/useWordDrag';
 import { AudiogramContext } from '../contexts/AudiogramContext';
 import { AudiogramBackdrop } from './AudiogramBackdrop';
 import { VideoVersionContext } from '../contexts/VideoVersionContext';
@@ -65,10 +66,13 @@ function AudiogramPlayBar({ media, currentTime, width }: { media: React.RefObjec
 }
 const VIDEO_PLAYER_CHANGED = "quickcaption:video-player-changed";
 
-function CaptionPreview({ activeSegmentText, activeSegmentId, words, currentTime, activeWordEnabled, activeWordColor = "#ffd700", captionMotion = "none", popIntensity = "gentle", selected = [], selectWord }: Pick<VideoPlayerProps,
+function CaptionPreview({ activeSegmentText, activeSegmentId, words, currentTime, activeWordEnabled, activeWordColor = "#ffd700", captionMotion = "none", popIntensity = "gentle", selected = [], selectWord, moveWord, rotation = 0 }: Pick<VideoPlayerProps,
   "activeSegmentText" | "activeSegmentId" | "words" | "currentTime" | "activeWordEnabled" | "activeWordColor" | "captionMotion" | "popIntensity"> & {
     selected?: number[]; selectWord?: (index: number, multiple: boolean) => void;
+    moveWord?: (indexes: number[], delta: WordDelta) => void; rotation?: number;
   }) {
+  const wordEditor = useContext(WordAppearanceContext);
+  const drag = useWordDrag({ selected, disabled: !moveWord || !selectWord || Boolean(wordEditor?.disabled), rotation, move: (indexes, delta) => moveWord?.(indexes, delta) });
   const captionWords = useMemo(() => words?.filter(w => w.segmentId === activeSegmentId) ?? [], [words, activeSegmentId]);
   const activeWord = useActiveWord({ words: captionWords, currentTime, enabled: activeWordEnabled });
   const popWords = useMemo(() => wordPopCues(captionWords), [captionWords]);
@@ -79,18 +83,20 @@ function CaptionPreview({ activeSegmentText, activeSegmentId, words, currentTime
   }, [activeSegmentText]);
   if (!activeSegmentText || captionMotion === "pop" && !popWord) return null;
   const renderWord = (text: string, index: number, pop = false) => {
-    const own = sanitizeWordOverrides(captionWords.find(word => word.wordIndex === index)?.style);
+    const saved = sanitizeWordOverrides(captionWords.find(word => word.wordIndex === index)?.style);
+    const own = sanitizeWordOverrides(drag.live?.indexes.includes(index) ? { ...saved, offsetX: (saved.offsetX ?? 0) + drag.live.delta.x, offsetY: (saved.offsetY ?? 0) + drag.live.delta.y } : saved);
     const active = !pop && activeWordEnabled && activeWord?.wordIndex === index;
     const chosen = selected.includes(index);
-    return <span key={index} data-testid={pop ? 'caption-pop-word' : undefined} data-word-index={index}
+    return <span key={index} {...drag.handlers(index)} data-testid={pop ? 'caption-pop-word' : undefined} data-word-index={index}
       data-active-word={active ? 'true' : undefined} data-word-editable={selectWord ? 'true' : undefined}
       role={selectWord ? 'button' : undefined} tabIndex={selectWord ? 0 : undefined}
       aria-label={selectWord ? `עיצוב המילה ${text}` : undefined} aria-pressed={selectWord ? chosen : undefined}
-      onClick={event => { if (selectWord) { event.stopPropagation(); selectWord(index, event.ctrlKey || event.metaKey); } }}
+      onClick={event => { if (selectWord) { event.stopPropagation(); if (!drag.consumeClick()) selectWord(index, event.ctrlKey || event.metaKey); } }}
       onKeyDown={event => { if (selectWord && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); event.stopPropagation(); selectWord(index, event.ctrlKey || event.metaKey); } }}
       style={{ color: active ? activeWordColor : own.fontColor ?? 'inherit', fontSize: own.fontScale ? `${own.fontScale * 100}%` : undefined,
         fontWeight: own.bold ? 900 : undefined,
-        ...(selectWord ? { cursor: 'pointer', position: 'relative', outline: chosen ? '2px solid #38bdf8' : undefined, outlineOffset: 2, borderRadius: 2 } : {}),
+        position: 'relative', left: `${(own.offsetX ?? 0) / (own.fontScale ?? 1)}em`, top: `${(own.offsetY ?? 0) / (own.fontScale ?? 1)}em`,
+        ...(selectWord ? { cursor: chosen ? drag.live ? 'grabbing' : 'grab' : 'pointer', zIndex: chosen ? 2 : undefined, outline: chosen ? '2px solid #38bdf8' : undefined, outlineOffset: 2, borderRadius: 2 } : {}),
         ...(pop ? { display: 'inline-block', whiteSpace: 'nowrap', transformOrigin: '50% 100%', transform: `scale(${wordPopScale(popWord!, currentTime, popIntensity)})` } : {}) }}>
       {pop ? escapeAssText(text) : text}
     </span>;
@@ -105,6 +111,7 @@ export function VideoPlayer({ compact, size, fill, hideMeta, mediaUrl, activeSeg
   const appearance = useContext(CaptionAppearanceContext);
   const wordEditor = useContext(WordAppearanceContext);
   const [selectedWords, setSelectedWords] = useState<number[]>([]);
+  const [failedMove, setFailedMove] = useState<{ indexes: number[]; delta: WordDelta } | null>(null);
   const version = useContext(VideoVersionContext);
   const crop = version?.crop;
   const cropStageRef = useRef<HTMLDivElement>(null);
@@ -124,7 +131,13 @@ export function VideoPlayer({ compact, size, fill, hideMeta, mediaUrl, activeSeg
     ? segments.find(segment => segment.text && currentTime >= segment.start && currentTime < segment.end)
     : activeSegmentText ? { id: activeSegmentId, text: activeSegmentText } : null, [segments, currentTime, activeSegmentText, activeSegmentId]);
   const appearanceSelected = Boolean(appearance?.segment && appearance.segment.id === activeCaption?.id);
-  useEffect(() => { setSelectedWords([]); }, [activeCaption?.id, activeCaption?.text, appearanceSelected, wordEditor?.versionId]);
+  useEffect(() => { setSelectedWords([]); setFailedMove(null); }, [activeCaption?.id, activeCaption?.text, appearanceSelected, wordEditor?.versionId]);
+  const moveWord = async (indexes: number[], delta: WordDelta) => {
+    if (!wordEditor || activeCaption?.id == null) return;
+    setFailedMove(null);
+    try { await wordEditor.move(activeCaption.id, indexes, delta); }
+    catch { setFailedMove({ indexes, delta }); }
+  };
   const selectedCaptionWords = (words ?? []).filter(word => word.segmentId === activeCaption?.id && selectedWords.includes(word.wordIndex!));
   const highlight = appearanceSelected ? appearance!.values.activeWordColor
     : sanitizeCaptionOverrides(segments?.find(segment => segment.id === activeCaption?.id)?.style).activeWordColor ?? activeWordColor;
@@ -231,6 +244,7 @@ export function VideoPlayer({ compact, size, fill, hideMeta, mediaUrl, activeSeg
   }}>
     {wordEditor && appearanceSelected && activeCaption?.id != null && selectedCaptionWords.length > 0 && <WordAppearanceToolbar
       key={`${wordEditor.versionId}:${activeCaption.id}:${selectedWords.join(',')}`} segmentId={activeCaption.id} words={selectedCaptionWords} close={() => setSelectedWords([])} />}
+    {failedMove && <Alert severity="error" sx={{ position: 'absolute', bottom: 40, zIndex: 6 }} action={<Button disabled={wordEditor?.disabled} onClick={() => void moveWord(failedMove.indexes, failedMove.delta)}>נסו שוב</Button>}>הזזת המילה לא נשמרה. אפשר לנסות שוב.</Alert>}
     {audioOnly && !hideMeta && <Typography variant="subtitle2">אודיו בלבד — תצוגה מקדימה של הכתוביות</Typography>}
     {error && <Alert severity="error" sx={fill ? { position: "absolute", zIndex: 2, mx: 1 } : undefined}>לא ניתן לנגן את המדיה. בדקו שהקובץ זמין ובפורמט שנתמך בדפדפן.</Alert>}
     <Box ref={stageRef} data-testid="media-stage" {...transformEvents} sx={{ position: "relative", bgcolor: "common.black", color: "white", borderRadius: 2, overflow: "hidden", mx: "auto", flexShrink: 0,
@@ -269,6 +283,7 @@ export function VideoPlayer({ compact, size, fill, hideMeta, mediaUrl, activeSeg
           <CaptionPreview key={activeCaption.id} activeSegmentId={activeCaption.id} activeSegmentText={activeCaption.text}
             words={words} currentTime={currentTime} activeWordEnabled={activeWordEnabled} activeWordColor={highlight}
             captionMotion={captionMotion} popIntensity={popIntensity} selected={selectedWords}
+            rotation={transformValues.rotation} moveWord={(indexes, delta) => void moveWord(indexes, delta)}
             selectWord={wordEditor && appearanceSelected ? (index, multiple) => {
               if (wordEditor.disabled) return;
               videoRef.current?.pause();
