@@ -238,7 +238,7 @@ export function TranscriptionMainContent({
     <>
       <Stack data-testid="desktop-caption-editor" direction={{ xs: "column", md: "row" }} spacing={1.5} alignItems="flex-start" sx={{ width: "100%", minWidth: 0, height: { md: "calc(100dvh - 104px)" } }}>
         <Stack className="preview-wrapper" spacing={desktop ? 1 : 2} sx={{ flex: 1, minWidth: 0, width: "100%", height: { md: "100%" } }}>
-          <Stack component="fieldset" disabled={Boolean(appearance?.segment)} direction="column" spacing={1.5} alignItems="center" justifyContent="center" sx={{ width: "100%", minWidth: 0, border: 0, p: 0, m: 0 }}>
+          <Stack direction="column" spacing={1.5} alignItems="center" justifyContent="center" sx={{ width: "100%", minWidth: 0 }}>
             <VideoToolbar
               captionStyles={captionStyles} fontId={fontId} onFontChange={onFontChange}
               activeWordColor={activeWordColor} onActiveWordColorChange={onActiveWordColorChange}
@@ -303,7 +303,7 @@ export function TranscriptionMainContent({
               mediaUrl={mediaUrl}
               busy={saveState === "saving"}
               segments={editableSegments}
-              disabled={!isEditable || Boolean(appearance?.segment)}
+              disabled={!isEditable}
               duration={videoDuration}
               currentTime={currentTime}
               onRequestTimeChange={onTimelineTimeChange}

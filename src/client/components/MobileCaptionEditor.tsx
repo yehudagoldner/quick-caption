@@ -705,7 +705,7 @@ export function MobileCaptionEditor({
       >
         <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ px: 1.8, pt: 0.9, pb: 0.45, flexShrink: 0 }}>
           <Typography fontWeight={500}>{individualStyleOpen ? 'כתובית נבחרת' : 'עיצוב כל הכתוביות'}</Typography>
-          <IconButton aria-label="סגירת עיצוב" disabled={appearance?.saving} onClick={closeStyle} sx={{ p: 0.9 }}>{individualStyleOpen ? <CloseRounded sx={{ fontSize: 21.6 }} /> : <CheckRounded sx={{ fontSize: 21.6 }} />}</IconButton>
+          <IconButton aria-label="סגירת עיצוב" onClick={closeStyle} sx={{ p: 0.9 }}><CheckRounded sx={{ fontSize: 21.6 }} /></IconButton>
         </Stack>
         <Box sx={{ px: 1.8, pb: "max(14.4px, env(safe-area-inset-bottom, 0px))", overflowY: "auto", minHeight: 0 }}>
           {individualStyleOpen ? <CaptionAppearanceEditor /> : <>

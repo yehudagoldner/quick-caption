@@ -58,9 +58,10 @@ for (const mobile of [false, true]) test(`${mobile ? 'mobile' : 'desktop'} indiv
   expect(stage!.height).toBeGreaterThan(100);
   if (mobile) expect(stage!.y + stage!.height).toBeLessThanOrEqual((await page.locator('.MuiDrawer-paper').boundingBox())!.y + 1);
   await page.screenshot({ path: `test-results/individual-${mobile ? 'mobile' : 'desktop'}.png` });
-  await panel.getByRole('button', { name: 'שמירת עיצוב הכתובית', exact: true }).click();
+  // Changes save automatically; Done just closes the panel.
+  await expect.poll(() => state.saved()[0].style).toMatchObject({ fontId: 'fredoka', fontSize: 64, fontColor: '#ff0000', outlineColor: '#00ff00', rotation: 25, positionXPercent: 40, offsetYPercent: 35 });
+  await panel.getByRole('button', { name: 'סיום', exact: true }).click();
   await expect(panel).toHaveCount(0);
-  expect(state.saved()[0].style).toMatchObject({ fontId: 'fredoka', fontSize: 64, fontColor: '#ff0000', outlineColor: '#00ff00', rotation: 25, positionXPercent: 40, offsetYPercent: 35 });
   expect(state.saved()[1].style).toBeUndefined();
   await page.reload();
   await expect.poll(() => page.locator('video').evaluate((video: HTMLVideoElement) => video.readyState)).toBeGreaterThan(1);
@@ -80,13 +81,15 @@ for (const mobile of [false, true]) test(`${mobile ? 'mobile' : 'desktop'} indiv
   await caption.click();
   await panel.getByRole('button', { name: 'חזרה לעיצוב הכללי' }).click();
   await expect(page.getByTestId('subtitle-overlay')).toHaveCSS('color', 'rgb(255, 255, 255)');
-  await panel.getByRole('button', { name: 'ביטול', exact: true }).click();
+  await expect.poll(() => state.saved()[0].style).toBeUndefined();
+  await panel.getByRole('button', { name: 'ביטול השינויים', exact: true }).click();
   await expect(page.getByTestId('subtitle-overlay')).toHaveCSS('color', 'rgb(255, 0, 0)');
-  await caption.click();
+  await expect.poll(() => state.saved()[0].style?.fontColor).toBe('#ff0000');
+  await expect(panel.getByRole('button', { name: 'ביטול השינויים', exact: true })).toBeDisabled();
   await panel.getByRole('button', { name: 'חזרה לעיצוב הכללי' }).click();
-  await panel.getByRole('button', { name: 'שמירת עיצוב הכתובית', exact: true }).click();
+  await panel.getByRole('button', { name: 'סיום', exact: true }).click();
   await expect(panel).toHaveCount(0);
-  expect(state.saved()[0].style).toBeUndefined();
+  await expect.poll(() => state.saved()[0].style).toBeUndefined();
   await page.getByRole('button', { name: mobile ? 'עוד' : 'הורדה', exact: true }).click();
   const nextDownload = page.waitForEvent('download');
   await page.getByRole(mobile ? 'button' : 'menuitem', { name: 'הורד סרטון עם כתוביות', exact: true }).click();
@@ -129,9 +132,9 @@ test.describe('touch appearance editing', () => {
     await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
     await panel.getByRole('tab', { name: 'מיקום' }).click();
     await expect(panel.getByRole('slider', { name: 'סיבוב', exact: true })).toHaveValue('30');
-    await panel.getByRole('button', { name: 'שמירת עיצוב הכתובית', exact: true }).click();
+    await panel.getByRole('button', { name: 'סיום', exact: true }).click();
     await expect(panel).toHaveCount(0);
-    expect(state.saved()[0].style!.rotation).toBe(30);
+    await expect.poll(() => state.saved()[0].style?.rotation).toBe(30);
     expect(state.saved()[1].style).toBeUndefined();
   });
   test('first touch drags immediately; two fingers rotate and pinch, then one finger continues without a jump', async ({ page }) => {
@@ -168,9 +171,9 @@ test.describe('touch appearance editing', () => {
     await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ ...second, x: second.x + 10 }] });
     expect(Number(await panel.getByRole('slider', { name: 'מיקום אופקי', exact: true }).inputValue())).toBeGreaterThan(position);
     await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
-    await panel.getByRole('button', { name: 'שמירת עיצוב הכתובית', exact: true }).click();
+    await panel.getByRole('button', { name: 'סיום', exact: true }).click();
     await expect(panel).toHaveCount(0);
-    expect(state.saved()[0].style!.rotation).toBeCloseTo(30, 0);
+    await expect.poll(() => state.saved()[0].style?.rotation).toBeCloseTo(30, 0);
     expect(state.saved()[1].style).toBeUndefined();
   });
   test('touch selects and drags a caption, and resizing preserves its draft', async ({ page }) => {
@@ -192,9 +195,9 @@ test.describe('touch appearance editing', () => {
     await expect(panel).toBeVisible();
     await panel.getByRole('tab', { name: 'מיקום' }).click();
     expect(Number(await panel.getByRole('slider', { name: 'מיקום אופקי', exact: true }).inputValue())).toBe(position);
-    await panel.getByRole('button', { name: 'שמירת עיצוב הכתובית', exact: true }).click();
+    await panel.getByRole('button', { name: 'סיום', exact: true }).click();
     await expect(panel).toHaveCount(0);
-    expect(state.saved()[0].style!.positionXPercent).toBe(position);
+    await expect.poll(() => state.saved()[0].style?.positionXPercent).toBe(position);
   });
 });
 
@@ -228,9 +231,9 @@ test('mouse drags on the first press and rotation handle rotates around the capt
   await page.keyboard.press('ArrowUp');
   await expect(panel.getByRole('slider', { name: 'סיבוב', exact: true })).toHaveValue('31');
   await page.screenshot({ path: 'test-results/caption-rotation-handle.png' });
-  await panel.getByRole('button', { name: 'שמירת עיצוב הכתובית', exact: true }).click();
+  await panel.getByRole('button', { name: 'סיום', exact: true }).click();
   await expect(panel).toHaveCount(0);
-  expect(state.saved()[0].style!.rotation).toBe(31);
+  await expect.poll(() => state.saved()[0].style?.rotation).toBe(31);
   expect(state.saved()[1].style).toBeUndefined();
 });
 
@@ -258,30 +261,49 @@ test('corner handles scale around the caption center and center guides snap whil
   await expect(page.getByTestId('caption-guide-vertical')).toBeVisible();
   await page.mouse.up();
   await expect(page.getByTestId('caption-guide-vertical')).toHaveCount(0);
-  await panel.getByRole('button', { name: 'שמירת עיצוב הכתובית', exact: true }).click();
+  await panel.getByRole('button', { name: 'סיום', exact: true }).click();
   await expect(panel).toHaveCount(0);
-  expect(state.saved()[0].style).toMatchObject({ fontSize: scaledSize, positionXPercent: 50 });
+  await expect.poll(() => state.saved()[0].style).toMatchObject({ fontSize: scaledSize, positionXPercent: 50 });
 });
 
-test('dragging changes only the selected caption; failed saves retain the draft for retry', async ({ page }) => {
+test('dragging changes only the selected caption; a failed autosave keeps the change for retry', async ({ page }) => {
   const state = await setup(page, false);
   const caption = page.getByTestId('caption-position');
   await caption.focus(); await page.keyboard.press('Enter');
   const panel = page.getByRole('region', { name: 'עיצוב כתובית נבחרת', exact: true });
   await expect(panel).toBeVisible();
+  state.fail(true);
   const bounds = await caption.boundingBox();
   await page.mouse.move(bounds!.x + bounds!.width / 2, bounds!.y + bounds!.height / 2);
   await page.mouse.down(); await page.mouse.move(bounds!.x + bounds!.width / 2 + 20, bounds!.y + bounds!.height / 2 - 20, { steps: 4 }); await page.mouse.up();
+  await expect(panel.getByRole('alert')).toContainText('שמירת העיצוב נכשלה');
+  expect(state.saved()[0].style).toBeUndefined();
   await panel.getByRole('tab', { name: 'מיקום' }).click();
   expect(Number(await panel.getByRole('slider', { name: 'מיקום אופקי', exact: true }).inputValue())).toBeGreaterThan(50);
   expect(Number(await panel.getByRole('slider', { name: 'גובה מהתחתית', exact: true }).inputValue())).toBeGreaterThan(20);
-  state.fail(true);
-  await panel.getByRole('button', { name: 'שמירת עיצוב הכתובית', exact: true }).click();
-  await expect(panel.getByRole('alert')).toContainText('שמירת העיצוב נכשלה');
-  expect(state.saved()[0].style).toBeUndefined();
   state.fail(false);
-  await panel.getByRole('button', { name: 'שמירת עיצוב הכתובית', exact: true }).click();
-  await expect(panel).toHaveCount(0);
-  expect(state.saved()[0].style!.positionXPercent).toBeGreaterThan(50);
+  await panel.getByRole('button', { name: 'נסו שוב' }).click();
+  await expect(panel.getByRole('alert')).toHaveCount(0);
+  await expect.poll(() => state.saved()[0].style?.positionXPercent).toBeGreaterThan(50);
   expect(state.saved()[1].style).toBeUndefined();
+});
+
+test('the timeline stays usable while a caption is selected; leaving the caption applies its style', async ({ page }) => {
+  const state = await setup(page, false);
+  const caption = page.getByTestId('caption-position');
+  await caption.click();
+  const panel = page.getByRole('region', { name: 'עיצוב כתובית נבחרת', exact: true });
+  await panel.getByRole('tab', { name: 'צבע' }).click();
+  await panel.getByRole('button', { name: 'צבע הכתובית: #ffd700' }).click();
+  await page.getByTestId('subtitle-clip').nth(1).click();
+  await expect(page.getByTestId('segment-inspector')).toBeVisible();
+  await expect(panel).toHaveCount(0);
+  await expect.poll(() => state.saved()[0].style?.fontColor).toBe('#ffd700');
+  expect(state.saved()[1].style).toBeUndefined();
+  // Selecting again and seeking away from the caption also closes the panel.
+  await caption.click();
+  await expect(panel).toBeVisible();
+  await page.locator('video').evaluate((video: HTMLVideoElement) => { video.currentTime = 2.5; });
+  await expect(panel).toHaveCount(0);
+  await expect(page.getByTestId('subtitle-overlay')).toHaveText('סרטון לבדיקה');
 });

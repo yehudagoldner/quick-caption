@@ -27,7 +27,7 @@ export function CaptionAppearanceEditor() {
       <Typography variant="body2" color="text.secondary" noWrap>{editor.segment.text}</Typography>
     </Box>
     <Typography variant="caption" color="text.secondary">גררו להזזה · פינות לשינוי גודל · ידית עליונה לסיבוב · בטלפון גם צביטה בשתי אצבעות</Typography>
-    {editor.error && <Alert severity="error">{editor.error}</Alert>}
+    {editor.error && <Alert severity="error" action={<Button color="inherit" size="small" onClick={editor.retry}>נסו שוב</Button>}>{editor.error}</Alert>}
     <Tabs value={tab} onChange={(_, value) => setTab(value)} variant="fullWidth" aria-label="אפשרויות עיצוב הכתובית"
       sx={{ minHeight: 40, borderBottom: 1, borderColor: 'divider', '& .MuiTab-root': { minHeight: 40, py: .5 } }}>
       <Tab value="font" label="גופן" />
@@ -35,12 +35,12 @@ export function CaptionAppearanceEditor() {
       <Tab value="layout" label="מיקום" />
     </Tabs>
     {tab === 'font' && <Stack spacing={1.5} role="tabpanel" aria-label="גופן">
-      <CaptionFontPicker fontId={values.fontId} onFontChange={fontId => change({ fontId })} disabled={saving} />
+      <CaptionFontPicker fontId={values.fontId} onFontChange={fontId => change({ fontId })} />
       <Stack direction="row" spacing={1.5} alignItems="center">
-        <Slider aria-label="גודל" value={Math.min(values.fontSize, 300)} min={12} max={300} disabled={saving} sx={{ flex: 1 }}
+        <Slider aria-label="גודל" value={Math.min(values.fontSize, 300)} min={12} max={300} sx={{ flex: 1 }}
           onChange={(_, value) => editor.live.set({ ...editor.live.get(), fontSize: value as number })}
           onChangeCommitted={(_, value) => editor.commit({ ...editor.live.get(), fontSize: value as number })} />
-        <TextField label="גודל גופן לכתובית" type="number" size="small" value={values.fontSize} disabled={saving} sx={{ width: 104 }}
+        <TextField label="גודל גופן לכתובית" type="number" size="small" value={values.fontSize} sx={{ width: 104 }}
           inputProps={{ min: 12, max: 1000 }} onChange={event => { if (event.target.value) change({ fontSize: Number(event.target.value) }); }} />
       </Stack>
     </Stack>}
@@ -48,13 +48,11 @@ export function CaptionAppearanceEditor() {
       {COLORS.map(([key, label, short]) => <Box key={key}>
         <Typography variant="body2" sx={{ mb: .75 }}>{short}</Typography>
         <Stack direction="row" spacing={.75} alignItems="center" useFlexGap flexWrap="wrap">
-          {SWATCHES.map(color => <ButtonBase key={color} aria-label={`${label}: ${color}`} aria-pressed={values[key].toLowerCase() === color} disabled={saving}
-            onClick={() => change({ [key]: color })} sx={{ ...swatchSx, bgcolor: color, boxShadow: values[key].toLowerCase() === color ? selectedRing : 'none' }} />)}
+          {SWATCHES.map(color => <ButtonBase key={color} aria-label={`${label}: ${color}`} aria-pressed={values[key].toLowerCase() === color}            onClick={() => change({ [key]: color })} sx={{ ...swatchSx, bgcolor: color, boxShadow: values[key].toLowerCase() === color ? selectedRing : 'none' }} />)}
           <Box title="צבע מותאם" sx={{ ...swatchSx, position: 'relative', overflow: 'hidden',
             background: SWATCHES.includes(values[key].toLowerCase()) ? 'conic-gradient(#ff3b30, #ffd700, #34c759, #38bdf8, #a855f7, #ff3b30)' : values[key],
             boxShadow: SWATCHES.includes(values[key].toLowerCase()) ? 'none' : selectedRing }}>
-            <Box component="input" type="color" aria-label={label} value={values[key]} disabled={saving}
-              onChange={(event: ChangeEvent<HTMLInputElement>) => change({ [key]: event.target.value })}
+            <Box component="input" type="color" aria-label={label} value={values[key]}              onChange={(event: ChangeEvent<HTMLInputElement>) => change({ [key]: event.target.value })}
               sx={{ position: 'absolute', inset: 0, width: '100%', height: '100%', opacity: 0, cursor: 'pointer', border: 0, p: 0 }} />
           </Box>
         </Stack>
@@ -63,19 +61,22 @@ export function CaptionAppearanceEditor() {
     {tab === 'layout' && <Stack spacing={.5} role="tabpanel" aria-label="מיקום">
       {SLIDERS.map(([key, label, min, max, unit]) => <Box key={key}>
         <Typography variant="body2">{label}: {Math.round(values[key])}{unit}</Typography>
-        <Slider aria-label={label} value={values[key]} disabled={saving} min={min} max={max} step={key === 'rotation' ? 1 : .01}
+        <Slider aria-label={label} value={values[key]} min={min} max={max} step={key === 'rotation' ? 1 : .01}
           marks={key === 'rotation' ? [{ value: 0 }] : [{ value: 50 }]}
           onChange={(_, value) => slide(key, value as number)} onChangeCommitted={(_, value) => settle(key, value as number)} />
       </Box>)}
       <Stack direction="row" spacing={1}>
-        <Button size="small" variant="outlined" startIcon={<CropRotateRounded />} disabled={saving} onClick={() => change({ rotation: 0 })}>יישור הכתובית</Button>
-        <Button size="small" variant="outlined" startIcon={<AlignHorizontalCenterRounded />} disabled={saving} onClick={() => change({ positionXPercent: 50 })}>מרכוז אופקי</Button>
+        <Button size="small" variant="outlined" startIcon={<CropRotateRounded />} onClick={() => change({ rotation: 0 })}>יישור הכתובית</Button>
+        <Button size="small" variant="outlined" startIcon={<AlignHorizontalCenterRounded />} onClick={() => change({ positionXPercent: 50 })}>מרכוז אופקי</Button>
       </Stack>
     </Stack>}
     <Stack direction="row" spacing={1} sx={{ pt: .5 }}>
-      <Button variant="contained" sx={{ flex: 1, whiteSpace: 'nowrap' }} onClick={() => void editor.save()} disabled={saving || !editor.dirty}>{saving ? 'שומר...' : 'שמירת עיצוב הכתובית'}</Button>
-      <Button variant="outlined" onClick={editor.close} disabled={saving}>{editor.dirty ? 'ביטול' : 'סיום'}</Button>
+      <Button variant="contained" sx={{ flex: 1 }} onClick={editor.close}>סיום</Button>
+      <Button variant="outlined" onClick={editor.revert} disabled={!editor.dirty}>ביטול השינויים</Button>
     </Stack>
-    <Button size="small" color="inherit" sx={{ alignSelf: 'flex-start' }} onClick={editor.reset} disabled={saving}>חזרה לעיצוב הכללי</Button>
+    <Stack direction="row" alignItems="center" justifyContent="space-between">
+      <Button size="small" color="inherit" onClick={editor.reset}>חזרה לעיצוב הכללי</Button>
+      <Typography variant="caption" color="text.secondary" role="status">{saving ? 'שומר...' : 'נשמר אוטומטית'}</Typography>
+    </Stack>
   </Stack>;
 }

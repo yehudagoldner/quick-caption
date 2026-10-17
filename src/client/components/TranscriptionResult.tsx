@@ -65,15 +65,23 @@ export function TranscriptionResult({
   const downloads = useDownloadExperience(videoId);
   const [burnProgress, setBurnProgress] = useState<BurnProgress>({ stage: 'preparing', percent: null });
   const [timelineDrafts, setHasTimelineDrafts] = useState(false);
-  const [appearanceDraft, setAppearanceDraft] = useState<{ id: Segment['id']; style: CaptionOverrides; original: string } | null>(null);
+  // The selected caption, and its style when selected so Revert can restore it.
+  const [appearanceSelection, setAppearanceSelection] = useState<{ id: Segment['id']; original: CaptionOverrides } | null>(null);
+  // A style applied in the preview but not yet saved; it is flushed automatically.
+  const [appearancePending, setAppearancePending] = useState<{ id: Segment['id']; style: CaptionOverrides; version: number } | null>(null);
   const [appearanceSaving, setAppearanceSaving] = useState(false);
   const [appearanceError, setAppearanceError] = useState<string | null>(null);
   const [appearanceControlsOpen, setAppearanceControlsOpen] = useState(false);
   const [appearanceLive] = useState(createCaptionLivePreview);
-  const appearanceDirty = Boolean(appearanceDraft && JSON.stringify(appearanceDraft.style) !== appearanceDraft.original);
-  const hasTimelineDrafts = timelineDrafts || Boolean(appearanceDraft) || appearanceSaving;
-  useEffect(() => { setAppearanceDraft(null); setAppearanceError(null); setAppearanceControlsOpen(false); }, [videoId, mediaUrl]);
-  useLayoutEffect(() => { if (appearanceDraft) appearanceLive.clearSettled(); else appearanceLive.set(null); }, [appearanceDraft, appearanceLive]);
+  const appearanceTimer = useRef<number>();
+  const appearanceFlush = useRef<() => Promise<void>>(async () => {});
+  const hasTimelineDrafts = timelineDrafts || Boolean(appearancePending) || appearanceSaving;
+  useEffect(() => {
+    window.clearTimeout(appearanceTimer.current);
+    setAppearanceSelection(null); setAppearancePending(null); setAppearanceError(null); setAppearanceControlsOpen(false);
+  }, [videoId, mediaUrl]);
+  useEffect(() => () => window.clearTimeout(appearanceTimer.current), []);
+  useLayoutEffect(() => { appearanceLive.clearSettled(); }, [appearancePending, appearanceLive]);
   const [loopEnabled, setLoopEnabled] = useState(false);
   const loopEnabledRef = useRef(loopEnabled);
   loopEnabledRef.current = loopEnabled;
@@ -159,8 +167,54 @@ export function TranscriptionResult({
   const fontId = projectFontId ?? preferences.fontId;
   const { ready: fontReady, error: fontLoadError } = useCaptionFont(fontId);
   const activeSegment = useMemo(() => findSegment(editableSegments, currentTime) ?? null, [editableSegments, currentTime]);
-  const appearanceSegment = editableSegments.find(segment => segment.id === appearanceDraft?.id) ?? null;
-  const activeOverrides = sanitizeCaptionOverrides(activeSegment?.id === appearanceDraft?.id ? appearanceDraft?.style : activeSegment?.style);
+  const appearanceSegment = editableSegments.find(segment => segment.id === appearanceSelection?.id) ?? null;
+  const captionStyle = (segment: Segment | null | undefined) =>
+    sanitizeCaptionOverrides(appearancePending && segment?.id === appearancePending.id ? appearancePending.style : segment?.style);
+  const activeOverrides = captionStyle(activeSegment);
+  const appearanceStyle = captionStyle(appearanceSegment);
+  const appearanceDirty = Boolean(appearanceSelection && JSON.stringify(appearanceStyle) !== JSON.stringify(appearanceSelection.original));
+  const segmentsRef = useRef(editableSegments);
+  segmentsRef.current = editableSegments;
+  const pendingRef = useRef(appearancePending);
+  pendingRef.current = appearancePending;
+  // Timers call the latest flush, so it never saves with stale segments or words.
+  appearanceFlush.current = async () => {
+    window.clearTimeout(appearanceTimer.current);
+    const job = pendingRef.current;
+    if (!job) return;
+    const target = segmentsRef.current.find(segment => segment.id === job.id);
+    const finished = () => setAppearancePending(current => current?.version === job.version ? null : current);
+    if (!target) { finished(); return; }
+    if (JSON.stringify(sanitizeCaptionOverrides(target.style)) === JSON.stringify(job.style)) { finished(); return; }
+    setAppearanceSaving(true);
+    try {
+      await persistSegments(segmentsRef.current.map(segment => segment.id === job.id
+        ? { ...segment, style: Object.keys(job.style).length ? job.style : undefined } : segment), undefined, { throwOnError: true, quiet: true });
+      finished();
+      setAppearanceError(null);
+    } catch { setAppearanceError('שמירת העיצוב נכשלה. השינוי נשאר בתצוגה; אפשר לנסות שוב.'); }
+    finally { setAppearanceSaving(false); }
+  };
+  const applyAppearance = (style: CaptionOverrides, immediate = false) => {
+    if (!appearanceSelection) return;
+    const id = appearanceSelection.id;
+    const next = { id, style: sanitizeCaptionOverrides(style), version: (pendingRef.current?.version ?? 0) + 1 };
+    pendingRef.current = next;
+    setAppearancePending(next);
+    window.clearTimeout(appearanceTimer.current);
+    appearanceTimer.current = window.setTimeout(() => void appearanceFlush.current(), immediate ? 0 : 400);
+  };
+  const closeAppearance = () => {
+    appearanceLive.set(null);
+    void appearanceFlush.current();
+    setAppearanceSelection(null); setAppearanceControlsOpen(false);
+  };
+  // Like other editors, moving the playhead off the selected caption deselects it.
+  const selectedOnScreen = !appearanceSegment || (currentTime >= appearanceSegment.start && currentTime < appearanceSegment.end);
+  const closeAppearanceRef = useRef(closeAppearance);
+  closeAppearanceRef.current = closeAppearance;
+  useEffect(() => { if (appearanceSelection && !selectedOnScreen) closeAppearanceRef.current(); }, [appearanceSelection, selectedOnScreen]);
+  useEffect(() => { if (appearanceSelection && !appearanceSegment) closeAppearanceRef.current(); }, [appearanceSelection, appearanceSegment]);
   const { ready: previewFontReady, error: previewFontError } = useCaptionFont(activeOverrides.fontId ?? fontId);
   const sizingSegments = useMemo(() => captionMotion === "pop"
     ? editableWords.map((word, index) => ({ id: index, start: word.start, end: word.end, text: word.word }))
@@ -210,7 +264,7 @@ export function TranscriptionResult({
         || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return;
       const target = event.target;
       if (!(target instanceof HTMLElement)) return;
-      if (target.closest('[data-testid="caption-position"]') || appearanceDraft) return;
+      if (target.closest('[data-testid="caption-position"]')) return;
       // Page whitespace may leave focus on body. Header controls and portals
       // keep their own keyboard behavior, while the editor owns plain Space.
       if (target !== document.body && target !== document.documentElement && !playbackRoot.current?.contains(target)) return;
@@ -223,7 +277,7 @@ export function TranscriptionResult({
     };
     window.addEventListener("keydown", playbackKey, true);
     return () => window.removeEventListener("keydown", playbackKey, true);
-  }, [desktop, videoPlayer, handlePlayPause, appearanceDraft]);
+  }, [desktop, videoPlayer, handlePlayPause]);
   const registerNavigation = useContext(EditorNavigationContext);
 
   const leaveEditor = async (destination: () => void) => {
@@ -300,43 +354,34 @@ export function TranscriptionResult({
     <DownloadContext.Provider value={downloads.actions}>
     <CaptionAppearanceContext.Provider value={{
       segment: appearanceSegment,
-      values: { fontId, fontSize: effectiveFontSize, fontColor, outlineColor, activeWordColor, positionXPercent: 50, offsetYPercent, rotation: 0, ...appearanceDraft?.style },
+      values: { fontId, fontSize: effectiveFontSize, fontColor, outlineColor, activeWordColor, positionXPercent: 50, offsetYPercent, rotation: 0, ...appearanceStyle },
       live: appearanceLive,
-      disabled: !isEditable || isBurning || timelineDrafts || appearanceSaving || saveState === 'saving',
+      disabled: !isEditable || isBurning || timelineDrafts,
       dirty: appearanceDirty, saving: appearanceSaving, error: appearanceError,
       controlsOpen: appearanceControlsOpen,
       showControls: () => setAppearanceControlsOpen(true),
       select: (id, options) => {
-        if (!isEditable || isBurning || timelineDrafts || appearanceSaving || saveState === 'saving' || (appearanceDirty && appearanceDraft?.id !== id)) return;
+        if (!isEditable || isBurning || timelineDrafts) return;
         const segment = editableSegments.find(item => item.id === id);
         if (!segment) return;
         if (!options?.deferControls) setAppearanceControlsOpen(true);
-        if (appearanceDraft?.id === id) return;
+        if (appearanceSelection?.id === id) return;
+        if (pendingRef.current) void appearanceFlush.current();
         appearanceLive.set(null);
         setAppearanceControlsOpen(!options?.deferControls);
         loopEnabledRef.current = false; videoPlayer?.pause(); setLoopEnabled(false);
-        const style = sanitizeCaptionOverrides(segment.style);
-        setAppearanceDraft({ id, style, original: JSON.stringify(style) }); setAppearanceError(null);
+        setAppearanceSelection({ id, original: captionStyle(segment) }); setAppearanceError(null);
       },
-      change: patch => { if (!appearanceSaving) setAppearanceDraft(previous => previous ? { ...previous, style: sanitizeCaptionOverrides({ ...previous.style, ...patch }) } : null); },
+      change: patch => applyAppearance({ ...appearanceStyle, ...patch }),
       commit: patch => {
-        if (appearanceSaving || !appearanceDraft) { appearanceLive.set(null); return; }
+        if (!appearanceSelection) { appearanceLive.set(null); return; }
         appearanceLive.settle();
-        setAppearanceDraft(previous => previous ? { ...previous, style: sanitizeCaptionOverrides({ ...previous.style, ...patch }) } : null);
+        applyAppearance({ ...appearanceStyle, ...patch });
       },
-      reset: () => { appearanceLive.set(null); setAppearanceDraft(previous => previous ? { ...previous, style: {} } : null); },
-      close: () => { if (!appearanceSaving) { appearanceLive.set(null); setAppearanceDraft(null); setAppearanceError(null); setAppearanceControlsOpen(false); } },
-      save: async () => {
-        if (!appearanceDraft || !appearanceSegment || appearanceSaving) return;
-        setAppearanceSaving(true); setAppearanceError(null);
-        try {
-          await persistSegments(editableSegments.map(segment => segment.id === appearanceDraft.id
-            ? { ...segment, style: Object.keys(appearanceDraft.style).length ? appearanceDraft.style : undefined } : segment), editableWords, { throwOnError: true });
-          setAppearanceDraft(null);
-          setAppearanceControlsOpen(false);
-        } catch { setAppearanceError('שמירת העיצוב נכשלה. השינויים נשארו כאן; אפשר לנסות שוב.'); }
-        finally { setAppearanceSaving(false); }
-      },
+      reset: () => { appearanceLive.set(null); applyAppearance({}, true); },
+      revert: () => { if (appearanceSelection) { appearanceLive.set(null); applyAppearance(appearanceSelection.original, true); } },
+      retry: () => { void appearanceFlush.current(); },
+      close: closeAppearance,
     }}>
     <BurnProgressDialog open={isBurning} progress={burnProgress} />
     <Card ref={playbackRoot} elevation={narrow ? 0 : 3} sx={{ overflow: "visible", ...(narrow ? { bgcolor: "transparent", boxShadow: "none" } : {}) }}>
@@ -418,14 +463,16 @@ export function TranscriptionResult({
             onVideoResize={handleVideoResize}
             onTimelineSegmentsChange={handleTimelineSegmentsChange}
             onTimelineTimeChange={time => {
-              if (appearanceDraft) return;
               // A manual seek must win over the selected-caption loop, including
               // media events queued before React renders the new loop state.
               loopEnabledRef.current = false;
               setLoopEnabled(false);
               handleTimelineTimeChange(time);
             }}
-            onSegmentSelect={id => { setSelectedSegmentId(id); setLoopEnabled(false); }}
+            onSegmentSelect={id => {
+              if (appearanceSelection && id !== null && id !== appearanceSelection.id) closeAppearance();
+              setSelectedSegmentId(id); setLoopEnabled(false);
+            }}
             onSegmentTextChangeAndSave={handleSegmentTextChangeAndSave}
             onSegmentTextChange={handleSegmentTextChange}
             onSegmentBlur={handleSegmentBlur}
@@ -446,7 +493,7 @@ export function TranscriptionResult({
             onResegment={handleResegment}
             onAIEdit={handleAIEdit}
             isPlaying={isPlaying}
-            onPlayPause={() => { if (!appearanceDraft) void handlePlayPause(); }}
+            onPlayPause={() => { void handlePlayPause(); }}
             onBack={handleLeaveEditor}
             onMyVideos={handleMyVideos}
             backDisabled={saveState === "saving" || isBurning || hasTimelineDrafts}
