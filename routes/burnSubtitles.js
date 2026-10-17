@@ -13,6 +13,7 @@ import { CAPTION_OUTLINE_WIDTH, captionMarginPixels, sanitizeCaptionFontSize } f
 import { getCaptionFont } from "../src/captionFonts.js";
 import { sanitizeCaptionOverrides } from '../src/captionOverrides.js';
 import { renderStyledCaptionsAss } from '../src/styledCaptions.js';
+import { sanitizeWordOverrides } from '../src/wordOverrides.js';
 
 const CAPTION_FONTS_DIR = fileURLToPath(new URL("../public/fonts", import.meta.url));
 const TEMP_SUBTITLE_DIR = path.join(os.tmpdir(), "subtitles-api-subtitle-temp");
@@ -113,7 +114,8 @@ export function createBurnSubtitlesRouter(upload, { resolveVideo } = {}) {
     // An audiogram's frame is defined by its format, never by client-sent sizes.
     let videoWidth = frame?.width ?? sanitizeDimension(req.body?.videoWidth);
     let videoHeight = frame?.height ?? sanitizeDimension(req.body?.videoHeight);
-    const styled = timedSegments?.some(segment => Object.keys(segment.style).length > 0);
+    const styled = timedSegments?.some(segment => Object.keys(segment.style).length > 0)
+      || timedWords?.some(word => Object.keys(sanitizeWordOverrides(word?.style)).length > 0);
     if ((motion === "pop" || styled) && (!videoWidth || !videoHeight)) {
       return reject(400, "נדרש גודל וידאו תקין לעיצוב הכתוביות. המתינו לטעינת הסרטון ונסו שוב.");
     }

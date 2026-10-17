@@ -7,6 +7,7 @@ export type Segment = {
 };
 
 export type Word = {
+  style?: import('../wordOverrides.js').WordOverrides;
   word: string;
   start: number;
   end: number;

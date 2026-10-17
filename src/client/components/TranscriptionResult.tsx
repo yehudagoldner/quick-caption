@@ -35,6 +35,8 @@ import { AudiogramContext } from '../contexts/AudiogramContext';
 import { VideoVersionContext } from '../contexts/VideoVersionContext';
 import { VideoVersionsBar } from './VideoVersionsBar';
 import { cropRectangle } from '../../videoVersions.js';
+import { WordAppearanceContext } from '../contexts/WordAppearanceContext';
+import { styleCaptionWords } from '../../wordOverrides.js';
 
 export type { BurnOptions };
 type BurnResult = { blob: Blob; filename?: string; };
@@ -77,12 +79,13 @@ export function TranscriptionResult({
   // A style applied in the preview but not yet saved; it is flushed automatically.
   const [appearancePending, setAppearancePending] = useState<{ id: Segment['id']; style: CaptionOverrides; version: number } | null>(null);
   const [appearanceSaving, setAppearanceSaving] = useState(false);
+  const [wordSaving, setWordSaving] = useState(false);
   const [appearanceError, setAppearanceError] = useState<string | null>(null);
   const [appearanceControlsOpen, setAppearanceControlsOpen] = useState(false);
   const [appearanceLive] = useState(createCaptionLivePreview);
   const appearanceTimer = useRef<number>();
   const appearanceFlush = useRef<() => Promise<void>>(async () => {});
-  const hasTimelineDrafts = timelineDrafts || Boolean(appearancePending) || appearanceSaving;
+  const hasTimelineDrafts = timelineDrafts || Boolean(appearancePending) || appearanceSaving || wordSaving;
   useEffect(() => {
     window.clearTimeout(appearanceTimer.current);
     setAppearanceSelection(null); setAppearancePending(null); setAppearanceError(null); setAppearanceControlsOpen(false);
@@ -280,7 +283,7 @@ export function TranscriptionResult({
         || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return;
       const target = event.target;
       if (!(target instanceof HTMLElement)) return;
-      if (target.closest('[data-testid="caption-position"]')) return;
+      if (target.closest('[data-testid="caption-position"], [data-word-toolbar]')) return;
       // Page whitespace may leave focus on body. Header controls and portals
       // keep their own keyboard behavior, while the editor owns plain Space.
       if (target !== document.body && target !== document.documentElement && !playbackRoot.current?.contains(target)) return;
@@ -388,11 +391,23 @@ export function TranscriptionResult({
         try { versions.updateCrop(value); } catch { setBurnError('שמירת מסגרת החיתוך נכשלה. בדקו שיש מקום פנוי במכשיר.'); }
       }, splitAll: versions.splitAllVersions } : null}>
     <AudiogramContext.Provider value={audioOnly ? { ...audiogram, disabled: isBurning } : null}>
+    <WordAppearanceContext.Provider value={desktop ? {
+      versionId: versions.activeId,
+      disabled: !isEditable || isBurning || hasTimelineDrafts || saveState === 'saving',
+      saving: wordSaving,
+      change: async (segmentId, indexes, patch) => {
+        if (!isEditable || isBurning || hasTimelineDrafts || saveState === 'saving') return;
+        setWordSaving(true);
+        try {
+          await persistSegments(editableSegments, styleCaptionWords(editableWords, segmentId, indexes, patch), { throwOnError: true, layoutOnly: true });
+        } finally { setWordSaving(false); }
+      },
+    } : null}>
     <CaptionAppearanceContext.Provider value={{
       segment: appearanceSegment,
       values: { fontId, fontSize: effectiveFontSize, fontColor, outlineColor, activeWordColor, positionXPercent: 50, offsetYPercent, rotation: 0, ...appearanceStyle },
       live: appearanceLive,
-      disabled: !isEditable || isBurning || timelineDrafts,
+      disabled: !isEditable || isBurning || timelineDrafts || wordSaving,
       dirty: appearanceDirty, saving: appearanceSaving, error: appearanceError,
       controlsOpen: appearanceControlsOpen,
       showControls: () => setAppearanceControlsOpen(true),
@@ -546,6 +561,7 @@ export function TranscriptionResult({
     </Snackbar>
     {downloads.feedbackDownloadId && <DownloadFeedbackDialog key={downloads.feedbackDownloadId} open onClose={downloads.closeFeedback} onSubmit={downloads.saveFeedback} />}
     </CaptionAppearanceContext.Provider>
+    </WordAppearanceContext.Provider>
     </AudiogramContext.Provider>
     </VideoVersionContext.Provider>
     </DownloadContext.Provider>

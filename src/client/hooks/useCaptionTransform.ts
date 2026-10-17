@@ -15,6 +15,7 @@ export function useCaptionTransform({ stage, caption, segmentId, selected, disab
   select: () => void; preview: (patch: CaptionOverrides | null) => void; commit: (patch: CaptionOverrides) => void; showControls: () => void;
 }) {
   const pointers = useRef(new Map<number, Point>());
+  const wordPointer = useRef<{ id: number; point: Point } | null>(null);
   const gesture = useRef<Gesture | null>(null);
   const live = useRef(values);
   const patch = useRef<CaptionOverrides>({});
@@ -41,6 +42,7 @@ export function useCaptionTransform({ stage, caption, segmentId, selected, disab
     showControls();
   };
   const abort = () => {
+    wordPointer.current = null;
     if (!pointers.current.size) return;
     patch.current = {}; release(); preview(null);
   };
@@ -63,6 +65,12 @@ export function useCaptionTransform({ stage, caption, segmentId, selected, disab
   const onPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (disabled || segmentId == null || event.button !== 0 || pointers.current.size >= 2) return;
     const target = event.target as HTMLElement;
+    // A click selects a word; crossing the drag threshold still moves the
+    // caption. Delay pointer capture so a click can reach the word itself.
+    if (target.closest('[data-word-editable]')) {
+      wordPointer.current = { id: event.pointerId, point: { x: event.clientX, y: event.clientY } };
+      return;
+    }
     const handle = target.closest<HTMLElement>('[data-caption-handle]')?.dataset.captionHandle;
     const hit = target.closest('[data-testid="caption-position"]');
     // Once selected, the whole preview moves that caption: on a phone the text
@@ -75,6 +83,13 @@ export function useCaptionTransform({ stage, caption, segmentId, selected, disab
     rebase(pointers.current.size === 2 ? 'pinch' : handle === 'rotate' || handle === 'scale' ? handle : 'move');
   };
   const onPointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const pending = wordPointer.current;
+    if (pending?.id === event.pointerId && Math.hypot(event.clientX - pending.point.x, event.clientY - pending.point.y) > 4) {
+      wordPointer.current = null;
+      pointers.current.set(event.pointerId, pending.point);
+      stage.current?.setPointerCapture(event.pointerId);
+      rebase('move');
+    }
     if (!pointers.current.has(event.pointerId) || !gesture.current) return;
     event.preventDefault();
     pointers.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
@@ -91,13 +106,14 @@ export function useCaptionTransform({ stage, caption, segmentId, selected, disab
     preview(patch.current);
   };
   const onPointerUp = (event: ReactPointerEvent<HTMLDivElement>) => {
+    wordPointer.current = null;
     if (!pointers.current.has(event.pointerId)) return;
     pointers.current.delete(event.pointerId);
     if (stage.current?.hasPointerCapture(event.pointerId)) stage.current.releasePointerCapture(event.pointerId);
     if (pointers.current.size) rebase('move');
     else finish();
   };
-  const onPointerCancel = () => { if (pointers.current.size) finish(); };
+  const onPointerCancel = () => { wordPointer.current = null; if (pointers.current.size) finish(); };
   return { mode, onPointerDown, onPointerMove, onPointerUp, onPointerCancel,
     onLostPointerCapture: (event: ReactPointerEvent<HTMLDivElement>) => { if (pointers.current.has(event.pointerId)) onPointerCancel(); } };
 }

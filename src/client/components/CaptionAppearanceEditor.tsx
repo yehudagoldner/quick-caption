@@ -4,6 +4,7 @@ import { AlignHorizontalCenterRounded, CropRotateRounded } from '@mui/icons-mate
 import { CaptionAppearanceContext } from '../contexts/CaptionAppearanceContext';
 import { useCaptionLivePatch } from '../hooks/useCaptionLivePreview';
 import { CaptionFontPicker } from './CaptionFontPicker';
+import { WordAppearanceContext } from '../contexts/WordAppearanceContext';
 
 const SWATCHES = ['#ffffff', '#000000', '#ffd700', '#ff3b30', '#34c759', '#38bdf8', '#a855f7'];
 const COLORS = [['fontColor', 'צבע הכתובית', 'טקסט'], ['outlineColor', 'צבע מסגרת הכתובית', 'מסגרת'], ['activeWordColor', 'צבע המילה הפעילה', 'מילה פעילה']] as const;
@@ -14,6 +15,7 @@ const selectedRing = '0 0 0 2px #fff, 0 0 0 4px #1976d2';
 
 export function CaptionAppearanceEditor() {
   const editor = useContext(CaptionAppearanceContext);
+  const wordEditor = useContext(WordAppearanceContext);
   const live = useCaptionLivePatch(editor?.live);
   const [tab, setTab] = useState<'font' | 'color' | 'layout'>('font');
   if (!editor?.segment) return null;
@@ -27,6 +29,7 @@ export function CaptionAppearanceEditor() {
       <Typography variant="body2" color="text.secondary" noWrap>{editor.segment.text}</Typography>
     </Box>
     <Typography variant="caption" color="text.secondary">גררו להזזה · פינות לשינוי גודל · ידית עליונה לסיבוב · בטלפון גם צביטה בשתי אצבעות</Typography>
+    {wordEditor && <Typography variant="caption" color="text.secondary">לחצו על מילה בתצוגה לשינוי צבע, גודל והדגשה. לבחירת כמה מילים: Ctrl / ⌘ + לחיצה.</Typography>}
     {editor.error && <Alert severity="error" action={<Button color="inherit" size="small" onClick={editor.retry}>נסו שוב</Button>}>{editor.error}</Alert>}
     <Tabs value={tab} onChange={(_, value) => setTab(value)} variant="fullWidth" aria-label="אפשרויות עיצוב הכתובית"
       sx={{ minHeight: 40, borderBottom: 1, borderColor: 'divider', '& .MuiTab-root': { minHeight: 40, py: .5 } }}>

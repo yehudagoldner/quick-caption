@@ -121,7 +121,8 @@ export function editVideoTranscript(revisions, activeId, nextRevision, { layoutO
         segments.push(segment); owner = segment.id;
       }
       touched.add(owner); owners.set(word.sourceId, owner);
-      words.push({ ...word, segmentId: owner });
+      const { style: _localStyle, ...sharedWord } = word;
+      words.push({ ...sharedWord, segmentId: owner });
     }
     segments = segments.map(segment => {
       if (!touched.has(segment.id)) return segment;

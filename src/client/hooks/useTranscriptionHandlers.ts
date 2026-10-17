@@ -198,7 +198,7 @@ export function useTranscriptionHandlers({
   const burnSignature = () => JSON.stringify({
     crop,
     segments: editableSegments.map(segment => [segment.id, segment.start, segment.end, segment.text, segment.style]),
-    words: editableWords.map(word => [word.word, word.start, word.end, word.segmentId]),
+    words: editableWords.map(word => [word.word, word.start, word.end, word.segmentId, word.style]),
     mediaUrl,
     activeWordEnabled,
     captionMotion,

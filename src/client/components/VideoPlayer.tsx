@@ -1,4 +1,4 @@
-import { useContext, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { Alert, Box, IconButton, Stack, Typography } from "@mui/material";
 import { PauseRounded, PlayArrowRounded } from "@mui/icons-material";
 import type { Segment, Word } from "../types";
@@ -9,6 +9,9 @@ import { sanitizeCaptionOverrides } from '../../captionOverrides.js';
 import { useCaptionTransform } from '../hooks/useCaptionTransform';
 import { useCaptionLivePatch } from '../hooks/useCaptionLivePreview';
 import { CaptionSelectionFrame, CaptionTransformGuides } from './CaptionTransformControls';
+import { WordAppearanceContext } from '../contexts/WordAppearanceContext';
+import { WordAppearanceToolbar } from './WordAppearanceToolbar';
+import { sanitizeWordOverrides } from '../../wordOverrides.js';
 import { AudiogramContext } from '../contexts/AudiogramContext';
 import { AudiogramBackdrop } from './AudiogramBackdrop';
 import { VideoVersionContext } from '../contexts/VideoVersionContext';
@@ -62,8 +65,10 @@ function AudiogramPlayBar({ media, currentTime, width }: { media: React.RefObjec
 }
 const VIDEO_PLAYER_CHANGED = "quickcaption:video-player-changed";
 
-function CaptionPreview({ activeSegmentText, activeSegmentId, words, currentTime, activeWordEnabled, activeWordColor = "#ffd700", captionMotion = "none", popIntensity = "gentle" }: Pick<VideoPlayerProps,
-  "activeSegmentText" | "activeSegmentId" | "words" | "currentTime" | "activeWordEnabled" | "activeWordColor" | "captionMotion" | "popIntensity">) {
+function CaptionPreview({ activeSegmentText, activeSegmentId, words, currentTime, activeWordEnabled, activeWordColor = "#ffd700", captionMotion = "none", popIntensity = "gentle", selected = [], selectWord }: Pick<VideoPlayerProps,
+  "activeSegmentText" | "activeSegmentId" | "words" | "currentTime" | "activeWordEnabled" | "activeWordColor" | "captionMotion" | "popIntensity"> & {
+    selected?: number[]; selectWord?: (index: number, multiple: boolean) => void;
+  }) {
   const captionWords = useMemo(() => words?.filter(w => w.segmentId === activeSegmentId) ?? [], [words, activeSegmentId]);
   const activeWord = useActiveWord({ words: captionWords, currentTime, enabled: activeWordEnabled });
   const popWords = useMemo(() => wordPopCues(captionWords), [captionWords]);
@@ -73,18 +78,33 @@ function CaptionPreview({ activeSegmentText, activeSegmentId, words, currentTime
     return (activeSegmentText ?? "").split(/(\s+)/).map(text => ({ text, wordIndex: text.trim() ? wordIndex++ : undefined }));
   }, [activeSegmentText]);
   if (!activeSegmentText || captionMotion === "pop" && !popWord) return null;
+  const renderWord = (text: string, index: number, pop = false) => {
+    const own = sanitizeWordOverrides(captionWords.find(word => word.wordIndex === index)?.style);
+    const active = !pop && activeWordEnabled && activeWord?.wordIndex === index;
+    const chosen = selected.includes(index);
+    return <span key={index} data-testid={pop ? 'caption-pop-word' : undefined} data-word-index={index}
+      data-active-word={active ? 'true' : undefined} data-word-editable={selectWord ? 'true' : undefined}
+      role={selectWord ? 'button' : undefined} tabIndex={selectWord ? 0 : undefined}
+      aria-label={selectWord ? `עיצוב המילה ${text}` : undefined} aria-pressed={selectWord ? chosen : undefined}
+      onClick={event => { if (selectWord) { event.stopPropagation(); selectWord(index, event.ctrlKey || event.metaKey); } }}
+      onKeyDown={event => { if (selectWord && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); event.stopPropagation(); selectWord(index, event.ctrlKey || event.metaKey); } }}
+      style={{ color: active ? activeWordColor : own.fontColor ?? 'inherit', fontSize: own.fontScale ? `${own.fontScale * 100}%` : undefined,
+        fontWeight: own.bold ? 900 : undefined,
+        ...(selectWord ? { cursor: 'pointer', position: 'relative', outline: chosen ? '2px solid #38bdf8' : undefined, outlineOffset: 2, borderRadius: 2 } : {}),
+        ...(pop ? { display: 'inline-block', whiteSpace: 'nowrap', transformOrigin: '50% 100%', transform: `scale(${wordPopScale(popWord!, currentTime, popIntensity)})` } : {}) }}>
+      {pop ? escapeAssText(text) : text}
+    </span>;
+  };
   return <Box data-testid="subtitle-overlay" data-segment-id={activeSegmentId}>
-    {captionMotion === "pop" && popWord ? <span data-testid="caption-pop-word" data-word-index={popWord.wordIndex}
-      style={{ display: "inline-block", whiteSpace: "nowrap", transformOrigin: "50% 100%", transform: `scale(${wordPopScale(popWord, currentTime, popIntensity)})` }}>{escapeAssText(popWord.word)}</span>
-    : activeWordEnabled ? captionParts.map((part, index) => {
-      const active = part.wordIndex !== undefined && activeWord?.wordIndex === part.wordIndex;
-      return <span key={index} data-word-index={part.wordIndex} data-active-word={active ? "true" : undefined} style={{ color: active ? activeWordColor : "inherit" }}>{part.text}</span>;
-    }) : activeSegmentText}
+    {captionMotion === 'pop' && popWord ? renderWord(popWord.word, popWord.wordIndex!, true)
+      : captionParts.map((part, index) => part.wordIndex === undefined ? <Fragment key={`space-${index}`}>{part.text}</Fragment> : renderWord(part.text, part.wordIndex))}
   </Box>;
 }
 
 export function VideoPlayer({ compact, size, fill, hideMeta, mediaUrl, activeSegmentText, activeSegmentId, segments, previewStyle, words, currentTime, activeWordEnabled, activeWordColor = "#ffd700", captionMotion = "none", popIntensity = "gentle", onTimeUpdate, onLoadedMetadata, onResize }: VideoPlayerProps) {
   const appearance = useContext(CaptionAppearanceContext);
+  const wordEditor = useContext(WordAppearanceContext);
+  const [selectedWords, setSelectedWords] = useState<number[]>([]);
   const version = useContext(VideoVersionContext);
   const crop = version?.crop;
   const cropStageRef = useRef<HTMLDivElement>(null);
@@ -104,6 +124,8 @@ export function VideoPlayer({ compact, size, fill, hideMeta, mediaUrl, activeSeg
     ? segments.find(segment => segment.text && currentTime >= segment.start && currentTime < segment.end)
     : activeSegmentText ? { id: activeSegmentId, text: activeSegmentText } : null, [segments, currentTime, activeSegmentText, activeSegmentId]);
   const appearanceSelected = Boolean(appearance?.segment && appearance.segment.id === activeCaption?.id);
+  useEffect(() => { setSelectedWords([]); }, [activeCaption?.id, activeCaption?.text, appearanceSelected, wordEditor?.versionId]);
+  const selectedCaptionWords = (words ?? []).filter(word => word.segmentId === activeCaption?.id && selectedWords.includes(word.wordIndex!));
   const highlight = appearanceSelected ? appearance!.values.activeWordColor
     : sanitizeCaptionOverrides(segments?.find(segment => segment.id === activeCaption?.id)?.style).activeWordColor ?? activeWordColor;
   const committedValues = { positionXPercent: 50, offsetYPercent: 20, rotation: 0, fontSize: 105, ...appearance?.values,
@@ -207,6 +229,8 @@ export function VideoPlayer({ compact, size, fill, hideMeta, mediaUrl, activeSeg
     height: fill ? "100%" : undefined,
     ...(fill ? { containerType: "size" } : {}),
   }}>
+    {wordEditor && appearanceSelected && activeCaption?.id != null && selectedCaptionWords.length > 0 && <WordAppearanceToolbar
+      key={`${wordEditor.versionId}:${activeCaption.id}:${selectedWords.join(',')}`} segmentId={activeCaption.id} words={selectedCaptionWords} close={() => setSelectedWords([])} />}
     {audioOnly && !hideMeta && <Typography variant="subtitle2">אודיו בלבד — תצוגה מקדימה של הכתוביות</Typography>}
     {error && <Alert severity="error" sx={fill ? { position: "absolute", zIndex: 2, mx: 1 } : undefined}>לא ניתן לנגן את המדיה. בדקו שהקובץ זמין ובפורמט שנתמך בדפדפן.</Alert>}
     <Box ref={stageRef} data-testid="media-stage" {...transformEvents} sx={{ position: "relative", bgcolor: "common.black", color: "white", borderRadius: 2, overflow: "hidden", mx: "auto", flexShrink: 0,
@@ -239,12 +263,17 @@ export function VideoPlayer({ compact, size, fill, hideMeta, mediaUrl, activeSeg
               borderRadius: '4px', transition: 'box-shadow .15s',
               ...(!appearanceSelected && !appearance.disabled ? { '@media (hover: hover)': { '&:hover': { boxShadow: '0 0 0 1.5px rgba(255, 255, 255, .7)' } } } : {}),
               // Enlarge the touch target without changing caption layout or export geometry.
-              '&::after': { content: '""', position: 'absolute', inset: '-12px', touchAction: 'none' },
+              '&::after': { content: '""', position: 'absolute', inset: '-12px', touchAction: 'none', pointerEvents: wordEditor && appearanceSelected ? 'none' : undefined },
               '&:focus-visible': { outline: '2px solid #38bdf8', outlineOffset: 8 } } : {}),
             ...(crop ? { whiteSpace: 'pre-wrap', width: previewStyle.width, maxWidth: previewStyle.maxWidth } : {}) }}>
           <CaptionPreview key={activeCaption.id} activeSegmentId={activeCaption.id} activeSegmentText={activeCaption.text}
             words={words} currentTime={currentTime} activeWordEnabled={activeWordEnabled} activeWordColor={highlight}
-            captionMotion={captionMotion} popIntensity={popIntensity} />
+            captionMotion={captionMotion} popIntensity={popIntensity} selected={selectedWords}
+            selectWord={wordEditor && appearanceSelected ? (index, multiple) => {
+              if (wordEditor.disabled) return;
+              videoRef.current?.pause();
+              setSelectedWords(previous => multiple ? previous.includes(index) ? previous.filter(value => value !== index) : [...previous, index] : [index]);
+            } : undefined} />
           {appearanceSelected && !audioOnly && !appearance?.disabled && <CaptionSelectionFrame mode={transformMode} />}
         </Box>}
         {appearanceSelected && !audioOnly && <CaptionTransformGuides mode={transformMode} values={transformValues} />}
