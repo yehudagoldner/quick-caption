@@ -1,12 +1,43 @@
 import { verify } from 'node:crypto';
+import { Agent } from 'node:https';
+import fetch from 'node-fetch';
+
+// This host has no IPv6 route. Keep certificate retrieval on its working IPv4
+// transport without changing networking for the rest of the application.
+const certificateAgent = new Agent({ family: 4, keepAlive: true });
+const fetchCertificates = (url, options) => fetch(url, { ...options, agent: certificateAgent, size: 1024 * 1024 });
 
 export class IdentityError extends Error {
   constructor(message = 'יש להתחבר מחדש.', status = 401) { super(message); this.status = status; }
 }
 
 // Verify Firebase ID tokens against Google's signing certificates and this app's project.
-export function createFirebaseVerifier({ projectId, fetchImpl = fetch, now = () => Date.now() }) {
+export function createFirebaseVerifier({ projectId, fetchImpl = fetchCertificates, now = () => Date.now() }) {
   let certificates = {}, expiresAt = 0;
+  let refreshing;
+  const refreshCertificates = async () => {
+    if (!refreshing) {
+      refreshing = (async () => {
+        try {
+          const response = await fetchImpl('https://www.googleapis.com/robot/v1/metadata/x509/securetoken@system.gserviceaccount.com', { signal: AbortSignal.timeout(10000) });
+          if (!response.ok) throw new Error('Certificate service unavailable');
+          const next = await response.json();
+          if (!next || Array.isArray(next) || typeof next !== 'object' ||
+              !Object.keys(next).length || Object.values(next).some(value => typeof value !== 'string' || !value)) {
+            throw new Error('Invalid certificate response');
+          }
+          const ttl = Number(response.headers.get('cache-control')?.match(/max-age=(\d+)/)?.[1] ?? 300);
+          certificates = next;
+          expiresAt = now() + Math.min(ttl, 3600) * 1000;
+        } catch {
+          throw new IdentityError('שירות אימות החשבון אינו זמין כרגע. נסו שוב בעוד רגע.', 503);
+        }
+      })();
+    }
+    const request = refreshing;
+    try { await request; }
+    finally { if (refreshing === request) refreshing = undefined; }
+  };
   return async token => {
     if (!projectId) throw new IdentityError('אימות החשבון אינו מוגדר בשרת.', 503);
     try {
@@ -23,11 +54,7 @@ export function createFirebaseVerifier({ projectId, fetchImpl = fetch, now = () 
           !Number.isFinite(claims.iat) || claims.iat > seconds ||
           !Number.isSafeInteger(claims.auth_time) || claims.auth_time <= 0 || claims.auth_time > seconds) throw new Error();
       if (now() >= expiresAt) {
-        const response = await fetchImpl('https://www.googleapis.com/robot/v1/metadata/x509/securetoken@system.gserviceaccount.com', { signal: AbortSignal.timeout(10000) });
-        if (!response.ok) throw new IdentityError('שירות אימות החשבון אינו זמין כרגע.', 503);
-        certificates = await response.json();
-        const ttl = Number(response.headers.get('cache-control')?.match(/max-age=(\d+)/)?.[1] ?? 300);
-        expiresAt = now() + Math.min(ttl, 3600) * 1000;
+        await refreshCertificates();
       }
       if (!Object.hasOwn(certificates, header.kid) || !verify('RSA-SHA256', Buffer.from(`${parts[0]}.${parts[1]}`), certificates[header.kid], Buffer.from(parts[2], 'base64url'))) throw new Error();
       return { uid: claims.sub, email: typeof claims.email === 'string' ? claims.email.trim().toLowerCase() : null,
