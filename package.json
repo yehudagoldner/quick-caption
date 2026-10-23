@@ -13,6 +13,8 @@
     "start": "concurrently \"npm run server\" \"npm run dev\"",
     "test": "playwright test",
     "test:marketing": "playwright test --config=playwright.marketing.config.ts",
+    "test:cdn": "node --test tests/cdn-health.test.mjs tests/bunny-storage.test.mjs tests/video-thumbnails.test.mjs",
+    "test:cdn:qa": "node scripts/check-cdn.mjs",
     "test:premiere-portability": "node --test tests/plugin-environment.test.mjs tests/plugin-diagnostics.test.mjs tests/plugin-reference-audio.test.mjs tests/plugin-panel.test.mjs tests/plugin-bridge.test.mjs tests/plugin-graphics-bridge.test.mjs tests/plugin-client.test.mjs",
     "test:ui": "playwright test --ui",
     "test:headed": "playwright test --headed"
