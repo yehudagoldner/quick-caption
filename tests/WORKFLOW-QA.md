@@ -18,6 +18,35 @@ Reviewed against the requests in task `01a0d44a-3c89-7411-809d-05af683b00c3`.
 
 ## Commands
 
+### CDN connectivity (existing QA only)
+
+`npm run test:cdn` runs deterministic storage, proxy, seeking, cancellation and
+diagnostic regression tests without contacting Bunny. The read-only live probe,
+`npm run test:cdn:qa`, requires the existing `quickcaption_qa` database and user,
+port 3100 and `VITE_APP_ENV=qa`; it refuses other environments before connecting
+to the database. Run it from the active QA checkout discovered through PM2.
+
+The live probe samples three existing completed remote videos. It checks HEAD,
+1 KiB ranges at the beginning/middle/end, invalid ranges, repeated byte integrity,
+and thumbnail HEAD/GET. Requests time out after ten seconds; image reads are capped
+at 2 MiB. It never uploads, deletes, changes retention or retries away failures.
+Any failed check exits nonzero. Reports omit media URLs, signed tokens and keys.
+
+On 2026-10-23 the probe reproduced a 250 ms network-family selection failure
+(`ETIMEDOUT` followed by `ENETUNREACH`) on this IPv4-only host. Both existing PM2
+applications now retain these flags in their ecosystem configuration's
+`env.NODE_OPTIONS`; preserve them when deriving a release configuration:
+
+```bash
+NODE_OPTIONS='--no-network-family-autoselection --dns-result-order=ipv4first' npm run test:cdn:qa
+```
+
+Use the same runtime flags for CLI checks as the running application. Running the
+probe without them intentionally tests Node's unconfigured default transport and
+can reproduce the original intermittent failure. TLS verification stays enabled.
+
+### Workflow regression suite
+
 ```powershell
 npm run build
 node --test tests/*.test.mjs
