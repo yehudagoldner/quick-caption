@@ -3,6 +3,18 @@ import assert from "node:assert/strict";
 import { renderActiveWordSrt } from "../src/activeWordSubtitles.js";
 import { overwriteCaptionRange, retimeCaptionChanges } from "../src/timelineEditing.js";
 
+test('active SRT keeps a disabled caption whole and highlights its neighbour', () => {
+  const srt = renderActiveWordSrt([
+    { id: 1, start: 0, end: 2, text: 'plain words', style: { activeWordEnabled: false } },
+    { id: 2, start: 2, end: 4, text: 'active words' },
+  ], []);
+  const cues = srt.split('\n\n');
+  assert.ok(cues[0].includes('00:00:00,000 --> 00:00:02,000'));
+  assert.ok(cues[0].includes('plain words'));
+  assert.ok(!cues[0].includes('<font'));
+  assert.ok(cues.slice(1).some(cue => cue.includes('<font')));
+});
+
 test("burned captions colour only one occurrence of repeated words and preserve silence", () => {
   const segments = [{id:1,start:0,end:2,text:"כן, כן!"}];
   const words = [{word:"כן",start:0,end:.4},{word:"כן",start:1,end:1.5}];

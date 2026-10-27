@@ -141,6 +141,8 @@ export function VideoPlayer({ compact, size, fill, hideMeta, mediaUrl, activeSeg
   const selectedCaptionWords = (words ?? []).filter(word => word.segmentId === activeCaption?.id && selectedWords.includes(word.wordIndex!));
   const highlight = appearanceSelected ? appearance!.values.activeWordColor
     : sanitizeCaptionOverrides(segments?.find(segment => segment.id === activeCaption?.id)?.style).activeWordColor ?? activeWordColor;
+  const highlightEnabled = appearanceSelected ? appearance!.values.activeWordEnabled
+    : sanitizeCaptionOverrides(segments?.find(segment => segment.id === activeCaption?.id)?.style).activeWordEnabled ?? activeWordEnabled;
   const committedValues = { positionXPercent: 50, offsetYPercent: 20, rotation: 0, fontSize: 105, ...appearance?.values,
     ...(!appearanceSelected ? sanitizeCaptionOverrides(segments?.find(segment => segment.id === activeCaption?.id)?.style) : {}) };
   const livePatch = useCaptionLivePatch(appearance?.live);
@@ -281,7 +283,7 @@ export function VideoPlayer({ compact, size, fill, hideMeta, mediaUrl, activeSeg
               '&:focus-visible': { outline: '2px solid #38bdf8', outlineOffset: 8 } } : {}),
             ...(crop ? { whiteSpace: 'pre-wrap', width: previewStyle.width, maxWidth: previewStyle.maxWidth } : {}) }}>
           <CaptionPreview key={activeCaption.id} activeSegmentId={activeCaption.id} activeSegmentText={activeCaption.text}
-            words={words} currentTime={currentTime} activeWordEnabled={activeWordEnabled} activeWordColor={highlight}
+            words={words} currentTime={currentTime} activeWordEnabled={highlightEnabled} activeWordColor={highlight}
             captionMotion={captionMotion} popIntensity={popIntensity} selected={selectedWords}
             rotation={transformValues.rotation} moveWord={(indexes, delta) => void moveWord(indexes, delta)}
             selectWord={wordEditor && appearanceSelected ? (index, multiple) => {

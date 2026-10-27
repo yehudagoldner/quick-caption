@@ -1,5 +1,5 @@
 import { useContext, useState, type ChangeEvent } from 'react';
-import { Alert, Box, Button, ButtonBase, Slider, Stack, Tab, Tabs, TextField, Typography } from '@mui/material';
+import { Alert, Box, Button, ButtonBase, FormControlLabel, Slider, Stack, Switch, Tab, Tabs, TextField, Typography } from '@mui/material';
 import { AlignHorizontalCenterRounded, CropRotateRounded } from '@mui/icons-material';
 import { CaptionAppearanceContext } from '../contexts/CaptionAppearanceContext';
 import { useCaptionLivePatch } from '../hooks/useCaptionLivePreview';
@@ -31,6 +31,16 @@ export function CaptionAppearanceEditor() {
     <Typography variant="caption" color="text.secondary">גררו להזזה · פינות לשינוי גודל · ידית עליונה לסיבוב · בטלפון גם צביטה בשתי אצבעות</Typography>
     {wordEditor && <Typography variant="caption" color="text.secondary">לחצו על מילה בתצוגה לשינוי צבע, גודל והדגשה. לבחירת כמה מילים: Ctrl / ⌘ + לחיצה.</Typography>}
     {editor.error && <Alert severity="error" action={<Button color="inherit" size="small" onClick={editor.retry}>נסו שוב</Button>}>{editor.error}</Alert>}
+    <Box>
+      <FormControlLabel sx={{ m: 0 }} label="מילה אקטיבית בכתובית הזו"
+        control={<Switch checked={values.activeWordEnabled} disabled={editor.disabled}
+          onChange={(_, checked) => change({ activeWordEnabled: checked })} />} />
+      <Stack direction="row" alignItems="center" justifyContent="space-between" useFlexGap flexWrap="wrap">
+        <Typography variant="caption" color="text.secondary">{editor.activeWordOverride === undefined ? 'לפי ההגדרה הכללית של הסרטון' : 'הגדרה נפרדת לכתובית הזו'}</Typography>
+        <Button size="small" disabled={editor.disabled || editor.activeWordOverride === undefined}
+          aria-label="חזרה להגדרה הכללית של מילה אקטיבית" onClick={() => change({ activeWordEnabled: undefined })}>לפי ההגדרה הכללית</Button>
+      </Stack>
+    </Box>
     <Tabs value={tab} onChange={(_, value) => setTab(value)} variant="fullWidth" aria-label="אפשרויות עיצוב הכתובית"
       sx={{ minHeight: 40, borderBottom: 1, borderColor: 'divider', '& .MuiTab-root': { minHeight: 40, py: .5 } }}>
       <Tab value="font" label="גופן" />

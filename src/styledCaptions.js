@@ -49,6 +49,7 @@ export function renderStyledCaptionsAss(segments, sourceWords, options) {
   const events = [];
   for (const segment of segments) {
     const own = sanitizeCaptionOverrides(segment.style);
+    const activeWordEnabled = own.activeWordEnabled ?? options.activeWordEnabled;
     const base = color(own.fontColor ?? defaults.fontColor);
     const highlight = color(own.activeWordColor ?? defaults.activeWordColor);
     const owned = words.filter(word => word.segmentId === segment.id);
@@ -58,12 +59,12 @@ export function renderStyledCaptionsAss(segments, sourceWords, options) {
     const resetWord = `\\fs${own.fontSize ?? defaults.fontSize}\\b${font.id !== 'assistant' && font.weight >= 600 ? 1 : 0}\\1c${base}`;
     const start = Math.max(0, Math.round(segment.start * 100));
     const end = Math.round(segment.end * 100);
-    const boundaries = [...new Set([start, end, ...(options.activeWordEnabled ? owned.flatMap(word => [Math.round(word.start * 100), Math.round(word.end * 100)]) : [])])]
+    const boundaries = [...new Set([start, end, ...(activeWordEnabled ? owned.flatMap(word => [Math.round(word.start * 100), Math.round(word.end * 100)]) : [])])]
       .filter(point => point >= start && point <= end).sort((a, b) => a - b);
     for (let i = 0; i < boundaries.length - 1; i++) {
       const from = boundaries[i] / 100, to = boundaries[i + 1] / 100;
       if (to <= from) continue;
-      const active = options.activeWordEnabled ? activeWordAtTime(owned, (from + to) / 2)?.wordIndex : undefined;
+      const active = activeWordEnabled ? activeWordAtTime(owned, (from + to) / 2)?.wordIndex : undefined;
       // Every layer retains the complete shaped text, including invisible
       // words. This preserves Hebrew/English order, line widths and baselines.
       // Only the chosen word is visible on its translated layer.

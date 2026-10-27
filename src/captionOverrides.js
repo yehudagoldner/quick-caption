@@ -5,6 +5,7 @@ import { sanitizeCaptionFontSize } from './captionStyle.js';
 export function sanitizeCaptionOverrides(value) {
   const result = {};
   if (!value || typeof value !== 'object' || Array.isArray(value)) return result;
+  if (typeof value.activeWordEnabled === 'boolean') result.activeWordEnabled = value.activeWordEnabled;
   if (CAPTION_FONTS.some(font => font.id === value.fontId)) result.fontId = value.fontId;
   if (typeof value.fontSize === 'number' && Number.isFinite(value.fontSize)) result.fontSize = sanitizeCaptionFontSize(value.fontSize);
   for (const key of ['fontColor', 'outlineColor', 'activeWordColor']) {

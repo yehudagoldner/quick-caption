@@ -6,6 +6,7 @@ import type { CaptionLivePreview } from '../hooks/useCaptionLivePreview';
 export const CaptionAppearanceContext = createContext<{
   segment: Segment | null;
   values: Required<CaptionOverrides>;
+  activeWordOverride: boolean | undefined;
   live: CaptionLivePreview;
   disabled: boolean;
   // The caption looks different from when it was selected; Revert is available.

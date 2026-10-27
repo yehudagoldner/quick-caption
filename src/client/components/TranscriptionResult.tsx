@@ -461,7 +461,8 @@ export function TranscriptionResult({
     } : null}>
     <CaptionAppearanceContext.Provider value={{
       segment: appearanceSegment,
-      values: { fontId, fontSize: effectiveFontSize, fontColor, outlineColor, activeWordColor, positionXPercent: 50, offsetYPercent, rotation: 0, ...appearanceStyle },
+      values: { fontId, fontSize: effectiveFontSize, fontColor, outlineColor, activeWordColor, activeWordEnabled, positionXPercent: 50, offsetYPercent, rotation: 0, ...appearanceStyle },
+      activeWordOverride: appearanceStyle.activeWordEnabled,
       live: appearanceLive,
       disabled: !isEditable || isBurning || timelineDrafts || wordSaving,
       dirty: appearanceDirty, saving: appearanceSaving, error: appearanceError,

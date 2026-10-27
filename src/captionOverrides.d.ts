@@ -4,6 +4,7 @@ export type CaptionOverrides = {
   fontColor?: string;
   outlineColor?: string;
   activeWordColor?: string;
+  activeWordEnabled?: boolean;
   positionXPercent?: number;
   offsetYPercent?: number;
   rotation?: number;

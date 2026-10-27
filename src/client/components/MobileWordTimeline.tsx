@@ -28,7 +28,7 @@ export function MobileWordTimeline({ segment, words, fps, currentTime, activeWor
   const pps = trackWidth / duration;
   const view = preview ?? words;
   const chosen = view[selected];
-  const activeWord = useActiveWord({ words: view, currentTime, enabled: activeWordEnabled });
+  const activeWord = useActiveWord({ words: view, currentTime, enabled: segment.style?.activeWordEnabled ?? activeWordEnabled });
   const changeZoom = (next: number) => {
     const el = scroller.current;
     if (el) {

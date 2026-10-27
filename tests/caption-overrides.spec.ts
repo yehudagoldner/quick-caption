@@ -99,6 +99,80 @@ for (const mobile of [false, true]) test(`${mobile ? 'mobile' : 'desktop'} indiv
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });
 
+for (const mobile of [false, true]) test(`${mobile ? 'mobile' : 'desktop'} per-caption active words save, undo, reload, burn and return to inherited settings`, async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('activeWordEnabled', 'true'));
+  const state = await setup(page, mobile);
+  const seek = async (time: number) => {
+    await page.locator('video').evaluate((video: HTMLVideoElement, time) => { video.pause(); video.currentTime = time; }, time);
+  };
+  await seek(.5);
+  const highlighted = page.locator('[data-testid="subtitle-overlay"] [data-active-word="true"]');
+  await expect(highlighted).toHaveCount(1);
+  await page.getByTestId('caption-position').click();
+  const panel = page.getByRole('region', { name: 'עיצוב כתובית נבחרת', exact: true });
+  const toggle = panel.getByRole('switch', { name: 'מילה אקטיבית בכתובית הזו', exact: true });
+  const inherit = panel.getByRole('button', { name: 'חזרה להגדרה הכללית של מילה אקטיבית' });
+  await expect(toggle).toBeChecked();
+  await expect(inherit).toBeDisabled();
+  await toggle.uncheck();
+  await expect(highlighted).toHaveCount(0);
+  await expect(page.getByTestId('subtitle-overlay')).toHaveText(fixtureSegments[0].text);
+  await expect.poll(() => state.saved()[0].style?.activeWordEnabled).toBe(false);
+  expect(state.saved()[1].style).toBeUndefined();
+  await panel.getByRole('button', { name: 'סיום', exact: true }).click();
+  await page.getByRole('button', { name: 'ביטול פעולה', exact: true }).click();
+  await expect(highlighted).toHaveCount(1);
+  await expect.poll(() => state.saved()[0].style).toBeUndefined();
+  await page.getByRole('button', { name: 'ביצוע חוזר', exact: true }).click();
+  await expect(highlighted).toHaveCount(0);
+  await expect.poll(() => state.saved()[0].style?.activeWordEnabled).toBe(false);
+  await page.reload();
+  await expect.poll(() => page.locator('video').evaluate((video: HTMLVideoElement) => video.readyState)).toBeGreaterThan(1);
+  await seek(.5);
+  await expect(highlighted).toHaveCount(0);
+  await seek(2.5);
+  await expect(highlighted).toHaveCount(1);
+  await page.getByRole('button', { name: mobile ? 'עוד' : 'הורדה', exact: true }).click();
+  const download = page.waitForEvent('download');
+  await page.getByRole(mobile ? 'button' : 'menuitem', { name: 'הורד סרטון עם כתוביות', exact: true }).click();
+  await download;
+  expect(state.burns.at(-1)).toContain('"activeWordEnabled":false');
+  await page.getByRole('button', { name: 'אולי אחר כך', exact: true }).click();
+  await seek(.5);
+  await page.getByTestId('caption-position').click();
+  await expect(toggle).not.toBeChecked();
+  await panel.getByLabel('גודל גופן לכתובית').fill('64');
+  await expect.poll(() => state.saved()[0].style?.fontSize).toBe(64);
+  await inherit.click();
+  await expect(toggle).toBeChecked();
+  await expect(highlighted).toHaveCount(1);
+  await expect.poll(() => state.saved()[0].style).toEqual({ fontSize: 64 });
+  await expect(inherit).toBeDisabled();
+  await page.screenshot({ path: `test-results/caption-active-word-${mobile ? 'mobile' : 'desktop'}.png` });
+});
+
+test('a caption can enable active words when the global setting is off and retain a failed change for retry', async ({ page }) => {
+  const state = await setup(page, false);
+  await page.getByTestId('caption-position').click();
+  const panel = page.getByRole('region', { name: 'עיצוב כתובית נבחרת', exact: true });
+  const toggle = panel.getByRole('switch', { name: 'מילה אקטיבית בכתובית הזו', exact: true });
+  await expect(toggle).not.toBeChecked();
+  state.fail(true);
+  await toggle.check();
+  await expect(page.locator('[data-active-word="true"]')).toHaveCount(1);
+  await expect(panel.getByRole('alert')).toContainText('שמירת העיצוב נכשלה');
+  expect(state.saved()[0].style).toBeUndefined();
+  state.fail(false);
+  await panel.getByRole('button', { name: 'נסו שוב' }).click();
+  await expect.poll(() => state.saved()[0].style?.activeWordEnabled).toBe(true);
+  await expect(panel.getByRole('alert')).toHaveCount(0);
+  await panel.getByRole('button', { name: 'סיום', exact: true }).click();
+  await page.locator('video').evaluate((video: HTMLVideoElement) => { video.currentTime = 2.5; });
+  await expect(page.getByTestId('subtitle-overlay')).toHaveText(fixtureSegments[1].text);
+  await expect(page.locator('[data-active-word="true"]')).toHaveCount(0);
+  expect(state.saved()[1].style).toBeUndefined();
+});
+
 test.describe('touch appearance editing', () => {
   test.use({ hasTouch: true, isMobile: true, userAgent: devices['Pixel 7'].userAgent });
   test('Android selected caption moves from the preview background and rotates with a finger', async ({ page }) => {

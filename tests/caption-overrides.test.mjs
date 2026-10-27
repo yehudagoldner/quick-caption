@@ -22,6 +22,26 @@ test('untrusted overrides are bounded, allowlisted and safe for ASS', () => {
   { activeWordColor: '#102030', positionXPercent: 0, offsetYPercent: 100, rotation: 180 });
   assert.deepEqual(sanitizeCaptionOverrides(null), {});
   assert.deepEqual(sanitizeCaptionOverrides({ rotation: NaN, fontSize: -2 }), { fontSize: 12 });
+  for (const activeWordEnabled of [false, true]) assert.deepEqual(sanitizeCaptionOverrides({ activeWordEnabled }), { activeWordEnabled });
+  for (const activeWordEnabled of ['false', 'true', 0, 1, null, undefined]) assert.deepEqual(sanitizeCaptionOverrides({ activeWordEnabled }), {});
+});
+
+for (const globalEnabled of [false, true]) test(`per-caption active word overrides win over global ${globalEnabled} in burned ASS`, () => {
+  const clips = [
+    { id: 1, start: 0, end: 2, text: 'disabled words', style: { activeWordEnabled: false } },
+    { id: 2, start: 2, end: 4, text: 'enabled words', style: { activeWordEnabled: true } },
+    { id: 3, start: 4, end: 6, text: 'inherited words' },
+  ];
+  const ass = renderStyledCaptionsAss(clips, [], { ...options, activeWordEnabled: globalEnabled, activeWordColor: '#123456' });
+  const events = ass.split('\n').filter(line => line.startsWith('Dialogue:'));
+  const disabled = events.filter(line => line.includes('disabled'));
+  const enabled = events.filter(line => line.includes('enabled'));
+  const inherited = events.filter(line => line.includes('inherited'));
+  assert.equal(disabled.length, 1);
+  assert.ok(disabled[0].includes('0:00:00.00,0:00:02.00'));
+  assert.ok(!disabled[0].includes('\\1c&H563412&'));
+  assert.ok(enabled.some(line => line.includes('\\1c&H563412&')));
+  assert.equal(inherited.some(line => line.includes('\\1c&H563412&')), globalEnabled);
 });
 
 for (const mode of ['normal', 'active', 'pop']) test(`${mode}: appearance belongs only to its caption and keeps timing and direction`, () => {
