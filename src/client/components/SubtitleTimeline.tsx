@@ -8,7 +8,7 @@ import { Timeline, type TimelineRow, type TimelineState } from "@xzdarcy/react-t
 import type { Segment, Word } from "../types";
 import { useEditorPreferences } from "../contexts/EditorPreferences";
 import { formatTimecode, snapToFrame } from "../utils/timecode";
-import { retimeCaption, overwriteCaptionRange, validateCaptionRange, wordsForSegment, timelineZoomForWindow, timelineScrollForTime } from "../../timelineEditing.js";
+import { overwriteCaptionRange, validateCaptionRange, wordsForSegment, timelineZoomForWindow, timelineScrollForTime } from "../../timelineEditing.js";
 import { synchronizeWords } from "../../wordAlignment.js";
 import { WordTimeline } from "./WordTimeline";
 import { CaptionSelectionToolbar } from "./CaptionSelectionToolbar";
@@ -380,11 +380,6 @@ export function SubtitleTimeline({ activeWordEnabled, segments, words = [], disa
               const resizing = original.start === item.start || original.end === item.end;
               const problem = validateCaptionRange(item, next, total, { allowOverlap: resizing });
               if (problem) throw new Error(problem);
-              try { retimeCaption(original, item, words); }
-              catch (e) {
-                const hint = activeWordEnabled ? "" : ' הפעילו ״מילה אקטיבית״ כדי להציג את ציר המילים.';
-                throw new Error((e as Error).message + hint);
-              }
               if (resizing) next = overwriteCaptionRange(item, next);
             }
             for (const item of next) {
@@ -392,6 +387,8 @@ export function SubtitleTimeline({ activeWordEnabled, segments, words = [], disa
               if (problem) throw new Error(problem);
             }
             setError(null);
+            // Fit words to the final caption ranges, including trimmed neighbours.
+            // A strict word-boundary check here would reject valid speech trims.
             void commitMove(next, { fitWords: true });
           } catch (e) {
             setError((e as Error).message);

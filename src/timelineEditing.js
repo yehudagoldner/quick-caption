@@ -1,4 +1,4 @@
-// Desktop editing keeps strict word bounds; mobile timing supports bounded trims.
+// Caption timing supports strict word bounds or fitting words to edited ranges.
 export function timelineZoomForWindow(duration, seconds = 30) {
   return 25 * Math.log2(Math.max(1, duration / seconds));
 }

@@ -88,6 +88,48 @@ for (const edge of ['left', 'right'] as const) {
   });
 }
 
+for (const edge of ['left', 'right'] as const) for (const activeWords of [false, true]) {
+  test(`shortening caption ${edge} through timed speech fits words with highlighting ${activeWords}`, async ({ page }) => {
+    const saves = await open(page);
+    if (activeWords) await page.getByRole('button', { name: 'מילה אקטיבית', exact: true }).click();
+    await resizeCaption(page, 0, edge, edge === 'left' ? .24 : -.24);
+    await expect.poll(() => saves.length).toBe(1);
+    await expect(page.getByText(/הקצה חוצה מילה מתוזמנת/)).toHaveCount(0);
+    const resized = structuredClone(saves[0]);
+    const caption = resized.segments[0];
+    expect(caption.text).toBe(segments[0].text);
+    if (edge === 'left') {
+      expect(caption.start).toBeGreaterThan(segments[0].start);
+      expect(caption.end).toBe(segments[0].end);
+    } else {
+      expect(caption.start).toBe(segments[0].start);
+      expect(caption.end).toBeLessThan(segments[0].end);
+    }
+    const own = resized.words.filter(word => word.segmentId === caption.id);
+    expect(own.map(word => word.word)).toEqual(['שלום', 'עולם']);
+    expect(own[0].start).toBeCloseTo(caption.start, 6);
+    expect(own[1].end).toBeCloseTo(caption.end, 6);
+    expect(own[0].end).toBeLessThanOrEqual(own[1].start);
+    for (const word of own) expect(word.end).toBeGreaterThan(word.start);
+    expect(resized.segments.slice(1)).toEqual(segments.slice(1));
+    const timings = (items: typeof words) => items.map(({ word, start, end, segmentId }) => ({ word, start, end, segmentId }));
+    expect(timings(resized.words.filter(word => word.segmentId !== caption.id))).toEqual(words.filter(word => word.segmentId !== caption.id));
+    await page.getByRole('button', { name: 'ביטול פעולה', exact: true }).click();
+    await expect.poll(() => saves.length).toBe(2);
+    expect(saves[1].segments).toEqual(segments);
+    expect(timings(saves[1].words)).toEqual(words);
+    await page.getByRole('button', { name: 'ביצוע חוזר', exact: true }).click();
+    await expect.poll(() => saves.length).toBe(3);
+    expect(saves[2]).toEqual(resized);
+    await page.route('**/api/videos/load?**', route => route.fulfill({ json: { video: {
+      id: 42, subtitle_json: resized.segments, words_json: resized.words, format: '.srt', stored_path: 'portrait.mp4',
+    } } }));
+    await page.reload();
+    await expect(page.getByTestId('subtitle-clip').first()).toHaveAttribute('data-start', String(caption.start));
+    await expect(page.getByTestId('subtitle-clip').first()).toHaveAttribute('data-end', String(caption.end));
+  });
+}
+
 test('neighbour-trimming extension saves text and Undo/Redo restores both captions and word timing', async ({ page }) => {
   const saves = await open(page);
   await resizeCaption(page, 0, 'right', .8);
