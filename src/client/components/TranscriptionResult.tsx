@@ -281,6 +281,28 @@ export function TranscriptionResult({
   const narrow = useNarrowViewport();
   const playbackRoot = useRef<HTMLDivElement>(null);
   useEffect(() => {
+    const historyKey = (event: KeyboardEvent) => {
+      if (!(event.ctrlKey || event.metaKey) || event.altKey || event.defaultPrevented || event.isComposing) return;
+      // Physical codes also work with the Hebrew keyboard layout.
+      const key = event.code || event.key.toLowerCase();
+      if (!["KeyZ", "KeyY", "z", "y"].includes(key)) return;
+      const target = event.target;
+      if (!(target instanceof HTMLElement)) return;
+      if (target !== document.body && target !== document.documentElement && !playbackRoot.current?.contains(target)) return;
+      // Text fields keep native typing history; range inputs are editor controls.
+      if (target.isContentEditable || target.closest('textarea,select,input:not([type="range"]),[role="textbox"],[role="combobox"],[role="dialog"],[role="alertdialog"],[role="menu"],[role="listbox"]')) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (event.repeat || !isEditable || isBurning || reframing || hasTimelineDrafts || saveState === "saving") return;
+      const redo = key === "KeyY" || key === "y" || event.shiftKey;
+      if (redo ? canRedo : canUndo) void (redo ? handleRedo() : handleUndo());
+    };
+    // Own history once for the whole editor, including word tracks, preview,
+    // sliders and whitespace, before native controls consume the shortcut.
+    window.addEventListener("keydown", historyKey, true);
+    return () => window.removeEventListener("keydown", historyKey, true);
+  }, [isEditable, isBurning, reframing, hasTimelineDrafts, saveState, canUndo, canRedo, handleUndo, handleRedo]);
+  useEffect(() => {
     if (!desktop || !videoPlayer) return;
     const playbackKey = (event: KeyboardEvent) => {
       if (event.code !== "Space" || event.defaultPrevented || event.isComposing

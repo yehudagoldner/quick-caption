@@ -11,6 +11,9 @@ import { TimelineEditToolbar } from "./TimelineEditToolbar";
 import { useTimelineScrubbing } from "../hooks/useTimelineScrubbing";
 import { useTimelineWheelZoom } from "../hooks/useTimelineWheelZoom";
 
+const MIN_WORD_ZOOM = 80;
+const MAX_WORD_ZOOM = 2560;
+
 // Drafts belong to the parent so switching captions never discards work.
 export function WordTimeline({ enabled, segment, words, selection, onSelectionChange: setSelection, currentTime, onWordsChange, onDeleteWords, onSeek, disabled, toolbarEditor, toolbarActions, toolbarPrimary, toolbarClose, compact = false }: {
   enabled: boolean;
@@ -39,7 +42,7 @@ export function WordTimeline({ enabled, segment, words, selection, onSelectionCh
     const time = Math.max(0, Math.min(duration, currentTime - segment.start));
     if (timeline.current?.getTime() !== time) timeline.current?.setTime(time);
   }, [currentTime, segment.start, duration, zoom, enabled]);
-  useTimelineWheelZoom(container, timeline, zoom, 80, 640, setZoom, enabled);
+  useTimelineWheelZoom(container, timeline, zoom, MIN_WORD_ZOOM, MAX_WORD_ZOOM, setZoom, enabled);
   const rows = useMemo<TimelineRow[]>(() => [{ id: "words", actions: words.map((word, i) => ({
     id: String(i), effectId: String(i), start: word.start - segment.start, end: word.end - segment.start,
     movable: !disabled, flexible: !disabled,
@@ -108,7 +111,7 @@ export function WordTimeline({ enabled, segment, words, selection, onSelectionCh
       <Box className="timeline-toolbar-divider" />
       <Box sx={{ display: "flex", alignItems: "center", gap: 1, width: 110, px: 1 }}>
         <Tooltip title="זום מילים"><ZoomInRounded fontSize="small" color="action" /></Tooltip>
-        <Slider size="small" aria-label="זום מילים" min={80} max={640} value={zoom} onChange={(_, v) => setZoom(v as number)} />
+        <Slider size="small" aria-label="זום מילים" min={MIN_WORD_ZOOM} max={MAX_WORD_ZOOM} value={zoom} onChange={(_, v) => setZoom(v as number)} />
       </Box>
     </>} />
     <Snackbar open={!!error} onClose={() => setError(null)}><Alert severity="warning" onClose={() => setError(null)}>{error}</Alert></Snackbar>

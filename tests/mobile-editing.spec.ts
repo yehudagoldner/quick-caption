@@ -563,11 +563,11 @@ for (const width of [320, 390]) test(`zoom bar and pinch keep video size and pla
   const trackBefore = (await track.boundingBox())!;
   await wordZoom.focus();
   await page.keyboard.press('End');
-  await expect(wordZoom).toHaveValue('4');
-  expect((await track.boundingBox())!.width).toBeGreaterThan(trackBefore.width * 3);
+  await expect(wordZoom).toHaveValue('16');
+  expect((await track.boundingBox())!.width - 24).toBeCloseTo((trackBefore.width - 24) * 16, 0);
   expect((await track.boundingBox())!.height).toBe(trackBefore.height);
   await page.keyboard.press('ArrowLeft');
-  await expect(wordZoom).toHaveValue('3.99');
+  await expect(wordZoom).toHaveValue('15.99');
   expect(await dialog.evaluate(el => el.scrollWidth > el.clientWidth)).toBe(false);
   await expect(dialog.getByRole('button', { name: 'סיום', exact: true })).toBeInViewport();
   await page.screenshot({ path: `tmp/review/word-zoom-${width}.png` });

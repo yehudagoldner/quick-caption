@@ -101,3 +101,29 @@ test('plain scrolling leaves zoom alone and Ctrl+wheel respects limits and cance
   });
   await expect(slider).toHaveValue('0');
 });
+
+test('word zoom reaches four times the previous maximum through slider and wheel', async ({ page }) => {
+  const saves = await open(page);
+  await page.getByTestId('subtitle-clip').first().click();
+  await page.getByRole('button', { name: 'מילה אקטיבית', exact: true }).click();
+  const slider = page.getByRole('slider', { name: 'זום מילים' });
+  const track = page.getByTestId('word-track');
+  const firstWord = page.getByTestId('word-clip').first();
+  const initialWidth = (await firstWord.boundingBox())!.width;
+  const mainZoom = await page.getByRole('slider', { name: 'זום ציר ראשי' }).inputValue();
+  await slider.focus();
+  await page.keyboard.press('End');
+  await expect(slider).toHaveValue('2560');
+  expect((await firstWord.boundingBox())!.width).toBeCloseTo(initialWidth * 16, 0);
+  await page.keyboard.press('Home');
+  await expect(slider).toHaveValue('80');
+  await track.evaluate(el => {
+    const rect = el.getBoundingClientRect();
+    for (let i = 0; i < 20; i++) el.dispatchEvent(new WheelEvent('wheel', {
+      ctrlKey: true, deltaY: -240, cancelable: true, bubbles: true, clientX: rect.x + 40,
+    }));
+  });
+  await expect(slider).toHaveValue('2560');
+  await expect(page.getByRole('slider', { name: 'זום ציר ראשי' })).toHaveValue(mainZoom);
+  expect(saves).toHaveLength(0);
+});

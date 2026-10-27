@@ -301,9 +301,6 @@ export function SubtitleTimeline({ activeWordEnabled, segments, words = [], disa
       if (locked || dirty || dragging.current || flight.current) return;
       if (command && event.code === "KeyA") { event.preventDefault(); applySelection(segments.map(s => s.id)); }
       else if (event.code === "Escape") { event.preventDefault(); clearSelection(); }
-      else if (command && event.code === "KeyZ") {
-        event.preventDefault(); if (event.shiftKey) { if (canRedo) onRedo(); } else if (canUndo) onUndo();
-      } else if (command && event.code === "KeyY") { event.preventDefault(); if (canRedo) onRedo(); }
       else if (command && event.code === "KeyM") { event.preventDefault(); if (canMergeCaptions(segments, selection)) void runSelectionAction("merge"); }
       else if (command && event.code === "KeyK") { event.preventDefault(); if (canSplitCaptionAtTime(selectedCaption, time)) void runSelectionAction("split"); }
       else if (!command && !event.altKey && (event.code === "Delete" || event.code === "Backspace")) { event.preventDefault(); if (!event.repeat && selection.length) void runSelectionAction("delete"); }

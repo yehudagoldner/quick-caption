@@ -403,6 +403,55 @@ test('Ctrl toggles, Shift selects a range; toolbar merges and keyboard undoes/re
   await expect(clips).toHaveCount(2);
 });
 
+for (const modifier of ['Control', 'Meta']) test(`${modifier} history shortcuts work from words, zoom, video and page whitespace`, async ({ page }) => {
+  const saves = await open(page);
+  const clips = page.getByTestId('subtitle-clip');
+  const undo = page.getByRole('button', { name: 'ביטול פעולה', exact: true });
+  const redo = page.getByRole('button', { name: 'ביצוע חוזר', exact: true });
+  await clips.first().click();
+  await clips.nth(1).click({ modifiers: ['Shift'] });
+  await toolbar(page).getByRole('button', { name: 'חיבור כתוביות נבחרות' }).click();
+  await expect(clips).toHaveCount(2);
+  await expect(undo).toBeEnabled();
+  await clips.first().click();
+  await page.getByRole('button', { name: 'מילה אקטיבית', exact: true }).click();
+  await page.getByTestId('word-clip').first().focus();
+  await page.keyboard.press(`${modifier}+z`);
+  await expect(clips).toHaveCount(3);
+  await expect(redo).toBeEnabled();
+  await page.getByRole('slider', { name: 'זום ציר ראשי' }).focus();
+  await page.keyboard.press(`${modifier}+Shift+z`);
+  await expect(clips).toHaveCount(2);
+  await expect(undo).toBeEnabled();
+  await page.locator('video').focus();
+  await page.keyboard.press(`${modifier}+z`);
+  await expect(clips).toHaveCount(3);
+  await expect(redo).toBeEnabled();
+  await page.evaluate(() => (document.activeElement as HTMLElement)?.blur());
+  await page.keyboard.press(`${modifier}+Shift+z`);
+  await expect(clips).toHaveCount(2);
+  await expect(undo).toBeEnabled();
+  // The physical Z key emits Hebrew ז with a Hebrew keyboard layout.
+  await page.locator('body').dispatchEvent('keydown', { key: 'ז', code: 'KeyZ', ctrlKey: modifier === 'Control', metaKey: modifier === 'Meta' });
+  await expect(clips).toHaveCount(3);
+  await expect(redo).toBeEnabled();
+  await page.keyboard.press(`${modifier}+y`);
+  await expect(clips).toHaveCount(2);
+  await expect(undo).toBeEnabled();
+  expect(saves).toHaveLength(7);
+
+  // Focusing a text field must not consume a project revision.
+  await clips.first().click();
+  const input = page.getByRole('textbox', { name: 'טקסט המקטע', exact: true });
+  await input.focus();
+  const consumed = await input.evaluate((el, modifier) => !el.dispatchEvent(new KeyboardEvent('keydown', {
+    key: 'z', code: 'KeyZ', ctrlKey: modifier === 'Control', metaKey: modifier === 'Meta', bubbles: true, cancelable: true,
+  })), modifier);
+  expect(consumed).toBe(false);
+  await expect(clips).toHaveCount(2);
+  expect(saves).toHaveLength(7);
+});
+
 test('Delete and toolbar delete multiple captions; deleting all retains timeline and Undo', async ({ page }) => {
   await open(page);
   const emptyTrackPoint = await trackPoint(page, 1.4, 54);
