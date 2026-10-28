@@ -1,3 +1,4 @@
+import { sanitizeCaptionBackground } from './captionBackground.js';
 import { CAPTION_FONTS, getCaptionFont } from './captionFonts.js';
 import { sanitizeCaptionFontSize } from './captionStyle.js';
 import { sanitizeCaptionMotion, sanitizePopIntensity } from './captionMotion.js';
@@ -5,7 +6,7 @@ import { sanitizeCaptionMotion, sanitizePopIntensity } from './captionMotion.js'
 const color = (value, fallback) => typeof value === 'string' && /^#[0-9a-f]{6}$/i.test(value) ? value.toLowerCase() : fallback;
 const percent = (value, fallback, max) => typeof value === 'number' && Number.isFinite(value) ? Math.max(0, Math.min(max, value)) : fallback;
 export function sanitizeCaptionAppearance(value = {}) {
-  return { fontId: getCaptionFont(value.fontId).id,
+  return { ...sanitizeCaptionBackground(value), fontId: getCaptionFont(value.fontId).id,
     fontSize: value.fontSize === 'auto' || typeof value.fontSize !== 'number' ? 'auto' : sanitizeCaptionFontSize(value.fontSize),
     fontColor: color(value.fontColor, '#ffffff'), outlineColor: color(value.outlineColor, '#000000'),
     activeWordColor: color(value.activeWordColor, '#ffd700'), activeWordEnabled: value.activeWordEnabled === true,

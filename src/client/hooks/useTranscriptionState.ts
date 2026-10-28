@@ -51,7 +51,7 @@ export function useTranscriptionState({
   const saveQueue = useRef<Promise<void>>(Promise.resolve());
   const [historyVersion, setHistoryVersion] = useState(0);
   const [activeSegmentId, setActiveSegmentId] = useState<Segment["id"] | null>(null);
-  const { fontSize, setFontSize, fontColor, setFontColor, outlineColor, setOutlineColor,
+  const { fontSize, setFontSize, fontColor, setFontColor, outlineColor, setOutlineColor, backgroundColor, setBackgroundColor, backgroundOpacity, setBackgroundOpacity,
     offsetYPercent, setOffsetYPercent, marginPercent, setMarginPercent,
     captionMotion, setCaptionMotion, popIntensity, setPopIntensity,
     fontId, setFontId, activeWordEnabled, setActiveWordEnabled, activeWordColor, setActiveWordColor, applyCaptionStyle } = useProjectCaptionStyle(videoId, versions.activeId);
@@ -615,6 +615,7 @@ export function useTranscriptionState({
     setFontSize,
     fontColor,
     setFontColor,
+    backgroundColor, setBackgroundColor, backgroundOpacity, setBackgroundOpacity,
     outlineColor,
     setOutlineColor,
     offsetYPercent,

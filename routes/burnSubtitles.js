@@ -1,4 +1,5 @@
 import express from "express";
+import { captionBackgroundAss, sanitizeCaptionBackground } from "../src/captionBackground.js";
 import path from "path";
 import os from "os";
 import { promises as fsp } from "fs";
@@ -106,6 +107,7 @@ export function createBurnSubtitlesRouter(upload, { resolveVideo } = {}) {
       }
     }
 
+    const captionBackground = sanitizeCaptionBackground({ backgroundColor: req.body?.backgroundColor, backgroundOpacity: Number(req.body?.backgroundOpacity) });
     const fontSize = sanitizeCaptionFontSize(req.body?.fontSize);
     const fontColor = sanitizeColor(req.body?.fontColor);
     const outlineColor = sanitizeColor(req.body?.outlineColor);
@@ -114,7 +116,7 @@ export function createBurnSubtitlesRouter(upload, { resolveVideo } = {}) {
     // An audiogram's frame is defined by its format, never by client-sent sizes.
     let videoWidth = frame?.width ?? sanitizeDimension(req.body?.videoWidth);
     let videoHeight = frame?.height ?? sanitizeDimension(req.body?.videoHeight);
-    const styled = timedSegments?.some(segment => Object.keys(segment.style).length > 0)
+    const styled = (timedSegments && captionBackground.backgroundOpacity > 0) || timedSegments?.some(segment => Object.keys(segment.style).length > 0)
       || timedWords?.some(word => Object.keys(sanitizeWordOverrides(word?.style)).length > 0);
     if ((motion === "pop" || styled) && (!videoWidth || !videoHeight)) {
       return reject(400, "נדרש גודל וידאו תקין לעיצוב הכתוביות. המתינו לטעינת הסרטון ונסו שוב.");
@@ -147,7 +149,7 @@ export function createBurnSubtitlesRouter(upload, { resolveVideo } = {}) {
       // Wrap subtitle lines with RTL markers for proper Hebrew punctuation rendering
       const rtlSubtitleContent = styled
         ? renderStyledCaptionsAss(timedSegments, timedWords, { ...sanitizeCaptionOverrides(req.body),
-          fontSize, fontColor: assColorToHex(fontColor), outlineColor: assColorToHex(outlineColor), offsetYPercent,
+          ...captionBackground, fontSize, fontColor: assColorToHex(fontColor), outlineColor: assColorToHex(outlineColor), offsetYPercent,
           captionMotion: motion, activeWordEnabled: req.body?.activeWordEnabled === 'true',
           intensity: sanitizePopIntensity(req.body?.popIntensity), direction: req.body?.textDirection === 'ltr' ? 'ltr' : 'rtl', videoWidth, videoHeight, outlineWidth: CAPTION_OUTLINE_WIDTH })
         : motion === "pop"
@@ -155,6 +157,7 @@ export function createBurnSubtitlesRouter(upload, { resolveVideo } = {}) {
         : req.body?.textDirection === "ltr" ? subtitleContent : wrapSubtitleLinesWithRTL(subtitleContent);
       await fsp.writeFile(subtitlePath, rtlSubtitleContent, "utf-8");
       const filter = buildSubtitlesFilter(subtitlePath, {
+        ...captionBackground,
         fontId: req.body?.fontId,
         fontSize,
         fontColor,
@@ -200,7 +203,7 @@ export function createBurnSubtitlesRouter(upload, { resolveVideo } = {}) {
   return router;
 }
 
-export function buildSubtitlesFilter(subtitlePath, { fontId, fontSize, fontColor, outlineColor, offsetYPercent, marginPercent, videoWidth, videoHeight, wholeTextLayout }) {
+export function buildSubtitlesFilter(subtitlePath, { fontId, fontSize, fontColor, outlineColor, offsetYPercent, marginPercent, videoWidth, videoHeight, wholeTextLayout, backgroundColor, backgroundOpacity }) {
   const normalizedPath = subtitlePath.replace(/\\/g, "/");
   const font = getCaptionFont(fontId);
   const styleParts = [
@@ -221,7 +224,11 @@ export function buildSubtitlesFilter(subtitlePath, { fontId, fontSize, fontColor
     `PlayResX=${playResX}`,
     `PlayResY=${playResY}`,
     `Alignment=2`,
-    `BorderStyle=1`,
+    // libass BorderStyle 4 keeps the outline and draws one translucent box,
+    // avoiding darker overlaps between lines and active-word colour runs.
+    // https://github.com/libass/libass/wiki/Libass%27-ASS-Extensions#borderstyle4
+    `BorderStyle=${subtitlePath.endsWith('.ass') || backgroundOpacity > 0 ? 4 : 1}`,
+    `BackColour=${captionBackgroundAss({ backgroundColor, backgroundOpacity })}`,
     `Outline=${CAPTION_OUTLINE_WIDTH}`,
     `Shadow=0`,
     `MarginV=${marginV}`,

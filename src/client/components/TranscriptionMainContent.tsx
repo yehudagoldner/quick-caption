@@ -28,6 +28,7 @@ type TranscriptionMainContentProps = {
   timelineEditing: Pick<SubtitleTimelineProps, "onSaveSegment" | "onUndo" | "onRedo" | "canUndo" | "canRedo" | "onPlayFrom" | "loopEnabled" | "onLoopChange" | "onDraftStateChange">;
   hasTimelineDrafts: boolean;
   editorSettings: ReactNode;
+  captionBackgroundControls?: ReactNode;
   captionStyles?: ReactNode;
   fontId?: string;
   onFontChange?: (id: string) => void;
@@ -100,7 +101,7 @@ export function TranscriptionMainContent({
   timelineEditing,
   hasTimelineDrafts,
   editorSettings,
-  captionStyles, fontId, onFontChange, activeWordColor, onActiveWordColorChange,
+  captionBackgroundControls, captionStyles, fontId, onFontChange, activeWordColor, onActiveWordColorChange,
   mediaUrl,
   activeSegmentText,
   previewStyle,
@@ -174,7 +175,7 @@ export function TranscriptionMainContent({
     return (
       <MobileCaptionEditor
         onNavigateAway={onNavigateAway}
-        captionStyles={captionStyles} fontId={fontId} onFontChange={onFontChange} activeWordColor={activeWordColor}
+        captionBackgroundControls={captionBackgroundControls} captionStyles={captionStyles} fontId={fontId} onFontChange={onFontChange} activeWordColor={activeWordColor}
         onActiveWordColorChange={onActiveWordColorChange}
         captionMotion={captionMotion}
         popIntensity={popIntensity}
@@ -242,7 +243,7 @@ export function TranscriptionMainContent({
         <Stack className="preview-wrapper" spacing={desktop ? 1 : 2} sx={{ flex: 1, minWidth: 0, width: "100%", height: { md: "100%" } }}>
           <Stack direction="column" spacing={1.5} alignItems="center" justifyContent="center" sx={{ width: "100%", minWidth: 0 }}>
             <VideoToolbar
-              captionStyles={captionStyles} fontId={fontId} onFontChange={onFontChange}
+              captionBackgroundControls={captionBackgroundControls} captionStyles={captionStyles} fontId={fontId} onFontChange={onFontChange}
               activeWordColor={activeWordColor} onActiveWordColorChange={onActiveWordColorChange}
               pendingEdits={hasTimelineDrafts || saveState === "saving"}
               editorSettings={editorSettingsBlock}

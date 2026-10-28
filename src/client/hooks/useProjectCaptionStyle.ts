@@ -5,14 +5,16 @@ import { sanitizeCaptionMotion, sanitizePopIntensity, type CaptionMotion, type P
 import { CAPTION_FONTS } from '../../captionFonts.js';
 import { sanitizeCaptionAppearance, type CaptionAppearance } from '../../captionPresets.js';
 
+import { sanitizeCaptionBackground } from '../../captionBackground.js';
+
 type Style = Omit<CaptionAppearance, 'fontId'> & { fontId?: string };
-const defaults: Style = { fontSize: 'auto', fontColor: '#ffffff', outlineColor: '#000000', offsetYPercent: 20, marginPercent: 5, captionMotion: 'none', popIntensity: 'gentle', activeWordEnabled: false, activeWordColor: '#ffd700' };
+const defaults: Style = { ...sanitizeCaptionBackground(), fontSize: 'auto', fontColor: '#ffffff', outlineColor: '#000000', offsetYPercent: 20, marginPercent: 5, captionMotion: 'none', popIntensity: 'gentle', activeWordEnabled: false, activeWordColor: '#ffd700' };
 function read(key: string | null): Style {
   try {
     const stored = JSON.parse(key ? localStorage.getItem(key) ?? '{}' : '{}');
     const color = (value: unknown, fallback: string) => typeof value === 'string' && /^#[0-9a-f]{6}$/i.test(value) ? value : fallback;
     const percent = (value: unknown, fallback: number) => typeof value === 'number' && Number.isFinite(value) ? Math.min(100, Math.max(0, value)) : fallback;
-    return { fontSize: stored.fontSize === 'auto' || typeof stored.fontSize !== 'number' ? 'auto' : sanitizeCaptionFontSize(stored.fontSize),
+    return { ...sanitizeCaptionBackground(stored), fontSize: stored.fontSize === 'auto' || typeof stored.fontSize !== 'number' ? 'auto' : sanitizeCaptionFontSize(stored.fontSize),
       fontColor: color(stored.fontColor, defaults.fontColor), outlineColor: color(stored.outlineColor, defaults.outlineColor),
       offsetYPercent: percent(stored.offsetYPercent, 20), marginPercent: percent(stored.marginPercent, 5),
       captionMotion: sanitizeCaptionMotion(stored.captionMotion), popIntensity: sanitizePopIntensity(stored.popIntensity),
@@ -33,7 +35,7 @@ export function useProjectCaptionStyle(videoId: number | null, version = 'origin
     try { localStorage.setItem(key, JSON.stringify(state.value)); } catch { /* Private browsing can disable storage. */ }
   }, [key, state]);
   const set = <K extends keyof Style>(field: K, next: Style[K]) => setState(previous => ({ key, value: { ...(previous.key === key ? previous.value : loaded), [field]: next } }));
-  return { ...value, setFontSize: (next: CaptionFontSizeSetting) => set('fontSize', next),
+  return { ...value, setBackgroundColor: (next: string) => set('backgroundColor', next), setBackgroundOpacity: (next: number) => set('backgroundOpacity', next), setFontSize: (next: CaptionFontSizeSetting) => set('fontSize', next),
     setFontId: (next: string) => set('fontId', next), setActiveWordEnabled: (next: boolean) => set('activeWordEnabled', next),
     setActiveWordColor: (next: string) => set('activeWordColor', next),
     applyCaptionStyle: (next: CaptionAppearance) => setState({ key, value: sanitizeCaptionAppearance(next) }),

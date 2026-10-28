@@ -1,3 +1,4 @@
+import { captionBackgroundCss } from "../../captionBackground.js";
 import { useEffect, useMemo } from "react";
 import { createOutlineShadow } from "../utils/transcriptionUtils";
 import { useEditorPreferences } from "../contexts/EditorPreferences";
@@ -10,6 +11,8 @@ type UsePreviewStyleProps = {
   positionXPercent?: number;
   rotation?: number;
   scaleOutline?: boolean;
+  backgroundColor?: string;
+  backgroundOpacity?: number;
   fontColor: string;
   fontSize: number;
   offsetYPercent: number;
@@ -20,6 +23,7 @@ type UsePreviewStyleProps = {
 };
 
 export function usePreviewStyle({
+  backgroundColor = "#000000", backgroundOpacity = 0,
   fontColor,
   fontSize,
   offsetYPercent,
@@ -46,6 +50,7 @@ export function usePreviewStyle({
       const widthPercent = Math.max(10, 100 - clampedMarginPercent * 2);
 
       return {
+        "--caption-background": captionBackgroundCss({ backgroundColor, backgroundOpacity }),
         position: "absolute" as const,
         left: `${positionXPercent}%`,
         bottom: `${clampedBottomPercent}%`,
@@ -78,6 +83,7 @@ export function usePreviewStyle({
     const bottomPx = bottomVideo * scaleY;
 
     return {
+      "--caption-background": captionBackgroundCss({ backgroundColor, backgroundOpacity }),
       position: "absolute" as const,
       left: `${positionXPercent}%`,
       bottom: `${bottomPx}px`,
@@ -96,7 +102,7 @@ export function usePreviewStyle({
       maxWidth: `${widthPx}px`,
       direction: preferences.direction,
     };
-  }, [fontColor, fontSize, offsetYPercent, outlineColor, marginPercent, videoDimensions, renderDimensions, preferences.direction, font, fontStack, lineHeight, scaleOutline, positionXPercent, rotation]);
+  }, [backgroundColor, backgroundOpacity, fontColor, fontSize, offsetYPercent, outlineColor, marginPercent, videoDimensions, renderDimensions, preferences.direction, font, fontStack, lineHeight, scaleOutline, positionXPercent, rotation]);
 
   useEffect(() => {
     if (import.meta.env.DEV && videoDimensions && renderDimensions) {

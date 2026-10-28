@@ -134,6 +134,8 @@ export function VideoEditPage({ user, videoToken, onSaveSegments, onNewUpload, o
     if (options.fontId) formData.append("fontId", options.fontId);
     formData.append("fontColor", options.fontColor);
     formData.append("outlineColor", options.outlineColor);
+    formData.append("backgroundColor", options.backgroundColor ?? "#000000");
+    formData.append("backgroundOpacity", String(options.backgroundOpacity ?? 0));
     formData.append("offsetYPercent", String(options.offsetYPercent));
     formData.append("marginPercent", String(options.marginPercent));
 

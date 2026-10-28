@@ -3,6 +3,7 @@ import { Alert, Box, Button, ButtonBase, FormControlLabel, Slider, Stack, Switch
 import { AlignHorizontalCenterRounded, CropRotateRounded } from '@mui/icons-material';
 import { CaptionAppearanceContext } from '../contexts/CaptionAppearanceContext';
 import { useCaptionLivePatch } from '../hooks/useCaptionLivePreview';
+import { CaptionBackgroundSettings } from './CaptionBackgroundSettings';
 import { CaptionFontPicker } from './CaptionFontPicker';
 import { WordAppearanceContext } from '../contexts/WordAppearanceContext';
 
@@ -58,6 +59,9 @@ export function CaptionAppearanceEditor() {
       </Stack>
     </Stack>}
     {tab === 'color' && <Stack spacing={1.5} role="tabpanel" aria-label="צבע">
+      <CaptionBackgroundSettings backgroundColor={values.backgroundColor} backgroundOpacity={values.backgroundOpacity} disabled={editor.disabled}
+        onChange={patch => { if (patch.backgroundOpacity !== undefined) editor.live.set({ ...editor.live.get(), ...patch }); else change(patch); }}
+        onCommit={patch => editor.commit({ ...editor.live.get(), ...patch })} />
       {COLORS.map(([key, label, short]) => <Box key={key}>
         <Typography variant="body2" sx={{ mb: .75 }}>{short}</Typography>
         <Stack direction="row" spacing={.75} alignItems="center" useFlexGap flexWrap="wrap">

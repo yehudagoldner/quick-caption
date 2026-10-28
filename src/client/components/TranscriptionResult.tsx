@@ -6,6 +6,7 @@ import type { BurnOptions } from "./VideoToolbar";
 import { TranscriptionResultHeader } from "./TranscriptionResultHeader";
 import { TranscriptionMainContent } from "./TranscriptionMainContent";
 import { useTranscriptionState } from "../hooks/useTranscriptionState";
+import { CaptionBackgroundSettings } from "./CaptionBackgroundSettings";
 import { usePreviewStyle } from "../hooks/usePreviewStyle";
 import { useAutoCaptionFontSize } from "../hooks/useAutoCaptionFontSize";
 import { useCaptionFont } from "../hooks/useCaptionFont";
@@ -120,6 +121,7 @@ export function TranscriptionResult({
     fontColor,
     setFontColor,
     outlineColor,
+    backgroundColor, setBackgroundColor, backgroundOpacity, setBackgroundOpacity,
     setOutlineColor,
     offsetYPercent,
     setOffsetYPercent,
@@ -258,6 +260,8 @@ export function TranscriptionResult({
     fontSize: activeOverrides.fontSize ?? effectiveFontSize,
     offsetYPercent: activeOverrides.offsetYPercent ?? offsetYPercent,
     outlineColor: activeOverrides.outlineColor ?? outlineColor,
+    backgroundColor: activeOverrides.backgroundColor ?? backgroundColor,
+    backgroundOpacity: activeOverrides.backgroundOpacity ?? backgroundOpacity,
     positionXPercent: activeOverrides.positionXPercent,
     rotation: activeOverrides.rotation,
     marginPercent,
@@ -387,7 +391,7 @@ export function TranscriptionResult({
     fontSize: effectiveFontSize,
     fontReady,
     fontColor,
-    outlineColor,
+    outlineColor, backgroundColor, backgroundOpacity,
     offsetYPercent,
     marginPercent,
     videoDimensions: mediaDimensions,
@@ -461,7 +465,7 @@ export function TranscriptionResult({
     } : null}>
     <CaptionAppearanceContext.Provider value={{
       segment: appearanceSegment,
-      values: { fontId, fontSize: effectiveFontSize, fontColor, outlineColor, activeWordColor, activeWordEnabled, positionXPercent: 50, offsetYPercent, rotation: 0, ...appearanceStyle },
+      values: { fontId, fontSize: effectiveFontSize, fontColor, outlineColor, backgroundColor, backgroundOpacity, activeWordColor, activeWordEnabled, positionXPercent: 50, offsetYPercent, rotation: 0, ...appearanceStyle },
       activeWordOverride: appearanceStyle.activeWordEnabled,
       live: appearanceLive,
       disabled: !isEditable || isBurning || timelineDrafts || wordSaving,
@@ -518,7 +522,9 @@ export function TranscriptionResult({
             onNavigateAway={destination => navigationRef.current(destination)}
             fontId={fontId} onFontChange={setFontId} activeWordColor={activeWordColor}
             onActiveWordColorChange={setActiveWordColor}
-            captionStyles={<CaptionStylePicker appearance={{ fontId, fontSize, fontColor, outlineColor, activeWordColor, activeWordEnabled, offsetYPercent, marginPercent, captionMotion, popIntensity }} onApply={applyCaptionStyle} disabled={isBurning} />}
+            captionBackgroundControls={<CaptionBackgroundSettings backgroundColor={backgroundColor} backgroundOpacity={backgroundOpacity} disabled={isBurning}
+              onChange={patch => { if (patch.backgroundColor !== undefined) setBackgroundColor(patch.backgroundColor); if (patch.backgroundOpacity !== undefined) setBackgroundOpacity(patch.backgroundOpacity); }} />}
+            captionStyles={<CaptionStylePicker appearance={{ fontId, fontSize, fontColor, outlineColor, backgroundColor, backgroundOpacity, activeWordColor, activeWordEnabled, offsetYPercent, marginPercent, captionMotion, popIntensity }} onApply={applyCaptionStyle} disabled={isBurning} />}
             fontReady={fontReady}
             hasTimelineDrafts={hasTimelineDrafts || reframing}
             timelineEditing={{ onSaveSegment: handleSaveSegment, onUndo: handleUndo, onRedo: handleRedo, canUndo, canRedo,

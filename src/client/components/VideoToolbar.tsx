@@ -40,6 +40,8 @@ import {
 } from "@mui/icons-material";
 
 export type BurnOptions = {
+  backgroundColor?: string;
+  backgroundOpacity?: number;
   crop?: import('../../videoVersions.js').VideoCrop | null;
   onProgress?: (progress: BurnProgress) => void;
   activeWordColor?: string;
@@ -70,6 +72,7 @@ type VideoToolbarProps = {
   fontReady?: boolean;
   pendingEdits?: boolean;
   editorSettings: ReactNode;
+  captionBackgroundControls?: ReactNode;
   captionStyles?: ReactNode;
   fontId?: string;
   onFontChange?: (id: string) => void;
@@ -106,7 +109,7 @@ export function VideoToolbar({
   fontReady = true,
   pendingEdits = false,
   editorSettings,
-  captionStyles, fontId, onFontChange, activeWordColor, onActiveWordColorChange,
+  captionBackgroundControls, captionStyles, fontId, onFontChange, activeWordColor, onActiveWordColorChange,
   canBurn = true,
   fontSize,
   autoFontSize,
@@ -512,6 +515,7 @@ export function VideoToolbar({
               size="small"
               InputLabelProps={{ shrink: true }}
             />
+            {captionBackgroundControls}
             {onActiveWordColorChange && <TextField label="צבע מילה פעילה" type="color" value={activeWordColor ?? '#ffd700'} onChange={event => onActiveWordColorChange(event.target.value)} disabled={isBurning} fullWidth size="small" InputLabelProps={{ shrink: true }} />}
           </Stack>
         </Paper>

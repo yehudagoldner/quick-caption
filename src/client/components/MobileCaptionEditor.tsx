@@ -80,6 +80,7 @@ export type MobileCaptionEditorProps = {
   onNavigateAway: EditorNavigationGuard;
   timelineEditing: Pick<SubtitleTimelineProps, "onSaveSegment" | "onUndo" | "onRedo" | "canUndo" | "canRedo" | "onPlayFrom" | "loopEnabled" | "onLoopChange" | "onDraftStateChange">;
   editorSettings: ReactNode;
+  captionBackgroundControls?: ReactNode;
   captionStyles?: ReactNode;
   fontId?: string;
   onFontChange?: (id: string) => void;
@@ -145,7 +146,7 @@ export function MobileCaptionEditor({
   onNavigateAway,
   timelineEditing,
   editorSettings,
-  captionStyles, fontId, onFontChange, activeWordColor, onActiveWordColorChange,
+  captionBackgroundControls, captionStyles, fontId, onFontChange, activeWordColor, onActiveWordColorChange,
   mediaUrl,
   activeSegmentText,
   previewStyle,
@@ -714,6 +715,7 @@ export function MobileCaptionEditor({
           {individualStyleOpen ? <CaptionAppearanceEditor /> : <>
           {audiogram && <Box sx={{ pb: 1.5, mb: 1.5, borderBottom: 1, borderColor: "divider" }}><AudiogramSettings /></Box>}
           {captionStyles}
+          <Box sx={{ mt: 2 }}>{captionBackgroundControls}</Box>
           <Box sx={{ mt: captionStyles ? 2 : 0 }}><CaptionFontPicker disabled={isBurning} fontId={fontId} onFontChange={onFontChange} /></Box>
           <Box sx={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 0.9, my: 1.35, "& > *": { minWidth: 0 } }}>
             <FormControl fullWidth size="small">

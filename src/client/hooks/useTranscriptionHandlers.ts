@@ -54,6 +54,8 @@ type UseTranscriptionHandlersProps = {
   fontReady?: boolean;
   fontColor: string;
   outlineColor: string;
+  backgroundColor: string;
+  backgroundOpacity: number;
   offsetYPercent: number;
   marginPercent: number;
   videoDimensions: { width: number; height: number } | null;
@@ -93,7 +95,7 @@ export function useTranscriptionHandlers({
   fontSize,
   fontReady = true,
   fontColor,
-  outlineColor,
+  outlineColor, backgroundColor, backgroundOpacity,
   offsetYPercent,
   marginPercent,
   videoDimensions,
@@ -208,7 +210,7 @@ export function useTranscriptionHandlers({
     activeWordColor,
     fontSize,
     fontColor,
-    outlineColor,
+    outlineColor, backgroundColor, backgroundOpacity,
     offsetYPercent,
     marginPercent,
     width: videoDimensions?.width ?? null,
@@ -253,7 +255,7 @@ export function useTranscriptionHandlers({
         activeWordColor,
         fontSize,
         fontColor,
-        outlineColor,
+        outlineColor, backgroundColor, backgroundOpacity,
         offsetYPercent,
         marginPercent,
         videoWidth: videoDimensions?.width ?? null,
@@ -302,7 +304,7 @@ export function useTranscriptionHandlers({
     fontReady,
     fontSize,
     fontColor,
-    outlineColor,
+    outlineColor, backgroundColor, backgroundOpacity,
     offsetYPercent,
     marginPercent,
     videoDimensions,

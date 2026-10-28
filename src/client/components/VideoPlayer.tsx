@@ -1,3 +1,4 @@
+import { captionBackgroundCss } from "../../captionBackground.js";
 import { Fragment, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { Alert, Box, Button, IconButton, Stack, Typography } from "@mui/material";
 import { PauseRounded, PlayArrowRounded } from "@mui/icons-material";
@@ -97,11 +98,11 @@ function CaptionPreview({ activeSegmentText, activeSegmentId, words, currentTime
         fontWeight: own.bold ? 900 : undefined,
         position: 'relative', left: `${(own.offsetX ?? 0) / (own.fontScale ?? 1)}em`, top: `${(own.offsetY ?? 0) / (own.fontScale ?? 1)}em`,
         ...(selectWord ? { cursor: chosen ? drag.live ? 'grabbing' : 'grab' : 'pointer', zIndex: chosen ? 2 : undefined, outline: chosen ? '2px solid #38bdf8' : undefined, outlineOffset: 2, borderRadius: 2 } : {}),
-        ...(pop ? { display: 'inline-block', whiteSpace: 'nowrap', transformOrigin: '50% 100%', transform: `scale(${wordPopScale(popWord!, currentTime, popIntensity)})` } : {}) }}>
+        ...(pop ? { backgroundColor: 'var(--caption-background, transparent)', boxShadow: '0 0 0 .06em var(--caption-background, transparent)', display: 'inline-block', whiteSpace: 'nowrap', transformOrigin: '50% 100%', transform: `scale(${wordPopScale(popWord!, currentTime, popIntensity)})` } : {}) }}>
       {pop ? escapeAssText(text) : text}
     </span>;
   };
-  return <Box data-testid="subtitle-overlay" data-segment-id={activeSegmentId}>
+  return <Box data-testid="subtitle-overlay" data-segment-id={activeSegmentId} sx={{ display: 'inline-block', ...(captionMotion !== 'pop' ? { bgcolor: 'var(--caption-background, transparent)', boxShadow: '0 0 0 .06em var(--caption-background, transparent)' } : {}) }}>
     {captionMotion === 'pop' && popWord ? renderWord(popWord.word, popWord.wordIndex!, true)
       : captionParts.map((part, index) => part.wordIndex === undefined ? <Fragment key={`space-${index}`}>{part.text}</Fragment> : renderWord(part.text, part.wordIndex))}
   </Box>;
@@ -156,6 +157,7 @@ export function VideoPlayer({ compact, size, fill, hideMeta, mediaUrl, activeSeg
   });
   const basePreviewFontSize = parseFloat(String(previewStyle.fontSize));
   const liveCaptionStyle = live ? {
+    "--caption-background": captionBackgroundCss(transformValues),
     left: `${transformValues.positionXPercent}%`, bottom: `${transformValues.offsetYPercent}%`,
     transform: `translate(-50%, 0) rotate(${transformValues.rotation}deg)`,
     ...(live.fontSize != null && Number.isFinite(basePreviewFontSize) ? { fontSize: `${basePreviewFontSize * live.fontSize / committedValues.fontSize}px` } : {}),

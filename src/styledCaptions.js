@@ -1,3 +1,4 @@
+import { captionBackgroundAss } from './captionBackground.js';
 import { sanitizeCaptionOverrides } from './captionOverrides.js';
 import { getCaptionFont } from './captionFonts.js';
 import { escapeAssText, renderWordPopAss } from './captionMotion.js';
@@ -21,6 +22,8 @@ export function captionOverrideTags(style, defaults, offset, forcePosition = fal
     const x = (offset?.offsetX ?? 0) * value.fontSize * font.emRatio, y = (offset?.offsetY ?? 0) * value.fontSize * font.emRatio;
     tags.push(`\\pos(${(value.positionXPercent * value.videoWidth / 100 + x * Math.cos(angle) - y * Math.sin(angle)).toFixed(2)},${((100 - value.offsetYPercent) * value.videoHeight / 100 + x * Math.sin(angle) + y * Math.cos(angle)).toFixed(2)})`);
   }
+  const background = captionBackgroundAss(value);
+  tags.push(`\\4c&H${background.slice(4)}&\\4a&H${background.slice(2, 4)}&`);
   return tags.join('');
 }
 
@@ -77,7 +80,8 @@ export function renderStyledCaptionsAss(segments, sourceWords, options) {
           const wordIndex = index++;
           const tags = wordTags(owned.find(word => word.wordIndex === wordIndex)?.style, own, defaults);
           const activeTags = wordIndex === active ? `\\1c${highlight}` : '';
-          const alpha = moved.length ? `\\alpha&H${(onlyIndex === undefined ? !movedIndexes.has(wordIndex) : wordIndex === onlyIndex) ? '00' : 'FF'}&` : '';
+          const visible = onlyIndex === undefined ? !movedIndexes.has(wordIndex) : wordIndex === onlyIndex;
+          const alpha = moved.length ? [1, 2, 3].map(channel => `\\${channel}a&H${visible ? '00' : 'FF'}&`).join('') : '';
           return tags ? `{${alpha}${tags}${activeTags}}${escaped}{${resetWord}}`
             : activeTags || alpha ? `{${alpha}${activeTags}}${escaped}{\\1c${base}}` : escaped;
         }).join('');
@@ -85,7 +89,7 @@ export function renderStyledCaptionsAss(segments, sourceWords, options) {
       }).join('\\N');
       };
       events.push(`Dialogue: 0,${time(from)},${time(to)},Default,,0,0,0,,{\\an2${moved.length ? captionOverrideTags(segment.style, defaults, null, true) : tagsFor(segment)}}${textFor()}`);
-      for (const word of moved) events.push(`Dialogue: 1,${time(from)},${time(to)},Default,,0,0,0,,{\\an2${captionOverrideTags(segment.style, defaults, sanitizeWordOverrides(word.style), true)}}${textFor(word.wordIndex)}`);
+      for (const word of moved) events.push(`Dialogue: 1,${time(from)},${time(to)},Default,,0,0,0,,{\\an2${captionOverrideTags(segment.style, defaults, sanitizeWordOverrides(word.style), true)}\\4a&HFF&}${textFor(word.wordIndex)}`);
     }
   }
   return header + events.join('\n') + '\n';
