@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Alert, Box, Button, Typography } from "@mui/material";
 
 export function AudioWaveform({ mediaUrl, duration, currentTime, onSeek }: {
@@ -9,15 +9,14 @@ export function AudioWaveform({ mediaUrl, duration, currentTime, onSeek }: {
   const request = useRef(0);
   const abort = useRef<AbortController | null>(null);
   const waveformPath = useMemo(() => peaks.map((v, i) => `M${i},${32 - v * 30}v${Math.max(1, v * 60)}`).join(" "), [peaks]);
-  useEffect(() => { request.current++; abort.current?.abort(); setPeaks([]); setStatus("idle"); return () => { request.current++; abort.current?.abort(); }; }, [mediaUrl]);
-  const load = async () => {
+  const load = useCallback(async () => {
     if (!mediaUrl) return;
     const id = ++request.current;
     abort.current?.abort(); abort.current = new AbortController();
     setStatus("loading");
     let audio: AudioContext | undefined;
     try {
-      // Decode only on demand. Guard memory use for large recordings.
+      // Guard memory use for large recordings when decoding automatically.
       if (duration > 1200) throw new Error("Recording too long for local decoding");
       const response = await fetch(mediaUrl, { signal: abort.current.signal });
       if (!response.ok) throw new Error("Media unavailable");
@@ -39,7 +38,13 @@ export function AudioWaveform({ mediaUrl, duration, currentTime, onSeek }: {
       if (id === request.current) { setPeaks(result); setStatus("ready"); }
     } catch { if (id === request.current) setStatus("error"); }
     finally { if (audio) await audio.close(); }
-  };
+  }, [mediaUrl, duration]);
+  useEffect(() => {
+    setPeaks([]);
+    setStatus("idle");
+    void load();
+    return () => { request.current++; abort.current?.abort(); };
+  }, [load]);
   if (status !== "ready") return <Box>
     <Button size="small" disabled={!mediaUrl || status === "loading"} onClick={load}>{status === "loading" ? "טוען גל קול…" : "הצג גל קול"}</Button>
     {status === "error" && <Alert severity="info">גל הקול אינו זמין לקובץ הזה. הפענוח המקומי מוגבל ל־100MB ול־20 דקות ותלוי בפורמט; אפשר להמשיך לערוך ולנגן כרגיל.</Alert>}
