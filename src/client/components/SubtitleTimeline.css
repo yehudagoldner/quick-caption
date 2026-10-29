@@ -24,6 +24,11 @@
   cursor: grabbing;
 }
 
+.subtitle-timeline .audio-waveform-row .timeline-editor-action {
+  background: transparent;
+  cursor: crosshair;
+}
+
 .subtitle-timeline [class*="action-left-stretch"],
 .subtitle-timeline [class*="action-right-stretch"] {
   cursor: ew-resize;

@@ -4,7 +4,7 @@ import {
   Slider, Stack, Switch, TextField, ThemeProvider, Typography, createTheme, useTheme,
 } from "@mui/material";
 import {
-  AccessTimeRounded, AccountBalanceWalletRounded, AddRounded, ChevronLeftRounded, CloseRounded,
+  AccessTimeRounded, AccountBalanceWalletRounded, AddRounded, ChevronLeftRounded, CloseRounded, GraphicEqRounded,
   DeleteOutlineRounded, EditOutlined, FullscreenRounded, HomeRounded, MenuRounded, MoreVertRounded, MyLocationRounded,
   OpenInFullRounded, PauseRounded, PlayArrowRounded, RedoRounded, RepeatRounded, RestartAltRounded, SettingsRounded,
   ShareRounded, ShortTextRounded, UndoRounded, UploadFileOutlined, VideoLibraryRounded, VolumeOffRounded, ZoomInRounded,
@@ -102,9 +102,10 @@ function DemoStage({ demo, compactControls, captionTestId }: { demo: CaptionDemo
 type Clip = { id: Segment["id"]; start: number; end: number; label: string };
 
 /** Same geometry and colors as the react-timeline-editor track used in the editor. */
-function Track({ clips, duration, pixelsPerSecond, time, fps, height, color, selectedId, onClip, onSeek, testId, label }: {
+function Track({ clips, duration, pixelsPerSecond, time, fps, height, color, selectedId, onClip, onSeek, testId, label, waveformPath }: {
   clips: Clip[]; duration: number; pixelsPerSecond: number; time: number; fps: number; height: number; color: string;
   selectedId?: Segment["id"] | null; onClip: (clip: Clip) => void; onSeek: (time: number) => void; testId: string; label: string;
+  waveformPath?: string;
 }) {
   const scroller = useRef<HTMLDivElement>(null);
   const view = useElementSize(scroller);
@@ -122,7 +123,7 @@ function Track({ clips, duration, pixelsPerSecond, time, fps, height, color, sel
     const rect = event.currentTarget.getBoundingClientRect();
     onSeek(((event.clientX - rect.left) / rect.width * content - 20) / pixelsPerSecond);
   };
-  return <div ref={scroller} className="qc-track" style={{ height }} data-testid={testId} aria-label={label}>
+  return <div ref={scroller} className="qc-track" style={{ height: height + (waveformPath ? 36 : 0) }} data-testid={testId} aria-label={label}>
     <div className="qc-track-content" style={{ width: content }}>
       <div className="qc-track-time" onClick={seekFrom}>
         {Array.from({ length: majors * 4 }, (_, index) => <span key={index} className={`qc-track-unit ${index % 4 === 0 ? "is-big" : ""}`} style={{ left: 20 + index * scaleWidth / 4 }}>
@@ -139,6 +140,11 @@ function Track({ clips, duration, pixelsPerSecond, time, fps, height, color, sel
           <Typography noWrap variant="caption" sx={{ direction: "rtl", unicodeBidi: "plaintext", fontWeight: 600, letterSpacing: ".2px" }}>{clip.label}</Typography>
         </Box>)}
       </div>
+      {waveformPath && <Box component="svg" viewBox="0 0 1600 64" preserveAspectRatio="none" aria-label="גל קול להמחשה"
+        onClick={event => onSeek((event.clientX - event.currentTarget.getBoundingClientRect().left) / pixelsPerSecond)}
+        sx={{ position: "absolute", top: 78, left: 20, width: duration * pixelsPerSecond, height: 32, cursor: "crosshair" }}>
+        <path d={waveformPath} stroke="#64b5f6" strokeWidth="1" />
+      </Box>}
       <div className="qc-track-cursor" style={{ left: cursor }}><span /></div>
     </div>
   </div>;
@@ -199,15 +205,6 @@ function DemoTimeline({ demo, fps, selectedId, onSelect, disableSeekBar }: { dem
         <VideoSeekBar allowPageScroll disabled={disableSeekBar} currentTime={time} duration={duration} fps={fps} mediaUrl={null} onSeek={seek} />
       </Box>
     </Stack>
-    {waveformVisible ? <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
-      <Box component="svg" viewBox="0 0 1600 64" preserveAspectRatio="none" aria-hidden="true"
-        onClick={event => { const rect = event.currentTarget.getBoundingClientRect(); seek((event.clientX - rect.left) / rect.width * duration); }}
-        sx={{ flex: 1, minWidth: 0, height: 32, display: "block", bgcolor: "action.hover", cursor: "crosshair", borderRadius: 1 }}>
-        <path d={path} stroke="#3d91c8" strokeWidth="1" />
-        <line x1={time / duration * 1600} x2={time / duration * 1600} y1="0" y2="64" stroke="#e65100" strokeWidth="3" />
-      </Box>
-      <IconButton size="small" aria-label="סגור גל קול" title="סגור גל קול" onClick={() => setWaveformVisible(false)} sx={{ width: 32, height: 32, flexShrink: 0 }}><CloseRounded fontSize="small" /></IconButton>
-    </Box> : <Box><Button size="small" onClick={() => setWaveformVisible(true)}>הצג גל קול</Button></Box>}
     <Box ref={area} sx={{ minWidth: 0 }}>
       <Stack direction="row" gap={1} alignItems="center" sx={{ height: 40, px: 1, bgcolor: "action.hover", minWidth: 0 }}>
         <Typography variant="caption" sx={{ whiteSpace: "nowrap" }}>זום ציר ראשי</Typography>
@@ -216,12 +213,14 @@ function DemoTimeline({ demo, fps, selectedId, onSelect, disableSeekBar }: { dem
         </Box></ThemeProvider>
         <Button size="small" aria-label="תצוגת 30 שניות" aria-pressed={zoom === null} variant={zoom === null ? "contained" : "text"} onClick={() => setZoom(null)} sx={{ whiteSpace: "nowrap", minWidth: 0 }}>30 שנ׳</Button>
         <Button size="small" aria-label="התאם את כל ההקלטה" aria-pressed={zoom === 0} onClick={() => setZoom(0)} sx={{ whiteSpace: "nowrap", minWidth: 0 }}>הכול</Button>
+        <Button size="small" startIcon={<GraphicEqRounded />} aria-label={waveformVisible ? "סגור גל קול" : "הצג גל קול"}
+          aria-pressed={waveformVisible} onClick={() => setWaveformVisible(value => !value)} sx={{ whiteSpace: "nowrap", minWidth: 0 }}>גל קול</Button>
         <CaptionSelectionToolbar count={selected ? 1 : 0} disabled canAdd={false} canMerge={false} canSplit={false}
           add={() => {}} selectAll={() => {}} clear={() => onSelect(null)} merge={() => {}} split={() => {}} remove={() => {}} move={() => {}} />
       </Stack>
       <Track testId="demo-caption-track" label="עריכת כתובית" clips={segments.map(segment => ({ id: segment.id, start: segment.start, end: segment.end, label: segment.text }))}
         duration={duration} pixelsPerSecond={pixelsPerSecond} time={time} fps={fps} height={88} color="#9b5700" selectedId={selectedId}
-        onClip={clip => { onSelect(clip.id); seek(clip.start); }} onSeek={seek} />
+        onClip={clip => { onSelect(clip.id); seek(clip.start); }} onSeek={seek} waveformPath={waveformVisible ? path : undefined} />
       {selected && <Box data-testid="demo-inspector">
         <TimelineEditToolbar
           editor={<TextField className="caption-text-editor" variant="standard" fullWidth value={selected.text} placeholder="טקסט המקטע"

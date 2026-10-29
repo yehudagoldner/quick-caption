@@ -53,7 +53,8 @@ export function useTimelineScrubbing(timeline: RefObject<TimelineState | null>, 
       suppressClick.current = false;
       const target = event.target as Element;
       if (!target.closest(".timeline-editor")) return;
-      if (target.closest(".timeline-editor-action") && !target.closest(".timeline-editor-cursor")) return;
+      if (target.closest("button")) return;
+      if (target.closest(".timeline-editor-action") && !target.closest(".timeline-editor-cursor, [data-testid='audio-waveform']")) return;
       event.preventDefault();
       event.stopPropagation();
       pointer.current = { id: event.pointerId, x: event.clientX };
