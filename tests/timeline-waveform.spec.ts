@@ -11,7 +11,7 @@ function recording() {
   wav.writeUInt16LE(channels * 2, 32); wav.writeUInt16LE(16, 34); wav.write('data', 36); wav.writeUInt32LE(size, 40);
   for (let i = 0; i < rate * seconds; i++) {
     const time = i / rate;
-    if (time >= 1 && time < 1.2 || time >= 3 && time < 3.2) wav.writeInt16LE(Math.round(Math.sin(i * .2) * 26000), 44 + i * 4 + 2);
+    if (time >= 1 && time < 1.2 || time >= 3 && time < 3.2) wav.writeInt16LE(Math.round(Math.sin(i * .2) * 2600), 44 + i * 4 + 2);
   }
   return wav;
 }
@@ -51,11 +51,16 @@ test('decoded waveform shares caption geometry through zoom, scrolling, seeking,
     const a = wave.getBoundingClientRect(), b = caption.getBoundingClientRect();
     const pixelsPerSecond = b.width / (Number(caption.dataset.end) - Number(caption.dataset.start));
     // Decoding resamples the PCM and peak bins cover 5 ms, plus one drawn pixel.
-    return { excess: Math.abs(a.x + firstPeak - b.x) - (.005 * pixelsPerSecond + 1), below: a.y >= b.bottom, height: a.height };
+    const bottom = wave.closest('.timeline-editor')!.getBoundingClientRect().bottom - 4;
+    return { excess: Math.abs(a.x + firstPeak - b.x) - (.005 * pixelsPerSecond + 1), below: a.y >= b.bottom,
+      height: a.height, centerError: Math.abs(a.y + a.height / 2 - (b.bottom + bottom) / 2),
+      peakHeight: wave.querySelector('path')!.getBBox().height * a.height / 48 };
   });
   expect(await track.locator('.timeline-editor-edit-area [data-testid="audio-waveform"]').count()).toBe(1);
   expect((await alignment()).below).toBe(true);
-  expect((await alignment()).height).toBe(32);
+  expect((await alignment()).height).toBeGreaterThan(32);
+  expect((await alignment()).centerError).toBeLessThan(1);
+  expect((await alignment()).peakHeight).toBeGreaterThan(9);
   expect((await alignment()).excess).toBeLessThan(0);
   await page.getByRole('slider', { name: 'זום ציר ראשי', exact: true }).fill('50');
   await expect.poll(async () => (await alignment()).excess).toBeLessThan(0);

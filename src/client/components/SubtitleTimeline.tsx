@@ -54,6 +54,9 @@ export function SubtitleTimeline({ activeWordEnabled, segments, words = [], disa
   const waveform = useAudioWaveform(layout === "timing" ? null : mediaUrl, total);
   const [waveformVisible, setWaveformVisible] = useState(true);
   const showWaveform = layout !== "timing" && waveformVisible;
+  const timelineHeight = (layout === "timing" || compactDesktop ? 88 : 130) + (showWaveform ? 36 : 0);
+  // Ruler (32), top gap (10), captions (32), and space for the scrollbar (4).
+  const waveformHeight = timelineHeight - 78;
   const root = useRef<HTMLDivElement | null>(null);
   const [selection, setSelection] = useState<Segment["id"][]>([]);
   const [wordSelection, setWordSelection] = useState<{ segmentId: Segment["id"] | null; indexes: number[] }>({ segmentId: null, indexes: [] });
@@ -147,9 +150,9 @@ export function SubtitleTimeline({ activeWordEnabled, segments, words = [], disa
   const trackStructure = displaySegments.map(segment => `${segment.id}:${segment.start}:${segment.end}`).join("|");
   const rows = useMemo<TimelineRow[]>(() => [{ id: "captions", actions: displaySegments.map(s => ({
     id: String(s.id), effectId: String(s.id), start: s.start, end: s.end, minStart: 0, maxEnd: total, movable: false, flexible: !locked && !dirty && selection.length <= 1,
-  })) }, ...(showWaveform ? [{ id: "audio", rowHeight: 36, classNames: ["audio-waveform-row"], actions: [{
+  })) }, ...(showWaveform ? [{ id: "audio", rowHeight: waveformHeight, classNames: ["audio-waveform-row"], actions: [{
     id: "audio-waveform", effectId: "audio-waveform", start: 0, end: total, movable: false, flexible: false,
-  }] }] : [])], [trackStructure, trackVersion, total, locked, dirty, selection.length, showWaveform]);
+  }] }] : [])], [trackStructure, trackVersion, total, locked, dirty, selection.length, showWaveform, waveformHeight]);
   const effects = useMemo(() => Object.fromEntries(segments.map(s => [String(s.id), { id: String(s.id), name: String(s.id) }])), [trackStructure]);
   const selected = segments.find(s => s.id === selectedSegmentId);
   // Playback changes time each frame, not the track data. Keep the word array stable
@@ -458,7 +461,7 @@ export function SubtitleTimeline({ activeWordEnabled, segments, words = [], disa
             sx={{ touchAction: "none", userSelect: "none", bgcolor: selection.includes(segment.id) ? (selectedWords.length && draft?.segment.id === segment.id ? "success.main" : "primary.main") : "#9b5700", color: "white", height: "100%", px: 1, display: "flex", alignItems: "center", borderRadius: 1, overflow: "hidden" }}>
             <Typography noWrap variant="caption" sx={{ direction: `${preferences.direction} !important`, unicodeBidi: "plaintext" }}>{segment.text}</Typography>
           </Box>;
-        }} style={{ height: (compactTiming || compactDesktop ? 88 : 130) + (showWaveform ? 36 : 0), width: "100%" }} />
+        }} style={{ height: timelineHeight, width: "100%" }} />
     </Box>
     {!compactTiming && draft && !disabled && <Box data-testid="segment-inspector">
         <WordTimeline compact={compactDesktop} enabled={activeWordEnabled} segment={draft.segment} words={draft.words} currentTime={time} disabled={locked} onSeek={seek}

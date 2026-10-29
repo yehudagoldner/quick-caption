@@ -20,23 +20,25 @@ export function AudioWaveform({ waveform, pixelsPerSecond, scrollLeft, viewportW
       const to = Math.min(data.peaks.length, Math.max(from + 1, Math.ceil((left + x + 1) / pixelsPerSecond * binsPerSecond)));
       let peak = 0;
       for (let i = from; i < to; i++) peak = Math.max(peak, data.peaks[i]);
-      if (peak > 0) strokes.push(`M${x},${16 - peak * 15}v${Math.max(.5, peak * 30)}`);
+      // Lift quiet speech visually while retaining dynamics and exact silence.
+      const amplitude = Math.sqrt(Math.min(1, peak));
+      if (amplitude > 0) strokes.push(`M${x},${24 - amplitude * 22}v${Math.max(.5, amplitude * 44)}`);
     }
     return strokes.join(" ");
   }, [waveform.data, left, width, pixelsPerSecond]);
-  return <Box data-testid="audio-waveform-track" sx={{ position: "absolute", left, width, height: 36, bgcolor: "#191b1d", display: "flex", alignItems: "center" }}>
+  return <Box data-testid="audio-waveform-track" sx={{ position: "absolute", left, width, height: "100%", bgcolor: "#191b1d", display: "flex", alignItems: "center", py: .5, boxSizing: "border-box" }}>
     {waveform.status === "ready" ? <Box component="svg" data-testid="audio-waveform" role="slider" aria-label="מיקום בגל הקול"
       aria-valuemin={0} aria-valuemax={duration} aria-valuenow={currentTime} tabIndex={0}
-      viewBox={`0 0 ${width} 32`} preserveAspectRatio="none"
+      viewBox={`0 0 ${width} 48`} preserveAspectRatio="none"
       onKeyDown={event => {
         if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
           event.preventDefault(); event.stopPropagation();
           onSeek(Math.max(0, Math.min(duration, currentTime + (event.key === "ArrowRight" ? 1 : -1) / fps)));
         }
       }}
-      sx={{ width: "100%", height: 32, display: "block", cursor: "crosshair", outlineOffset: -2 }}>
-      <line x1="0" x2={width} y1="16" y2="16" stroke="#3d91c8" strokeOpacity=".35" />
-      <path d={path} stroke="#64b5f6" strokeWidth="1" />
+      sx={{ width: "100%", height: "100%", maxHeight: 48, display: "block", cursor: "crosshair", outlineOffset: -2 }}>
+      <line x1="0" x2={width} y1="24" y2="24" stroke="#3d91c8" strokeOpacity=".35" />
+      <path d={path} stroke="#90caf9" strokeWidth="1" />
     </Box> : <Box dir="rtl" sx={{ display: "flex", alignItems: "center", gap: 1, px: 1, minWidth: 0 }}>
       <Typography variant="caption" noWrap sx={{ color: "#b9c7d5" }} title={waveform.status === "error" ? "הפענוח המקומי מוגבל ל־100MB ול־20 דקות ותלוי בפורמט; אפשר להמשיך לערוך ולנגן כרגיל." : undefined}>
         {waveform.status === "error" ? "גל הקול אינו זמין לקובץ הזה" : waveform.status === "loading" ? "טוען גל קול…" : "גל הקול יוצג לאחר טעינת המדיה"}

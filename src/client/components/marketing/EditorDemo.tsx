@@ -142,8 +142,9 @@ function Track({ clips, duration, pixelsPerSecond, time, fps, height, color, sel
       </div>
       {waveformPath && <Box component="svg" viewBox="0 0 1600 64" preserveAspectRatio="none" aria-label="גל קול להמחשה"
         onClick={event => onSeek((event.clientX - event.currentTarget.getBoundingClientRect().left) / pixelsPerSecond)}
-        sx={{ position: "absolute", top: 78, left: 20, width: duration * pixelsPerSecond, height: 32, cursor: "crosshair" }}>
-        <path d={waveformPath} stroke="#64b5f6" strokeWidth="1" />
+        sx={{ position: "absolute", top: (height + 106 - Math.min(48, height - 50)) / 2, left: 20,
+          width: duration * pixelsPerSecond, height: Math.min(48, height - 50), cursor: "crosshair" }}>
+        <path d={waveformPath} stroke="#90caf9" strokeWidth="1" />
       </Box>}
       <div className="qc-track-cursor" style={{ left: cursor }}><span /></div>
     </div>
@@ -184,7 +185,7 @@ function DemoTimeline({ demo, fps, selectedId, onSelect, disableSeekBar }: { dem
   const seek = (value: number) => setTime(snapToFrame(Math.max(0, Math.min(duration, value)), fps));
   const resume = useRef(false);
   const peaks = useMemo(() => speechPeaks(segments, duration), [segments, duration]);
-  const path = useMemo(() => peaks.map((value, index) => `M${index},${32 - value * 30}v${Math.max(1, value * 60)}`).join(" "), [peaks]);
+  const path = useMemo(() => peaks.map((value, index) => `M${index},${32 - Math.sqrt(value) * 30}v${Math.max(1, Math.sqrt(value) * 60)}`).join(" "), [peaks]);
   useEffect(() => {
     if (loop && selected && (time >= selected.end || time < selected.start)) setTime(selected.start);
   }, [loop, selected, time, setTime]);
