@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
-import { Alert, Box, Button, Dialog, DialogActions, DialogContent, DialogTitle, FormControlLabel, LinearProgress, Stack, Switch, Tab, Tabs, Typography } from '@mui/material';
+import { useEffect, useId, useRef, useState } from 'react';
+import { Alert, Box, Button, Dialog, DialogActions, DialogContent, DialogTitle, FormControlLabel, IconButton, LinearProgress, Stack, Switch, Tab, Tabs, Typography } from '@mui/material';
+import { CloseRounded } from '@mui/icons-material';
 import { VIDEO_FORMATS, type VideoCrop } from '../../videoVersions.js';
 import { autoReframe } from '../utils/autoReframe';
 import { VideoVersionShare } from './VideoVersionShare';
@@ -11,6 +12,8 @@ export function VideoVersionsBar({ eligible, enabled, dismissed, activeId, crop,
 }) {
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState<number | null>(null);
+  const [expanded, setExpanded] = useState(true);
+  const panelId = useId();
   const job = useRef<AbortController | null>(null);
   useEffect(() => () => { job.current?.abort(); onBusy(false); }, [mediaUrl, onBusy]);
   const perform = async (action: () => void | Promise<void>) => { try { setError(null); await action(); } catch { setError('לא הצלחנו לשמור את הגרסאות במכשיר. בדקו שיש מקום פנוי ונסו שוב.'); } };
@@ -36,16 +39,20 @@ export function VideoVersionsBar({ eligible, enabled, dismissed, activeId, crop,
       <DialogActions disableSpacing sx={{ gap: 1 }}><Button onClick={() => void perform(dismiss)}>המשך עם המקור</Button><Button variant="contained" disabled={disabled} onClick={() => void perform(create)}>כן, צור גרסאות</Button></DialogActions>
     </Dialog>
     {eligible && !enabled && dismissed && <Button size="small" disabled={disabled} onClick={() => void perform(create)}>יצירת גרסאות לרשתות</Button>}
-    {enabled && <Box sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 2, px: 1 }}>
+    {enabled && <Box sx={{ border: expanded ? '1px solid' : 0, borderColor: 'divider', borderRadius: 2, px: expanded ? 1 : 0 }}>
+      {!expanded && <Button size="small" aria-expanded={false} aria-controls={panelId} onClick={() => setExpanded(true)}>הצג גרסאות סרטון</Button>}
+      <Box id={panelId} hidden={!expanded}>
       <Stack direction="row" alignItems="center" sx={{ flexWrap: 'wrap' }}>
         <Tabs value={activeId} onChange={(_, id) => void perform(() => select(id))} variant="scrollable" scrollButtons="auto" aria-label="גרסאות הסרטון" sx={{ flex: 1, minWidth: 0 }}>
           {VIDEO_FORMATS.map(format => <Tab key={format.id} value={format.id} disabled={disabled || progress !== null} label={<Box><Typography variant="body2">{format.label}</Typography><Typography variant="caption">{format.platforms}</Typography></Box>} />)}
         </Tabs>
         <VideoVersionShare key={activeId} activeId={activeId} disabled={disabled || !shareAllowed || progress !== null} onBurnVideo={onBurnVideo} />
         {crop && <FormControlLabel sx={{ mx: 1 }} control={<Switch size="small" checked={Boolean(crop.points?.length) || progress !== null} disabled={disabled || progress !== null} onChange={(_, checked) => void automatic(checked)} />} label="התאמה אוטומטית" />}
+        <IconButton size="small" aria-label="סגור גרסאות סרטון" title="סגור גרסאות סרטון" aria-expanded={true} aria-controls={panelId} onClick={() => setExpanded(false)}><CloseRounded fontSize="small" /></IconButton>
       </Stack>
       <Typography variant="caption" color="text.secondary" display="block" dir="rtl" sx={{ textAlign: 'right' }}>תיקוני מילים ותזמון מילים מתעדכנים בכל הגרסאות. החלוקה והעיצוב נפרדים לכל גרסה.</Typography>
       {crop && <Typography variant="caption" color="text.secondary">גררו את המסגרת לבחירת האזור שיישאר. התאמה אוטומטית עוקבת אחר הפנים הבולטות בתמונה.</Typography>}
+      </Box>
       {progress !== null && <Stack spacing={.5}><LinearProgress variant="determinate" value={progress} /><Stack direction="row" justifyContent="space-between"><Typography variant="caption" role="status">מתאים את המסגרת… {progress}%</Typography><Button size="small" onClick={() => job.current?.abort()}>ביטול</Button></Stack></Stack>}
     </Box>}
     {error && (enabled || dismissed) && <Alert severity="warning" onClose={() => setError(null)}>{error}</Alert>}
