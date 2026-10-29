@@ -102,6 +102,48 @@ test('plain scrolling leaves zoom alone and Ctrl+wheel respects limits and cance
   await expect(slider).toHaveValue('0');
 });
 
+test('ruler wheel pans in both directions with synchronized rows and without editing or seeking', async ({ page }) => {
+  const saves = await open(page);
+  const track = page.getByTestId('caption-track');
+  const slider = page.getByRole('slider', { name: 'זום ציר ראשי' });
+  await slider.focus();
+  await page.keyboard.press('ArrowRight');
+  await page.keyboard.press('ArrowRight');
+  await page.keyboard.press('ArrowRight');
+  const zoom = await slider.inputValue();
+  const ruler = track.locator('.timeline-editor-time-area');
+  const grid = track.locator('.timeline-editor-edit-area .ReactVirtualized__Grid');
+  const offset = () => grid.evaluate(el => el.scrollLeft);
+  await ruler.scrollIntoViewIfNeeded();
+  const pageY = await page.evaluate(() => scrollY);
+  const time = await page.locator('video').evaluate((video: HTMLVideoElement) => video.currentTime);
+  const bounds = (await ruler.boundingBox())!;
+  await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
+  await page.mouse.wheel(0, 100);
+  await expect.poll(offset).toBeGreaterThan(0);
+  const forward = await offset();
+  await expect.poll(() => ruler.locator('.ReactVirtualized__Grid').evaluate(el => el.scrollLeft)).toBe(forward);
+  await page.mouse.wheel(0, -40);
+  await expect.poll(offset).toBeLessThan(forward);
+  const backward = await offset();
+  await page.mouse.wheel(30, 0);
+  await expect.poll(offset).toBeGreaterThan(backward);
+  const cancelled = await ruler.evaluate(el => !el.dispatchEvent(new WheelEvent('wheel', {
+    deltaY: -100, deltaMode: 2, bubbles: true, cancelable: true,
+  })));
+  expect(cancelled).toBe(true);
+  await expect.poll(offset).toBe(0);
+  await ruler.evaluate(el => el.dispatchEvent(new WheelEvent('wheel', { deltaY: 10000, bubbles: true, cancelable: true })));
+  await expect.poll(offset).toBeGreaterThan(0);
+  const end = await offset();
+  await ruler.evaluate(el => el.dispatchEvent(new WheelEvent('wheel', { deltaY: 10000, bubbles: true, cancelable: true })));
+  await expect.poll(offset).toBe(end);
+  await expect(slider).toHaveValue(zoom);
+  expect(await page.evaluate(() => scrollY)).toBe(pageY);
+  expect(await page.locator('video').evaluate((video: HTMLVideoElement) => video.currentTime)).toBe(time);
+  expect(saves).toHaveLength(0);
+});
+
 test('word zoom reaches four times the previous maximum through slider and wheel', async ({ page }) => {
   const saves = await open(page);
   await page.getByTestId('subtitle-clip').first().click();

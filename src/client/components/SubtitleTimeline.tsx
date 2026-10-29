@@ -366,7 +366,7 @@ export function SubtitleTimeline({ activeWordEnabled, segments, words = [], disa
     <Box ref={container} data-testid="caption-track" {...scrubbing} title="Ctrl + גלגלת לזום פנימה והחוצה" sx={{ minWidth: 0, direction: "ltr", "& *": { direction: "ltr !important" } }}>
       <Timeline ref={timeline} editorData={rows} effects={effects} disableDrag={locked || dirty || movePreview !== null} gridSnap={false} dragLine
         scale={scale} scaleWidth={scaleWidth} scaleSplitCount={4} minScaleCount={Math.max(2, Math.ceil(total / scale) + 1)}
-        getScaleRender={value => <span>{formatTimecode(value, fps)}</span>}
+        getScaleRender={value => <span title="גלגלת לגלילה אחורה וקדימה בזמן · Ctrl + גלגלת לזום">{formatTimecode(value, fps)}</span>}
         onCursorDrag={seek} onCursorDragEnd={seek} onClickTimeArea={seek}
         onScroll={p => { scrollLeft.current = p.scrollLeft; setWaveformScroll(p.scrollLeft); }}
         onChange={nextRows => {
