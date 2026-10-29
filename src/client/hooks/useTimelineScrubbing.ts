@@ -3,7 +3,7 @@ import type { TimelineState } from "@xzdarcy/react-timeline-editor";
 
 // Capture empty-space/cursor gestures before the library's clip drag handlers.
 export function useTimelineScrubbing(timeline: RefObject<TimelineState | null>, pixelsPerSecond: number, onSeek: (time: number) => void) {
-  const pointer = useRef<{ id: number; x: number } | null>(null);
+  const pointer = useRef<{ id: number; x: number; pan?: { startX: number; scroll: number; moved: boolean } } | null>(null);
   const animation = useRef<number | null>(null);
   const suppressClick = useRef(false);
   const seekAt = (clientX: number) => {
@@ -40,9 +40,11 @@ export function useTimelineScrubbing(timeline: RefObject<TimelineState | null>, 
     animation.current = requestAnimationFrame(scrollAtEdge);
   };
   const finish = (event: PointerEvent<HTMLDivElement>, seek: boolean) => {
-    if (pointer.current?.id !== event.pointerId) return;
+    const drag = pointer.current;
+    if (drag?.id !== event.pointerId) return;
     event.stopPropagation();
-    if (seek) seekAt(event.clientX);
+    if (seek && !drag.pan?.moved) seekAt(event.clientX);
+    delete event.currentTarget.dataset.panning;
     pointer.current = null;
     stopScrolling();
     if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
@@ -54,27 +56,45 @@ export function useTimelineScrubbing(timeline: RefObject<TimelineState | null>, 
       const target = event.target as Element;
       if (!target.closest(".timeline-editor")) return;
       if (target.closest("button")) return;
-      if (target.closest(".timeline-editor-action") && !target.closest(".timeline-editor-cursor, [data-testid='audio-waveform']")) return;
+      if (target.closest(".timeline-editor-action") && !target.closest(".timeline-editor-cursor, [data-testid='audio-waveform-track']")) return;
       event.preventDefault();
       event.stopPropagation();
-      pointer.current = { id: event.pointerId, x: event.clientX };
+      const pan = target.closest(".timeline-editor-time-area") && !target.closest(".timeline-editor-cursor");
+      const grid = timeline.current?.target.querySelector<HTMLElement>(".timeline-editor-edit-area .ReactVirtualized__Grid");
+      pointer.current = { id: event.pointerId, x: event.clientX,
+        pan: pan ? { startX: event.clientX, scroll: grid?.scrollLeft ?? 0, moved: false } : undefined };
       suppressClick.current = true;
       event.currentTarget.setPointerCapture(event.pointerId);
-      seekAt(event.clientX);
-      animation.current = requestAnimationFrame(scrollAtEdge);
+      if (!pan) {
+        seekAt(event.clientX);
+        animation.current = requestAnimationFrame(scrollAtEdge);
+      }
     },
     onPointerMoveCapture: (event: PointerEvent<HTMLDivElement>) => {
       if (pointer.current?.id !== event.pointerId) return;
       event.preventDefault();
       event.stopPropagation();
       pointer.current.x = event.clientX;
+      const pan = pointer.current.pan;
+      if (pan) {
+        const delta = event.clientX - pan.startX;
+        if (!pan.moved && Math.abs(delta) < 4) return;
+        pan.moved = true;
+        event.currentTarget.dataset.panning = "true";
+        const editor = timeline.current?.target;
+        if (!editor) return;
+        const grids = Array.from(editor.querySelectorAll<HTMLElement>(".ReactVirtualized__Grid"));
+        const limit = Math.max(0, Math.floor(Math.min(...grids.map(grid => grid.scrollWidth - grid.clientWidth))));
+        timeline.current?.setScrollLeft(Math.max(0, Math.min(limit, pan.scroll - delta)));
+        return;
+      }
       seekAt(event.clientX);
       if (animation.current === null) animation.current = requestAnimationFrame(scrollAtEdge);
     },
     onPointerUpCapture: (event: PointerEvent<HTMLDivElement>) => finish(event, true),
     onPointerCancelCapture: (event: PointerEvent<HTMLDivElement>) => finish(event, false),
     onLostPointerCapture: (event: PointerEvent<HTMLDivElement>) => {
-      if (pointer.current?.id === event.pointerId) { pointer.current = null; stopScrolling(); }
+      if (pointer.current?.id === event.pointerId) { pointer.current = null; delete event.currentTarget.dataset.panning; stopScrolling(); }
     },
     onClickCapture: (event: MouseEvent<HTMLDivElement>) => {
       if (!suppressClick.current) return;

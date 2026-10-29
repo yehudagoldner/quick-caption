@@ -169,3 +169,41 @@ test('word zoom reaches four times the previous maximum through slider and wheel
   await expect(page.getByRole('slider', { name: 'זום ציר ראשי' })).toHaveValue(mainZoom);
   expect(saves).toHaveLength(0);
 });
+
+test('dragging the ruler pans the timeline back to the beginning without seeking or editing', async ({ page }) => {
+  await page.setViewportSize({ width: 1366, height: 768 });
+  await prepareApp(page);
+  await page.goto('/tests/editor-harness.html');
+  await page.getByRole('button', { name: 'בדיקת ציר ארוך — 90 שניות', exact: true }).click();
+  await expect.poll(() => page.locator('video').evaluate((video: HTMLVideoElement) => video.readyState)).toBeGreaterThan(0);
+  const track = page.getByTestId('caption-track');
+  const ruler = track.locator('.timeline-editor-time-area');
+  const grid = track.locator('.timeline-editor-edit-area .ReactVirtualized__Grid');
+  await ruler.scrollIntoViewIfNeeded();
+  const rect = (await ruler.boundingBox())!;
+  const x = rect.x + rect.width * .7, y = rect.y + 8;
+  const offset = () => grid.evaluate(el => el.scrollLeft);
+  const time = await page.locator('video').evaluate((video: HTMLVideoElement) => video.currentTime);
+  const zoom = await page.getByRole('slider', { name: 'זום ציר ראשי' }).inputValue();
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  await page.mouse.move(x - 300, y, { steps: 8 });
+  await expect.poll(offset).toBeCloseTo(300, 0);
+  await expect(track).toHaveAttribute('data-panning', 'true');
+  await page.mouse.up();
+  await expect.poll(() => ruler.locator('.ReactVirtualized__Grid').evaluate(el => el.scrollLeft)).toBeCloseTo(300, 0);
+  expect(await page.locator('video').evaluate((video: HTMLVideoElement) => video.currentTime)).toBe(time);
+  // Reversing the gesture returns to zero, even when released outside the track.
+  await page.mouse.move(x - 300, y);
+  await page.mouse.down();
+  await page.mouse.move(rect.x + rect.width + 20, y - 40, { steps: 8 });
+  await expect.poll(offset).toBe(0);
+  await page.mouse.up();
+  await expect(track).not.toHaveAttribute('data-panning', 'true');
+  expect(await page.locator('video').evaluate((video: HTMLVideoElement) => video.currentTime)).toBe(time);
+  await expect(page.getByRole('slider', { name: 'זום ציר ראשי' })).toHaveValue(zoom);
+  await expect(page.getByTestId('save-count')).toHaveText('שמירות בדיקה: 0');
+  // A click without dragging still places the playhead.
+  await page.mouse.click(x, y);
+  await expect.poll(() => page.locator('video').evaluate((video: HTMLVideoElement) => video.currentTime)).toBeGreaterThan(time);
+});

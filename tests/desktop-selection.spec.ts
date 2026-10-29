@@ -390,6 +390,7 @@ test('zoomed long-track scrubbing scrolls at the edge and seeks correctly after 
   const errors: Error[] = [];
   page.on('pageerror', error => errors.push(error));
   await page.setViewportSize({ width: 1366, height: 768 });
+  await prepareApp(page);
   await page.goto('/tests/editor-harness.html');
   await page.getByRole('button', { name: 'בדיקת ציר ארוך — 90 שניות', exact: true }).click();
   await expect.poll(() => page.locator('video').evaluate((a: HTMLVideoElement) => a.readyState)).toBeGreaterThan(0);

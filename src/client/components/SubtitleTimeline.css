@@ -7,6 +7,17 @@
   touch-action: none;
 }
 
+.subtitle-timeline .timeline-editor-time-area,
+.subtitle-timeline .timeline-editor-time-area-interact {
+  cursor: grab;
+}
+
+.subtitle-timeline [data-panning="true"],
+.subtitle-timeline [data-panning="true"] * {
+  cursor: grabbing !important;
+  user-select: none;
+}
+
 .subtitle-timeline .timeline-editor-cursor {
   top: 0;
   height: 100%;
