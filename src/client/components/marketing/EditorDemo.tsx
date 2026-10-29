@@ -168,6 +168,7 @@ function DemoTimeline({ demo, fps, selectedId, onSelect, disableSeekBar }: { dem
   const { preferences } = useEditorPreferences();
   const [zoom, setZoom] = useState<number | null>(null);
   const [wordZoom, setWordZoom] = useState(160);
+  const [waveformVisible, setWaveformVisible] = useState(true);
   const [loop, setLoop] = useState(false);
   const area = useRef<HTMLDivElement>(null);
   const width = useElementSize(area)?.width ?? 900;
@@ -198,15 +199,15 @@ function DemoTimeline({ demo, fps, selectedId, onSelect, disableSeekBar }: { dem
         <VideoSeekBar allowPageScroll disabled={disableSeekBar} currentTime={time} duration={duration} fps={fps} mediaUrl={null} onSeek={seek} />
       </Box>
     </Stack>
-    <Box>
-      <Typography variant="caption">גל קול — כל ההקלטה. לחצו להאזנה ממיקום מדויק.</Typography>
+    {waveformVisible ? <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
       <Box component="svg" viewBox="0 0 1600 64" preserveAspectRatio="none" aria-hidden="true"
         onClick={event => { const rect = event.currentTarget.getBoundingClientRect(); seek((event.clientX - rect.left) / rect.width * duration); }}
-        sx={{ width: "100%", height: 64, display: "block", bgcolor: "action.hover", cursor: "crosshair", borderRadius: 1 }}>
+        sx={{ flex: 1, minWidth: 0, height: 32, display: "block", bgcolor: "action.hover", cursor: "crosshair", borderRadius: 1 }}>
         <path d={path} stroke="#3d91c8" strokeWidth="1" />
         <line x1={time / duration * 1600} x2={time / duration * 1600} y1="0" y2="64" stroke="#e65100" strokeWidth="3" />
       </Box>
-    </Box>
+      <IconButton size="small" aria-label="סגור גל קול" title="סגור גל קול" onClick={() => setWaveformVisible(false)} sx={{ width: 32, height: 32, flexShrink: 0 }}><CloseRounded fontSize="small" /></IconButton>
+    </Box> : <Box><Button size="small" onClick={() => setWaveformVisible(true)}>הצג גל קול</Button></Box>}
     <Box ref={area} sx={{ minWidth: 0 }}>
       <Stack direction="row" gap={1} alignItems="center" sx={{ height: 40, px: 1, bgcolor: "action.hover", minWidth: 0 }}>
         <Typography variant="caption" sx={{ whiteSpace: "nowrap" }}>זום ציר ראשי</Typography>

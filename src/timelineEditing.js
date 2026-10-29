@@ -172,7 +172,7 @@ export function validateWordRange(word, segment, others = []) {
 
 // Move a word without changing its duration; trim only the chosen edge.
 // Neighbouring words and the caption boundaries are hard limits.
-export function placeMobileWord(words, index, segment, delta, mode, fps = 30) {
+export function placeWord(words, index, segment, delta, mode, fps = 30) {
   const word = words[index];
   if (!word || !Number.isFinite(delta) || delta === 0) return words;
   const rate = fps > 0 ? fps : 30;
@@ -197,6 +197,8 @@ export function placeMobileWord(words, index, segment, delta, mode, fps = 30) {
   if (validateWordRange(next, segment, words.filter((_, i) => i !== index))) return words;
   return words.map((item, i) => i === index ? next : item);
 }
+
+export { placeWord as placeMobileWord };
 
 export function snapshot(segments, words) {
   return { segments: segments.map(s => ({ ...s })), words: words.map(w => ({ ...w })) };

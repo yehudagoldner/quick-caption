@@ -50,11 +50,13 @@ export function CaptionAppearanceEditor() {
     </Tabs>
     {tab === 'font' && <Stack spacing={1.5} role="tabpanel" aria-label="גופן">
       <CaptionFontPicker fontId={values.fontId} onFontChange={fontId => change({ fontId })} />
-      <Stack direction="row" spacing={1.5} alignItems="center">
-        <Slider aria-label="גודל" value={Math.min(values.fontSize, 300)} min={12} max={300} sx={{ flex: 1 }}
-          onChange={(_, value) => editor.live.set({ ...editor.live.get(), fontSize: value as number })}
-          onChangeCommitted={(_, value) => editor.commit({ ...editor.live.get(), fontSize: value as number })} />
-        <TextField label="גודל גופן לכתובית" type="number" size="small" value={values.fontSize} sx={{ width: 104 }}
+      <Stack direction="row" spacing={1.5} useFlexGap alignItems="center">
+        <Box sx={{ flex: 1, minWidth: 0, px: 1.25 }}>
+          <Slider aria-label="גודל" value={Math.min(values.fontSize, 300)} min={12} max={300}
+            onChange={(_, value) => editor.live.set({ ...editor.live.get(), fontSize: value as number })}
+            onChangeCommitted={(_, value) => editor.commit({ ...editor.live.get(), fontSize: value as number })} />
+        </Box>
+        <TextField label="גודל גופן לכתובית" type="number" size="small" value={values.fontSize} sx={{ width: 120, flexShrink: 0 }}
           inputProps={{ min: 12, max: 1000 }} onChange={event => { if (event.target.value) change({ fontSize: Number(event.target.value) }); }} />
       </Stack>
     </Stack>}

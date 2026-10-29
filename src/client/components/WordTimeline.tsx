@@ -5,7 +5,7 @@ import { Timeline, type TimelineRow, type TimelineState } from "@xzdarcy/react-t
 import type { Segment, Word } from "../types";
 import { useEditorPreferences } from "../contexts/EditorPreferences";
 import { formatTimecode, snapToFrame } from "../utils/timecode";
-import { validateWordRange } from "../../timelineEditing.js";
+import { placeWord, validateWordRange } from "../../timelineEditing.js";
 import { TimecodeField } from "./TimecodeField";
 import { TimelineEditToolbar } from "./TimelineEditToolbar";
 import { useTimelineScrubbing } from "../hooks/useTimelineScrubbing";
@@ -45,8 +45,10 @@ export function WordTimeline({ enabled, segment, words, selection, onSelectionCh
   useTimelineWheelZoom(container, timeline, zoom, MIN_WORD_ZOOM, MAX_WORD_ZOOM, setZoom, enabled);
   const rows = useMemo<TimelineRow[]>(() => [{ id: "words", actions: words.map((word, i) => ({
     id: String(i), effectId: String(i), start: word.start - segment.start, end: word.end - segment.start,
+    minStart: Math.max(0, (words[i - 1]?.end ?? segment.start) - segment.start),
+    maxEnd: Math.min(segment.end, words[i + 1]?.start ?? segment.end) - segment.start,
     movable: !disabled, flexible: !disabled,
-  })) }], [words, segment.start, disabled]);
+  })) }], [words, segment.start, segment.end, disabled]);
   const effects = useMemo(() => Object.fromEntries(words.map((w, i) => [String(i), { id: String(i), name: w.word }])), [words]);
   const seek = (relative: number) => { onSeek(Math.min(segment.end, Math.max(segment.start, snapToFrame(segment.start + relative, fps)))); return true; };
   const { handlers: scrubbing } = useTimelineScrubbing(timeline, zoom, seek);
@@ -120,21 +122,20 @@ export function WordTimeline({ enabled, segment, words, selection, onSelectionCh
         gridSnap={false} dragLine disableDrag={disabled}
         onCursorDrag={seek} onCursorDragEnd={seek} onClickTimeArea={seek}
         onChange={nextRows => {
-          const next = (nextRows[0]?.actions ?? []).map(a => {
-            const original = words[Number(a.id)];
-            if (!original) return null;
+          let next = words;
+          for (const a of nextRows[0]?.actions ?? []) {
+            const index = Number(a.id), original = words[index];
+            if (!original) return false;
             const start = a.start + segment.start, end = a.end + segment.start;
-            if (Math.abs(start - original.start) < .000001 && Math.abs(end - original.end) < .000001) return original;
-            return { ...original, start: Math.abs(start - original.start) < .000001 ? original.start : snapToFrame(start, fps), end: Math.abs(end - original.end) < .000001 ? original.end : snapToFrame(end, fps), timingSource: "aligned" as const };
-          }).filter((word): word is Word => word !== null);
-          if (next.length !== words.length) return false;
-          for (let i = 0; i < next.length; i++) {
-            if (next[i].start === words[i].start && next[i].end === words[i].end) continue;
-            const problem = validateWordRange(next[i], segment, next.filter((_, j) => i !== j));
-            if (problem || (i > 0 && next[i].start < next[i - 1].start) || (i < next.length - 1 && next[i].start > next[i + 1].start)) {
-              setError(problem || "שינוי תזמון לא משנה את סדר המילים. ערכו את הטקסט כדי לשנות סדר."); return false;
-            }
+            const startChanged = Math.abs(start - original.start) >= .000001;
+            const endChanged = Math.abs(end - original.end) >= .000001;
+            if (!startChanged && !endChanged) continue;
+            // Preserve duration when moving, then clamp to exact caption/word
+            // boundaries. Split/merged timings need not land on whole frames.
+            const mode = startChanged && endChanged ? "move" : startChanged ? "start" : "end";
+            next = placeWord(next, index, segment, mode === "end" ? end - original.end : start - original.start, mode, fps);
           }
+          if (next === words) return false;
           update(next);
         }}
         getScaleRender={value => <span>{formatTimecode(segment.start + value, fps)}</span>}

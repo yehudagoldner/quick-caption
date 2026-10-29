@@ -1,5 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 import { prepareApp, portraitVideo } from './app-fixtures';
+import { editCaptionBatch } from '../src/captionBatchEditing.js';
 
 const segments = [
   { id: 1, start: .4, end: 1.2, text: 'שלום עולם' },
@@ -33,6 +34,42 @@ async function open(page: Page, loadedSegments = segments, loadedWords = words) 
 }
 const selected = (page: Page) => page.locator('[data-testid="subtitle-clip"][aria-pressed="true"]');
 const toolbar = (page: Page) => page.getByRole('toolbar', { name: 'פעולות בחירת כתוביות' });
+
+test('word dragging after split and merge clamps at precise caption edges and preserves duration', async ({ page }) => {
+  const preciseSegments = segments.map((segment, i) => i === 0 ? { ...segment, start: .413, end: 1.237 } : segment);
+  const preciseWords = words.map(word => word.segmentId !== 1 ? word : {
+    ...word, start: word.word === 'שלום' ? .413 : .9, end: word.word === 'שלום' ? .7 : 1.237,
+  });
+  const split = editCaptionBatch(preciseSegments, preciseWords, [1], 'split', .8);
+  const merged = editCaptionBatch(split.segments, split.words, [1, split.segments[1].id], 'merge');
+  const saves = await open(page, merged.segments as typeof segments, merged.words as typeof words);
+  await page.getByTestId('subtitle-clip').first().click();
+  await page.getByRole('button', { name: 'מילה אקטיבית', exact: true }).click();
+  const lastWord = page.getByTestId('word-clip').nth(1);
+  await expect(lastWord).toBeVisible();
+  const drag = async (pixels: number) => {
+    const box = (await lastWord.boundingBox())!;
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width / 2 + pixels, box.y + box.height / 2, { steps: 5 });
+    await page.mouse.up();
+  };
+  await drag(80);
+  await expect(page.getByText('זמן המילה חייב להיות בתוך המקטע, והסיום אחרי ההתחלה.')).toHaveCount(0);
+  await drag(-13);
+  await expect.poll(() => saves.length).toBeGreaterThan(0);
+  const saved = saves.at(-1)!;
+  const own = saved.words.filter(word => word.segmentId === 1);
+  expect(own[1].start).toBeLessThan(.9);
+  expect(own[1].end - own[1].start).toBeCloseTo(1.237 - .9, 8);
+  expect(own[0]).toMatchObject({ word: 'שלום', start: .413, end: .7 });
+  expect(saved.segments).toEqual(merged.segments);
+  for (const word of own) {
+    expect(word.start).toBeGreaterThanOrEqual(.413);
+    expect(word.end).toBeLessThanOrEqual(1.237);
+    expect(word.end).toBeGreaterThan(word.start);
+  }
+});
 
 async function resizeCaption(page: Page, index: number, edge: 'left' | 'right', delta: number) {
   const clip = page.getByTestId('subtitle-clip').nth(index);

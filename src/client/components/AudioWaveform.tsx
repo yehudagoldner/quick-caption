@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Alert, Box, Button, Typography } from "@mui/material";
+import { Alert, Box, Button, IconButton } from "@mui/material";
+import { CloseRounded } from "@mui/icons-material";
 
 export function AudioWaveform({ mediaUrl, duration, currentTime, onSeek }: {
   mediaUrl: string | null; duration: number; currentTime: number; onSeek: (time: number) => void;
 }) {
   const [peaks, setPeaks] = useState<number[]>([]);
+  const [visible, setVisible] = useState(true);
   const [status, setStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
   const request = useRef(0);
   const abort = useRef<AbortController | null>(null);
@@ -45,19 +47,24 @@ export function AudioWaveform({ mediaUrl, duration, currentTime, onSeek }: {
     void load();
     return () => { request.current++; abort.current?.abort(); };
   }, [load]);
+  const closeButton = <IconButton size="small" aria-label="סגור גל קול" title="סגור גל קול" onClick={() => setVisible(false)} sx={{ width: 32, height: 32, flexShrink: 0 }}><CloseRounded fontSize="small" /></IconButton>;
+  if (!visible) return <Box><Button size="small" onClick={() => setVisible(true)}>הצג גל קול</Button></Box>;
   if (status !== "ready") return <Box>
-    <Button size="small" disabled={!mediaUrl || status === "loading"} onClick={load}>{status === "loading" ? "טוען גל קול…" : "הצג גל קול"}</Button>
+    <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+      <Button size="small" disabled={!mediaUrl || status === "loading"} onClick={load}>{status === "loading" ? "טוען גל קול…" : "הצג גל קול"}</Button>
+      {closeButton}
+    </Box>
     {status === "error" && <Alert severity="info">גל הקול אינו זמין לקובץ הזה. הפענוח המקומי מוגבל ל־100MB ול־20 דקות ותלוי בפורמט; אפשר להמשיך לערוך ולנגן כרגיל.</Alert>}
   </Box>;
-  return <Box>
-    <Typography variant="caption">גל קול — כל ההקלטה. לחצו להאזנה ממיקום מדויק.</Typography>
+  return <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
     <Box component="svg" role="slider" aria-label="מיקום בגל הקול" aria-valuemin={0} aria-valuemax={duration} aria-valuenow={currentTime} tabIndex={0}
       viewBox="0 0 1600 64" preserveAspectRatio="none" data-testid="audio-waveform"
       onClick={event => { const rect = event.currentTarget.getBoundingClientRect(); onSeek((event.clientX - rect.left) / rect.width * duration); }}
       onKeyDown={e => { if (e.key === "ArrowLeft" || e.key === "ArrowRight") { e.preventDefault(); onSeek(Math.max(0, Math.min(duration, currentTime + (e.key === "ArrowRight" ? .1 : -.1)))); } }}
-      sx={{ width: "100%", height: 64, display: "block", bgcolor: "action.hover", cursor: "crosshair", borderRadius: 1 }}>
+      sx={{ flex: 1, minWidth: 0, height: 32, display: "block", bgcolor: "action.hover", cursor: "crosshair", borderRadius: 1 }}>
       <path d={waveformPath} stroke="#3d91c8" strokeWidth="1" />
       <line x1={currentTime / duration * 1600} x2={currentTime / duration * 1600} y1="0" y2="64" stroke="#e65100" strokeWidth="3" />
     </Box>
+    {closeButton}
   </Box>;
 }
