@@ -2,6 +2,12 @@ import { apiFetch } from '../api';
 
 export type BurnProgress = { stage: 'preparing' | 'burning' | 'downloading'; percent: number | null };
 
+export function appendAudiogram(data: FormData, audiogram?: { settings: object; image: Blob | null } | null) {
+  if (!audiogram) return;
+  data.append('audiogram', JSON.stringify(audiogram.settings));
+  if (audiogram.image) data.append('background', audiogram.image, 'background');
+}
+
 export async function requestBurn(endpoint: string, data: FormData, onProgress?: (progress: BurnProgress) => void) {
   const jobId = crypto.randomUUID();
   const controller = new AbortController();

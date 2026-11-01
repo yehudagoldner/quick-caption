@@ -46,6 +46,91 @@ async function openCaption(page: Page) {
   await expect(page.getByRole('dialog', { name: 'עריכת כתובית', exact: true })).toBeVisible();
 }
 
+test('automatic timeline scrolling never seeks the video on repeated scroll events', async ({ page }) => {
+  await openEditor(page);
+  await page.locator('video').evaluate((video: HTMLVideoElement) => {
+    video.currentTime = 0.913;
+  });
+  await expect(page.getByTestId('playhead-timecode')).not.toHaveText('00:00:00:00');
+  await page.waitForTimeout(300);
+  const seeks = await page.evaluate(async () => {
+    const video = document.querySelector('video')!;
+    const track = document.querySelector('[data-testid="mobile-timing-track"]')!;
+    const descriptor = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, 'currentTime')!;
+    const writes: number[] = [];
+    Object.defineProperty(video, 'currentTime', {
+      configurable: true,
+      get: () => descriptor.get!.call(video),
+      set: value => { writes.push(value); descriptor.set!.call(video, value); },
+    });
+    // Browsers can deliver more than one event for the same automatic position.
+    for (let i = 0; i < 3; i++) {
+      track.dispatchEvent(new Event('scroll'));
+      await new Promise(resolve => requestAnimationFrame(resolve));
+    }
+    delete (video as any).currentTime;
+    return writes;
+  });
+  expect(seeks).toEqual([]);
+  // Real movement must still seek, even immediately after automatic scrolling.
+  await page.getByTestId('mobile-timing-track').evaluate(track => { track.scrollLeft += 40; });
+  await expect.poll(() => page.locator('video').evaluate((video: HTMLVideoElement) => video.currentTime)).toBeGreaterThan(1);
+});
+
+test('long mobile timelines render nearby captions and can seek to distant captions', async ({ page }) => {
+  await page.addInitScript(() => {
+    // The short media fixture supplies pixels; model a long seekable recording.
+    const times = new WeakMap<HTMLMediaElement, number>();
+    Object.defineProperty(HTMLMediaElement.prototype, 'duration', { configurable: true, get: () => 1800 });
+    Object.defineProperty(HTMLMediaElement.prototype, 'currentTime', {
+      configurable: true,
+      get() { return times.get(this) ?? 0; },
+      set(value: number) { times.set(this, value); this.dispatchEvent(new Event('timeupdate')); },
+    });
+  });
+  const manySegments = Array.from({ length: 900 }, (_, index) => ({ id: index + 1, start: index * 2, end: index * 2 + 2, text: `כתובית ${index + 1}` }));
+  await openEditor(page, manySegments, []);
+  const clips = page.getByTestId('mobile-timing-clip');
+  expect(await clips.count()).toBeLessThan(30);
+  const editor = page.getByTestId('mobile-timing-editor');
+  const seconds = Number(await editor.getAttribute('data-window-seconds'));
+  await page.getByTestId('mobile-timing-track').evaluate((track, windowSeconds) => {
+    track.scrollLeft = 900 * track.clientWidth / windowSeconds;
+  }, seconds);
+  await expect(page.getByRole('button', { name: 'כתובית: כתובית 451', exact: true })).toBeInViewport();
+  expect(await clips.count()).toBeLessThan(30);
+});
+
+test('mobile playback progresses under CPU load without timeline-induced seeks', async ({ page, context }) => {
+  await openEditor(page);
+  const session = await context.newCDPSession(page);
+  await session.send('Emulation.setCPUThrottlingRate', { rate: 4 });
+  try {
+    await page.locator('video').evaluate(async (video: HTMLVideoElement) => {
+      const descriptor = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, 'currentTime')!;
+      (window as any).__playbackSeeks = [];
+      Object.defineProperty(video, 'currentTime', {
+        configurable: true,
+        get: () => descriptor.get!.call(video),
+        set: value => { (window as any).__playbackSeeks.push(value); descriptor.set!.call(video, value); },
+      });
+      const track = document.querySelector('[data-testid="mobile-timing-track"]')!;
+      let repeating = false;
+      track.addEventListener('scroll', () => {
+        if (repeating) return;
+        repeating = true;
+        track.dispatchEvent(new Event('scroll'));
+        repeating = false;
+      });
+      await video.play();
+    });
+    await expect.poll(() => page.locator('video').evaluate((video: HTMLVideoElement) => video.currentTime), { timeout: 10000 }).toBeGreaterThan(2);
+    expect(await page.evaluate(() => (window as any).__playbackSeeks)).toEqual([]);
+  } finally {
+    await session.send('Emulation.setCPUThrottlingRate', { rate: 1 });
+  }
+});
+
 for (const width of [320, 390]) test(`timing cards keep controls above two caption lines and omit times at ${width}px`, async ({ page }) => {
   const text = 'בואו נתחיל לעבוד על הכתוביות עם טקסט ארוך שצריך להופיע בשתי שורות בלבד ולא לכסות את הכפתורים. '.repeat(2).trim();
   await openEditor(page, [{ id: 1, start: 0, end: 0.5, text }, { id: 2, start: 0.5, end: 4, text: 'המשך' }], []);
@@ -478,11 +563,11 @@ for (const width of [320, 390]) test(`zoom bar and pinch keep video size and pla
   const trackBefore = (await track.boundingBox())!;
   await wordZoom.focus();
   await page.keyboard.press('End');
-  await expect(wordZoom).toHaveValue('4');
-  expect((await track.boundingBox())!.width).toBeGreaterThan(trackBefore.width * 3);
+  await expect(wordZoom).toHaveValue('16');
+  expect((await track.boundingBox())!.width - 24).toBeCloseTo((trackBefore.width - 24) * 16, 0);
   expect((await track.boundingBox())!.height).toBe(trackBefore.height);
   await page.keyboard.press('ArrowLeft');
-  await expect(wordZoom).toHaveValue('3.99');
+  await expect(wordZoom).toHaveValue('15.99');
   expect(await dialog.evaluate(el => el.scrollWidth > el.clientWidth)).toBe(false);
   await expect(dialog.getByRole('button', { name: 'סיום', exact: true })).toBeInViewport();
   await page.screenshot({ path: `tmp/review/word-zoom-${width}.png` });

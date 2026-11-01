@@ -13,6 +13,8 @@
     "start": "concurrently \"npm run server\" \"npm run dev\"",
     "test": "playwright test",
     "test:marketing": "playwright test --config=playwright.marketing.config.ts",
+    "test:cdn": "node --test tests/cdn-health.test.mjs tests/bunny-storage.test.mjs tests/video-thumbnails.test.mjs",
+    "test:cdn:qa": "node scripts/check-cdn.mjs",
     "test:premiere-portability": "node --test tests/plugin-environment.test.mjs tests/plugin-diagnostics.test.mjs tests/plugin-reference-audio.test.mjs tests/plugin-panel.test.mjs tests/plugin-bridge.test.mjs tests/plugin-graphics-bridge.test.mjs tests/plugin-client.test.mjs",
     "test:ui": "playwright test --ui",
     "test:headed": "playwright test --headed"
@@ -20,6 +22,7 @@
   "dependencies": {
     "@emotion/react": "^11.14.0",
     "@emotion/styled": "^11.14.1",
+    "@mediapipe/tasks-vision": "0.10.32",
     "@mui/icons-material": "^7.3.2",
     "@mui/material": "^7.3.2",
     "@paypal/react-paypal-js": "^8.9.2",

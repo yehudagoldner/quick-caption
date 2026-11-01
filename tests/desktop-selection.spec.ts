@@ -1,5 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 import { prepareApp, portraitVideo } from './app-fixtures';
+import { editCaptionBatch } from '../src/captionBatchEditing.js';
 
 const segments = [
   { id: 1, start: .4, end: 1.2, text: 'שלום עולם' },
@@ -33,6 +34,42 @@ async function open(page: Page, loadedSegments = segments, loadedWords = words) 
 }
 const selected = (page: Page) => page.locator('[data-testid="subtitle-clip"][aria-pressed="true"]');
 const toolbar = (page: Page) => page.getByRole('toolbar', { name: 'פעולות בחירת כתוביות' });
+
+test('word dragging after split and merge clamps at precise caption edges and preserves duration', async ({ page }) => {
+  const preciseSegments = segments.map((segment, i) => i === 0 ? { ...segment, start: .413, end: 1.237 } : segment);
+  const preciseWords = words.map(word => word.segmentId !== 1 ? word : {
+    ...word, start: word.word === 'שלום' ? .413 : .9, end: word.word === 'שלום' ? .7 : 1.237,
+  });
+  const split = editCaptionBatch(preciseSegments, preciseWords, [1], 'split', .8);
+  const merged = editCaptionBatch(split.segments, split.words, [1, split.segments[1].id], 'merge');
+  const saves = await open(page, merged.segments as typeof segments, merged.words as typeof words);
+  await page.getByTestId('subtitle-clip').first().click();
+  await page.getByRole('button', { name: 'מילה אקטיבית', exact: true }).click();
+  const lastWord = page.getByTestId('word-clip').nth(1);
+  await expect(lastWord).toBeVisible();
+  const drag = async (pixels: number) => {
+    const box = (await lastWord.boundingBox())!;
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width / 2 + pixels, box.y + box.height / 2, { steps: 5 });
+    await page.mouse.up();
+  };
+  await drag(80);
+  await expect(page.getByText('זמן המילה חייב להיות בתוך המקטע, והסיום אחרי ההתחלה.')).toHaveCount(0);
+  await drag(-13);
+  await expect.poll(() => saves.length).toBeGreaterThan(0);
+  const saved = saves.at(-1)!;
+  const own = saved.words.filter(word => word.segmentId === 1);
+  expect(own[1].start).toBeLessThan(.9);
+  expect(own[1].end - own[1].start).toBeCloseTo(1.237 - .9, 8);
+  expect(own[0]).toMatchObject({ word: 'שלום', start: .413, end: .7 });
+  expect(saved.segments).toEqual(merged.segments);
+  for (const word of own) {
+    expect(word.start).toBeGreaterThanOrEqual(.413);
+    expect(word.end).toBeLessThanOrEqual(1.237);
+    expect(word.end).toBeGreaterThan(word.start);
+  }
+});
 
 async function resizeCaption(page: Page, index: number, edge: 'left' | 'right', delta: number) {
   const clip = page.getByTestId('subtitle-clip').nth(index);
@@ -85,6 +122,48 @@ for (const edge of ['left', 'right'] as const) {
     await expect.poll(() => page.locator('video').evaluate((v: HTMLVideoElement) => v.readyState)).toBeGreaterThan(0);
     await expect.poll(async () => Number(await page.getByTestId('subtitle-clip').nth(index).getAttribute(`data-${boundary}`))).toBeCloseTo(saved.segments[index][boundary], 6);
     await seekOverlap();
+  });
+}
+
+for (const edge of ['left', 'right'] as const) for (const activeWords of [false, true]) {
+  test(`shortening caption ${edge} through timed speech fits words with highlighting ${activeWords}`, async ({ page }) => {
+    const saves = await open(page);
+    if (activeWords) await page.getByRole('button', { name: 'מילה אקטיבית', exact: true }).click();
+    await resizeCaption(page, 0, edge, edge === 'left' ? .24 : -.24);
+    await expect.poll(() => saves.length).toBe(1);
+    await expect(page.getByText(/הקצה חוצה מילה מתוזמנת/)).toHaveCount(0);
+    const resized = structuredClone(saves[0]);
+    const caption = resized.segments[0];
+    expect(caption.text).toBe(segments[0].text);
+    if (edge === 'left') {
+      expect(caption.start).toBeGreaterThan(segments[0].start);
+      expect(caption.end).toBe(segments[0].end);
+    } else {
+      expect(caption.start).toBe(segments[0].start);
+      expect(caption.end).toBeLessThan(segments[0].end);
+    }
+    const own = resized.words.filter(word => word.segmentId === caption.id);
+    expect(own.map(word => word.word)).toEqual(['שלום', 'עולם']);
+    expect(own[0].start).toBeCloseTo(caption.start, 6);
+    expect(own[1].end).toBeCloseTo(caption.end, 6);
+    expect(own[0].end).toBeLessThanOrEqual(own[1].start);
+    for (const word of own) expect(word.end).toBeGreaterThan(word.start);
+    expect(resized.segments.slice(1)).toEqual(segments.slice(1));
+    const timings = (items: typeof words) => items.map(({ word, start, end, segmentId }) => ({ word, start, end, segmentId }));
+    expect(timings(resized.words.filter(word => word.segmentId !== caption.id))).toEqual(words.filter(word => word.segmentId !== caption.id));
+    await page.getByRole('button', { name: 'ביטול פעולה', exact: true }).click();
+    await expect.poll(() => saves.length).toBe(2);
+    expect(saves[1].segments).toEqual(segments);
+    expect(timings(saves[1].words)).toEqual(words);
+    await page.getByRole('button', { name: 'ביצוע חוזר', exact: true }).click();
+    await expect.poll(() => saves.length).toBe(3);
+    expect(saves[2]).toEqual(resized);
+    await page.route('**/api/videos/load?**', route => route.fulfill({ json: { video: {
+      id: 42, subtitle_json: resized.segments, words_json: resized.words, format: '.srt', stored_path: 'portrait.mp4',
+    } } }));
+    await page.reload();
+    await expect(page.getByTestId('subtitle-clip').first()).toHaveAttribute('data-start', String(caption.start));
+    await expect(page.getByTestId('subtitle-clip').first()).toHaveAttribute('data-end', String(caption.end));
   });
 }
 
@@ -311,6 +390,7 @@ test('zoomed long-track scrubbing scrolls at the edge and seeks correctly after 
   const errors: Error[] = [];
   page.on('pageerror', error => errors.push(error));
   await page.setViewportSize({ width: 1366, height: 768 });
+  await prepareApp(page);
   await page.goto('/tests/editor-harness.html');
   await page.getByRole('button', { name: 'בדיקת ציר ארוך — 90 שניות', exact: true }).click();
   await expect.poll(() => page.locator('video').evaluate((a: HTMLVideoElement) => a.readyState)).toBeGreaterThan(0);
@@ -401,6 +481,55 @@ test('Ctrl toggles, Shift selects a range; toolbar merges and keyboard undoes/re
   await expect(toolbar(page).getByRole('button', { name: 'בחירת הכול' })).toBeEnabled();
   await page.keyboard.press('Control+Shift+z');
   await expect(clips).toHaveCount(2);
+});
+
+for (const modifier of ['Control', 'Meta']) test(`${modifier} history shortcuts work from words, zoom, video and page whitespace`, async ({ page }) => {
+  const saves = await open(page);
+  const clips = page.getByTestId('subtitle-clip');
+  const undo = page.getByRole('button', { name: 'ביטול פעולה', exact: true });
+  const redo = page.getByRole('button', { name: 'ביצוע חוזר', exact: true });
+  await clips.first().click();
+  await clips.nth(1).click({ modifiers: ['Shift'] });
+  await toolbar(page).getByRole('button', { name: 'חיבור כתוביות נבחרות' }).click();
+  await expect(clips).toHaveCount(2);
+  await expect(undo).toBeEnabled();
+  await clips.first().click();
+  await page.getByRole('button', { name: 'מילה אקטיבית', exact: true }).click();
+  await page.getByTestId('word-clip').first().focus();
+  await page.keyboard.press(`${modifier}+z`);
+  await expect(clips).toHaveCount(3);
+  await expect(redo).toBeEnabled();
+  await page.getByRole('slider', { name: 'זום ציר ראשי' }).focus();
+  await page.keyboard.press(`${modifier}+Shift+z`);
+  await expect(clips).toHaveCount(2);
+  await expect(undo).toBeEnabled();
+  await page.locator('video').focus();
+  await page.keyboard.press(`${modifier}+z`);
+  await expect(clips).toHaveCount(3);
+  await expect(redo).toBeEnabled();
+  await page.evaluate(() => (document.activeElement as HTMLElement)?.blur());
+  await page.keyboard.press(`${modifier}+Shift+z`);
+  await expect(clips).toHaveCount(2);
+  await expect(undo).toBeEnabled();
+  // The physical Z key emits Hebrew ז with a Hebrew keyboard layout.
+  await page.locator('body').dispatchEvent('keydown', { key: 'ז', code: 'KeyZ', ctrlKey: modifier === 'Control', metaKey: modifier === 'Meta' });
+  await expect(clips).toHaveCount(3);
+  await expect(redo).toBeEnabled();
+  await page.keyboard.press(`${modifier}+y`);
+  await expect(clips).toHaveCount(2);
+  await expect(undo).toBeEnabled();
+  expect(saves).toHaveLength(7);
+
+  // Focusing a text field must not consume a project revision.
+  await clips.first().click();
+  const input = page.getByRole('textbox', { name: 'טקסט המקטע', exact: true });
+  await input.focus();
+  const consumed = await input.evaluate((el, modifier) => !el.dispatchEvent(new KeyboardEvent('keydown', {
+    key: 'z', code: 'KeyZ', ctrlKey: modifier === 'Control', metaKey: modifier === 'Meta', bubbles: true, cancelable: true,
+  })), modifier);
+  expect(consumed).toBe(false);
+  await expect(clips).toHaveCount(2);
+  expect(saves).toHaveLength(7);
 });
 
 test('Delete and toolbar delete multiple captions; deleting all retains timeline and Undo', async ({ page }) => {

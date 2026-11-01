@@ -3,7 +3,7 @@
 export const subtitleTokens = text => String(text ?? "").trim().split(/\s+/u).filter(Boolean);
 const normalize = text => text.normalize("NFKD").replace(/[\p{M}\p{P}\p{Cf}]/gu, "").toLocaleLowerCase();
 
-function alignSequence(tokens, source) {
+export function alignSequence(tokens, source) {
   const n = source.length, m = tokens.length;
   if (!n) return Array(m).fill(null);
   // Avoid quadratic allocations for malformed/unusually large imported cues.
@@ -38,12 +38,12 @@ function alignSequence(tokens, source) {
     } else if (op === 2) i--;
     else if (op === 3) j--;
     else if (op === 4) {
-      aligned[j - 1] = { start: source[i - 2].start, end: source[i - 1].end, timingSource: "aligned" };
+      aligned[j - 1] = { ...source[i - 2], start: source[i - 2].start, end: source[i - 1].end, timingSource: "aligned" };
       i -= 2; j--;
     } else if (op === 5) {
       const { start, end } = source[i - 1];
       const middle = start + (end - start) * b[j - 2].length / (b[j - 2].length + b[j - 1].length);
-      aligned[j - 2] = { start, end: middle, timingSource: "estimated" };
+      aligned[j - 2] = { ...source[i - 1], start, end: middle, timingSource: "estimated" };
       aligned[j - 1] = { start: middle, end, timingSource: "estimated" };
       i--; j -= 2;
     } else throw new Error("Invalid word alignment state");
@@ -87,7 +87,7 @@ function timeUnmatchedWords(aligned, start, end) {
     const safeStart = Math.min(upper, Math.max(previousEnd, start, word.start));
     const safeEnd = Math.max(safeStart + epsilon, Math.min(end - (aligned.length - i - 1) * epsilon, word.end, Math.max(safeStart + epsilon, nextStart)));
     previousEnd = safeEnd;
-    return { start: safeStart, end: safeEnd, timingSource: safeStart !== word.start || safeEnd !== word.end ? "estimated" : word.timingSource };
+    return { ...word, start: safeStart, end: safeEnd, timingSource: safeStart !== word.start || safeEnd !== word.end ? "estimated" : word.timingSource };
   });
 }
 
@@ -106,7 +106,7 @@ export function synchronizeWords(segments, originalWords = []) {
     const known = word.segmentId === undefined ? undefined : byId.get(String(word.segmentId));
     if (known !== undefined) {
       const s = validSegments[known];
-      if (word.start >= s.start - .001 && word.end <= s.end + .001) owner = known;
+      if (word.sourceId || word.start >= s.start - .001 && word.end <= s.end + .001) owner = known;
     }
     if (owner < 0) validSegments.forEach((s, i) => {
       const overlap = Math.min(s.end, word.end) - Math.max(s.start, word.start);
@@ -122,7 +122,7 @@ export function synchronizeWords(segments, originalWords = []) {
     if (!tokens.length) return [];
     const mapped = alignSequence(tokens, buckets[index]);
     const timed = timeUnmatchedWords(mapped, segment.start, segment.end);
-    return tokens.map((word, wordIndex) => ({ word, ...timed[wordIndex], segmentId: segment.id, wordIndex }));
+    return tokens.map((word, wordIndex) => ({ ...timed[wordIndex], word, segmentId: segment.id, wordIndex }));
   });
 }
 

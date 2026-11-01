@@ -59,14 +59,14 @@ export function escapeAssText(text) {
     .replace(/\\/g, "＼").replace(/\{/g, "｛").replace(/\}/g, "｝").replace(/[\r\n]+/g, " ");
 }
 
-export function renderWordPopAss(segments, sourceWords, { intensity = "gentle", direction = "rtl", videoWidth = 1000, videoHeight = 1000, outlineWidth = 3 } = {}) {
+export function renderWordPopAss(segments, sourceWords, { intensity = "gentle", direction = "rtl", videoWidth = 1000, videoHeight = 1000, outlineWidth = 3, styleTags = () => '' } = {}) {
   const cues = wordPopCues(synchronizeWords(segments, sourceWords));
   const scaled = scale => `\\fscx${Math.round(scale * 100)}\\fscy${Math.round(scale * 100)}\\bord${(outlineWidth * scale).toFixed(2)}`;
   const events = cues.map(word => {
     const frames = popKeyframes(word.end - word.start, intensity);
     const transforms = frames.slice(1).map((frame, index) => `\\t(${frames[index].time},${frame.time},${scaled(frame.scale)})`).join("");
     const text = `${direction === "ltr" ? "\u202a" : "\u202b"}${escapeAssText(word.word)}\u202c`;
-    return `Dialogue: 0,${assTime(word.start)},${assTime(word.end)},Default,,0,0,0,,{\\an2${scaled(frames[0].scale)}${transforms}}${text}`;
+    return `Dialogue: 0,${assTime(word.start)},${assTime(word.end)},Default,,0,0,0,,{\\an2${styleTags(word)}${scaled(frames[0].scale)}${transforms}}${text}`;
   });
   return `[Script Info]\nScriptType: v4.00+\nPlayResX: ${videoWidth}\nPlayResY: ${videoHeight}\nScaledBorderAndShadow: yes\nWrapStyle: 2\n\n[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\nStyle: Default,Assistant SemiBold,105,&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,${outlineWidth},0,2,0,0,0,-1\n\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n${events.join("\n")}\n`;
 }

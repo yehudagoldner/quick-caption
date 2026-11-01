@@ -1,14 +1,20 @@
 import express from "express";
+import { captionBackgroundAss, sanitizeCaptionBackground } from "../src/captionBackground.js";
 import path from "path";
 import os from "os";
 import { promises as fsp } from "fs";
 import { randomUUID } from "crypto";
-import { buildBurnArguments, probeBurnDuration, runBurnFfmpeg } from "../src/burnVideo.js";
+import { buildAudiogramArguments, buildBurnArguments, probeBurnDuration, probeHasVideo, probeVideoDimensions, runBurnFfmpeg } from "../src/burnVideo.js";
+import { cropFilter, cropRectangle, validateVideoCrop } from '../src/videoVersions.js';
+import { AUDIOGRAM_IMAGE_MAX_BYTES, AUDIOGRAM_IMAGE_TYPES, audiogramDimensions, sanitizeAudiogram } from "../src/audiogram.js";
 import { fileURLToPath } from "url";
 import { renderActiveWordSrt } from "../src/activeWordSubtitles.js";
 import { renderWordPopAss, sanitizeCaptionMotion, sanitizePopIntensity } from "../src/captionMotion.js";
 import { CAPTION_OUTLINE_WIDTH, captionMarginPixels, sanitizeCaptionFontSize } from "../src/captionStyle.js";
 import { getCaptionFont } from "../src/captionFonts.js";
+import { sanitizeCaptionOverrides } from '../src/captionOverrides.js';
+import { renderStyledCaptionsAss } from '../src/styledCaptions.js';
+import { sanitizeWordOverrides } from '../src/wordOverrides.js';
 
 const CAPTION_FONTS_DIR = fileURLToPath(new URL("../public/fonts", import.meta.url));
 const TEMP_SUBTITLE_DIR = path.join(os.tmpdir(), "subtitles-api-subtitle-temp");
@@ -54,65 +60,104 @@ export function createBurnSubtitlesRouter(upload, { resolveVideo } = {}) {
       expire();
     });
     next();
-  }, upload.single("media"), async (req, res) => {
+  }, upload.fields([{ name: "media", maxCount: 1 }, { name: "background", maxCount: 1 }]), async (req, res) => {
+    req.file = req.files?.media?.[0];
+    const background = req.files?.background?.[0];
+    const reject = async (status, error) => {
+      await Promise.all([safeUnlink(req.file?.path), safeUnlink(background?.path)]);
+      return res.status(status).json({ error });
+    };
     if (!req.file && !req.body?.videoId) {
-      return res.status(400).json({ error: "נדרש קובץ וידאו לצריבת כתוביות." });
+      return reject(400, "נדרש קובץ וידאו לצריבת כתוביות.");
     }
 
     let subtitleContent = req.body?.subtitleContent;
     if (!subtitleContent) {
-      await safeUnlink(req.file?.path);
-      return res.status(400).json({ error: "נדרש תוכן כתוביות לצריבה." });
+      return reject(400, "נדרש תוכן כתוביות לצריבה.");
     }
+
+    let audiogram = null;
+    let crop = null;
+    if (req.body?.crop) {
+      try { crop = validateVideoCrop(JSON.parse(req.body.crop)); }
+      catch { return reject(400, 'הגדרות החיתוך אינן תקינות.'); }
+    }
+    if (req.body?.audiogram) {
+      try { audiogram = sanitizeAudiogram(JSON.parse(req.body.audiogram)); }
+      catch { return reject(400, "הגדרות הרקע אינן תקינות. רעננו את העמוד ונסו שוב."); }
+    }
+    if (background && (!audiogram || !AUDIOGRAM_IMAGE_TYPES.includes(background.mimetype) || background.size > AUDIOGRAM_IMAGE_MAX_BYTES)) {
+      return reject(400, "תמונת הרקע צריכה להיות JPG, PNG או WebP עד 10MB.");
+    }
+    const frame = audiogram ? audiogramDimensions(audiogram.format) : null;
+    if (crop && audiogram) return reject(400, 'חיתוך גרסאות זמין לסרטון בלבד.');
 
     const motion = sanitizeCaptionMotion(req.body?.captionMotion);
     let timedSegments, timedWords;
-    if (req.body?.activeWordEnabled === "true" || motion === "pop") {
+    if (req.body?.segments || req.body?.activeWordEnabled === "true" || motion === "pop") {
       try {
         const segments = JSON.parse(req.body.segments);
         const words = JSON.parse(req.body.words ?? "[]");
         if (!Array.isArray(segments) || !segments.length || !Array.isArray(words) || segments.some(s => !s || typeof s.text !== "string" || !Number.isFinite(s.start) || !Number.isFinite(s.end) || s.end <= s.start)) throw new Error("Invalid word timing data");
-        timedSegments = segments;
+        timedSegments = segments.map(segment => ({ ...segment, style: sanitizeCaptionOverrides(segment.style) }));
         timedWords = words;
-        if (motion !== "pop") subtitleContent = renderActiveWordSrt(segments, words, req.body.textDirection, req.body.activeWordColor);
+        if (motion !== "pop" && req.body?.activeWordEnabled === 'true') subtitleContent = renderActiveWordSrt(segments, words, req.body.textDirection, req.body.activeWordColor);
       } catch {
-        await safeUnlink(req.file?.path);
-        return res.status(400).json({ error: "נתוני תזמון המילים אינם תקינים. נסו לשמור את הכתוביות ולצרוב שוב." });
+        return reject(400, "נתוני תזמון המילים אינם תקינים. נסו לשמור את הכתוביות ולצרוב שוב.");
       }
     }
 
+    const captionBackground = sanitizeCaptionBackground({ backgroundColor: req.body?.backgroundColor, backgroundOpacity: Number(req.body?.backgroundOpacity) });
     const fontSize = sanitizeCaptionFontSize(req.body?.fontSize);
     const fontColor = sanitizeColor(req.body?.fontColor);
     const outlineColor = sanitizeColor(req.body?.outlineColor);
     const offsetYPercent = sanitizePercent(req.body?.offsetYPercent, 12);
     const marginPercent = sanitizePercent(req.body?.marginPercent, 5);
-    const videoWidth = sanitizeDimension(req.body?.videoWidth);
-    const videoHeight = sanitizeDimension(req.body?.videoHeight);
-    if (motion === "pop" && (!videoWidth || !videoHeight)) {
-      await safeUnlink(req.file?.path);
-      return res.status(400).json({ error: "נדרש גודל וידאו תקין לאנימציה. המתינו לטעינת הסרטון ונסו שוב." });
+    // An audiogram's frame is defined by its format, never by client-sent sizes.
+    let videoWidth = frame?.width ?? sanitizeDimension(req.body?.videoWidth);
+    let videoHeight = frame?.height ?? sanitizeDimension(req.body?.videoHeight);
+    const styled = (timedSegments && captionBackground.backgroundOpacity > 0) || timedSegments?.some(segment => Object.keys(segment.style).length > 0)
+      || timedWords?.some(word => Object.keys(sanitizeWordOverrides(word?.style)).length > 0);
+    if ((motion === "pop" || styled) && (!videoWidth || !videoHeight)) {
+      return reject(400, "נדרש גודל וידאו תקין לעיצוב הכתוביות. המתינו לטעינת הסרטון ונסו שוב.");
     }
 
-    const subtitlePath = path.join(TEMP_SUBTITLE_DIR, `${randomUUID()}.${motion === "pop" ? "ass" : "srt"}`);
+    const subtitlePath = path.join(TEMP_SUBTITLE_DIR, `${randomUUID()}.${motion === "pop" || styled ? "ass" : "srt"}`);
     const outputPath = path.join(TEMP_OUTPUT_DIR, `${randomUUID()}.mp4`);
+    const filterScript = crop ? path.join(TEMP_SUBTITLE_DIR, `${randomUUID()}.filter`) : null;
     let source = req.file ? { ...req.file, temporary: true } : null;
     const { signal } = req.burnController;
     const job = req.burnJob;
-    const cleanup = () => Promise.all([source?.temporary && safeUnlink(source.path), safeUnlink(subtitlePath), safeUnlink(outputPath)]);
+    const cleanup = () => Promise.all([source?.temporary && safeUnlink(source.path), safeUnlink(background?.path), safeUnlink(subtitlePath), safeUnlink(outputPath), safeUnlink(filterScript)]);
+    const refuse = (status, publicMessage) => Object.assign(new Error(publicMessage), { status, publicMessage });
 
     try {
       if (!source) {
         const videoId = Number(req.body.videoId);
-        if (!Number.isSafeInteger(videoId) || videoId < 1 || !resolveVideo) return res.status(400).json({ error: 'נדרש סרטון שמור תקין.' });
+        if (!Number.isSafeInteger(videoId) || videoId < 1 || !resolveVideo) throw refuse(400, 'נדרש סרטון שמור תקין.');
         source = await resolveVideo({ videoId, userUid: req.identity?.uid, signal });
-        if (!source) return res.status(404).json({ error: 'הסרטון לא נמצא או שאין לכם הרשאה לצפות בו.' });
+        if (!source) throw refuse(404, 'הסרטון לא נמצא או שאין לכם הרשאה לצפות בו.');
+      }
+      const hasVideo = await probeHasVideo(source.path, { signal });
+      if (hasVideo && audiogram) throw refuse(400, 'הגדרות רקע מתאימות לקובץ אודיו בלבד.');
+      if (!hasVideo && !audiogram) throw refuse(400, 'כדי ליצור סרטון מקובץ אודיו צריך לבחור רקע. רעננו את העמוד ונסו שוב.');
+      if (crop) {
+        const dimensions = await probeVideoDimensions(source.path, { signal });
+        const rectangle = cropRectangle(dimensions, crop);
+        videoWidth = rectangle.width; videoHeight = rectangle.height;
       }
       // Wrap subtitle lines with RTL markers for proper Hebrew punctuation rendering
-      const rtlSubtitleContent = motion === "pop"
+      const rtlSubtitleContent = styled
+        ? renderStyledCaptionsAss(timedSegments, timedWords, { ...sanitizeCaptionOverrides(req.body),
+          ...captionBackground, fontSize, fontColor: assColorToHex(fontColor), outlineColor: assColorToHex(outlineColor), offsetYPercent,
+          captionMotion: motion, activeWordEnabled: req.body?.activeWordEnabled === 'true',
+          intensity: sanitizePopIntensity(req.body?.popIntensity), direction: req.body?.textDirection === 'ltr' ? 'ltr' : 'rtl', videoWidth, videoHeight, outlineWidth: CAPTION_OUTLINE_WIDTH })
+        : motion === "pop"
         ? renderWordPopAss(timedSegments, timedWords, { intensity: sanitizePopIntensity(req.body?.popIntensity), direction: req.body?.textDirection === "ltr" ? "ltr" : "rtl", videoWidth, videoHeight, outlineWidth: CAPTION_OUTLINE_WIDTH })
         : req.body?.textDirection === "ltr" ? subtitleContent : wrapSubtitleLinesWithRTL(subtitleContent);
       await fsp.writeFile(subtitlePath, rtlSubtitleContent, "utf-8");
       const filter = buildSubtitlesFilter(subtitlePath, {
+        ...captionBackground,
         fontId: req.body?.fontId,
         fontSize,
         fontColor,
@@ -121,20 +166,24 @@ export function createBurnSubtitlesRouter(upload, { resolveVideo } = {}) {
         marginPercent,
         videoWidth,
         videoHeight,
-        wholeTextLayout: req.body?.activeWordEnabled === "true" || motion === "pop",
+        wholeTextLayout: req.body?.activeWordEnabled === "true" || motion === "pop" || styled,
       });
 
       const duration = await probeBurnDuration(source.path, { signal });
+      if (crop) await fsp.writeFile(filterScript, `scale=trunc(iw*sar/2)*2:ih,setsar=1,${cropFilter(crop)},${filter},pad=ceil(iw/2)*2:ceil(ih/2)*2`, 'utf8');
       job.stage = 'burning';
       job.percent = duration ? 0 : null;
-      await runBurnFfmpeg(buildBurnArguments(source.path, filter, outputPath), {
+      const args = audiogram
+        ? buildAudiogramArguments(source.path, { ...audiogram, ...frame, image: background?.path, duration }, filter, outputPath)
+        : buildBurnArguments(source.path, filter, outputPath, filterScript);
+      await runBurnFfmpeg(args, {
         duration, signal, onProgress: percent => { job.percent = percent; },
       });
       job.stage = 'downloading';
       job.percent = 100;
 
       const originalBase = path.parse(source.originalname ?? "video").name;
-      const downloadName = `${originalBase}-subtitled.mp4`;
+      const downloadName = `${originalBase}${crop ? '-' + crop.format : ''}-subtitled.mp4`;
       res.download(outputPath, downloadName, async (error) => {
         if (error) {
           console.error("Failed to send burned video:", error);
@@ -146,15 +195,15 @@ export function createBurnSubtitlesRouter(upload, { resolveVideo } = {}) {
       job.stage = 'failed';
       await cleanup();
       if (signal.aborted || res.destroyed) return;
-      console.error("Burn subtitles route failed:", error);
-      res.status(error.status ?? 500).json({ error: "אירעה שגיאה בצריבת הכתוביות. נסו שוב." });
+      if (!error.publicMessage) console.error("Burn subtitles route failed:", error);
+      res.status(error.status ?? 500).json({ error: error.publicMessage ?? "אירעה שגיאה בצריבת הכתוביות. נסו שוב." });
     }
   });
 
   return router;
 }
 
-export function buildSubtitlesFilter(subtitlePath, { fontId, fontSize, fontColor, outlineColor, offsetYPercent, marginPercent, videoWidth, videoHeight, wholeTextLayout }) {
+export function buildSubtitlesFilter(subtitlePath, { fontId, fontSize, fontColor, outlineColor, offsetYPercent, marginPercent, videoWidth, videoHeight, wholeTextLayout, backgroundColor, backgroundOpacity }) {
   const normalizedPath = subtitlePath.replace(/\\/g, "/");
   const font = getCaptionFont(fontId);
   const styleParts = [
@@ -175,7 +224,11 @@ export function buildSubtitlesFilter(subtitlePath, { fontId, fontSize, fontColor
     `PlayResX=${playResX}`,
     `PlayResY=${playResY}`,
     `Alignment=2`,
-    `BorderStyle=1`,
+    // libass BorderStyle 4 keeps the outline and draws one translucent box,
+    // avoiding darker overlaps between lines and active-word colour runs.
+    // https://github.com/libass/libass/wiki/Libass%27-ASS-Extensions#borderstyle4
+    `BorderStyle=${subtitlePath.endsWith('.ass') || backgroundOpacity > 0 ? 4 : 1}`,
+    `BackColour=${captionBackgroundAss({ backgroundColor, backgroundOpacity })}`,
     `Outline=${CAPTION_OUTLINE_WIDTH}`,
     `Shadow=0`,
     `MarginV=${marginV}`,
@@ -226,12 +279,17 @@ function escapeFilterPath(value) {
 }
 
 function sanitizeDimension(raw) {
+  if (raw == null || raw === '') return null;
   const numeric = Number(raw);
-  if (!Number.isFinite(numeric)) {
+  if (!Number.isFinite(numeric) || numeric <= 0) {
     return null;
   }
   const rounded = Math.max(1, Math.round(numeric));
   return Number.isFinite(rounded) ? rounded : null;
+}
+
+function assColorToHex(value) {
+  return `#${value.slice(8, 10)}${value.slice(6, 8)}${value.slice(4, 6)}`;
 }
 
 function sanitizeColor(raw) {

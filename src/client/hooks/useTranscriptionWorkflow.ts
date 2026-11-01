@@ -1,5 +1,5 @@
 import { apiFetch, apiHeaders, apiAuthEpoch } from "../api";
-import { requestBurn } from '../utils/burnRequest';
+import { appendAudiogram, requestBurn } from '../utils/burnRequest';
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type MouseEvent } from "react";
 import { io } from "socket.io-client";
 import type { ManagerOptions, SocketOptions } from "socket.io-client";
@@ -601,7 +601,8 @@ export function useTranscriptionWorkflow(): TranscriptionWorkflow {
       formData.append("popIntensity", options.popIntensity ?? "gentle");
       formData.append("activeWordColor", options.activeWordColor ?? "#ffd700");
       if (options.activeWordEnabled) formData.append("activeWordEnabled", "true");
-      if (options.activeWordEnabled || options.captionMotion === "pop") {
+      if (options.activeWordEnabled || options.captionMotion === "pop" || options.segments?.some(segment => segment.style && Object.keys(segment.style).length)
+        || options.words?.some(word => word.style && Object.keys(word.style).length)) {
         formData.append("segments", JSON.stringify(options.segments ?? []));
         formData.append("words", JSON.stringify(options.words ?? []));
       }
@@ -609,6 +610,8 @@ export function useTranscriptionWorkflow(): TranscriptionWorkflow {
       if (options.fontId) formData.append("fontId", options.fontId);
       formData.append("fontColor", options.fontColor);
       formData.append("outlineColor", options.outlineColor);
+      formData.append("backgroundColor", options.backgroundColor ?? "#000000");
+      formData.append("backgroundOpacity", String(options.backgroundOpacity ?? 0));
       formData.append("offsetYPercent", String(options.offsetYPercent));
       formData.append("marginPercent", String(options.marginPercent));
       if (typeof options.videoWidth === "number" && options.videoWidth > 0) {
@@ -617,6 +620,8 @@ export function useTranscriptionWorkflow(): TranscriptionWorkflow {
       if (typeof options.videoHeight === "number" && options.videoHeight > 0) {
         formData.append("videoHeight", String(Math.round(options.videoHeight)));
       }
+      appendAudiogram(formData, options.audiogram);
+      if (options.crop) formData.append('crop', JSON.stringify(options.crop));
 
       return requestBurn(BURN_ENDPOINT, formData, options.onProgress);
     },

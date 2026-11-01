@@ -7,6 +7,17 @@
   touch-action: none;
 }
 
+.subtitle-timeline .timeline-editor-time-area,
+.subtitle-timeline .timeline-editor-time-area-interact {
+  cursor: grab;
+}
+
+.subtitle-timeline [data-panning="true"],
+.subtitle-timeline [data-panning="true"] * {
+  cursor: grabbing !important;
+  user-select: none;
+}
+
 .subtitle-timeline .timeline-editor-cursor {
   top: 0;
   height: 100%;
@@ -22,6 +33,11 @@
 .subtitle-timeline .action:active,
 .subtitle-timeline [class*="action"].dragging {
   cursor: grabbing;
+}
+
+.subtitle-timeline .audio-waveform-row .timeline-editor-action {
+  background: transparent;
+  cursor: crosshair;
 }
 
 .subtitle-timeline [class*="action-left-stretch"],

@@ -1,3 +1,4 @@
+import { captionBackgroundCss } from "../../captionBackground.js";
 import { useMemo, useState } from 'react';
 import { Alert, Box, Button, ButtonBase, Chip, Dialog, DialogActions, DialogContent, DialogTitle, IconButton, Stack, TextField, Typography } from '@mui/material';
 import { AddRounded, CheckRounded, DeleteOutlineRounded, EditOutlined } from '@mui/icons-material';
@@ -22,7 +23,7 @@ function StyleCard({ preset, selected, disabled, onApply, onEdit, onDelete }: {
         <Box component="span" className="caption-style-sample" dir="rtl" sx={{ fontFamily: `"${font.cssFamily}"`, fontWeight: font.weight,
           fontSize: 26, lineHeight: 1.4, textAlign: 'center', color: preset.style.fontColor, opacity: ready ? 1 : .65,
           textShadow: `-1px -1px 0 ${preset.style.outlineColor}, 1px -1px 0 ${preset.style.outlineColor}, -1px 1px 0 ${preset.style.outlineColor}, 1px 1px 0 ${preset.style.outlineColor}`,
-          display: 'inline-block', transformOrigin: '50% 100%' }}>
+          backgroundColor: captionBackgroundCss(preset.style), boxShadow: `0 0 0 .06em ${captionBackgroundCss(preset.style)}`, display: 'inline-block', transformOrigin: '50% 100%' }}>
           {pop ? 'המילים שלך' : <>המילים <span style={{ color: preset.style.activeWordEnabled ? preset.style.activeWordColor : 'inherit' }}>שלך</span></>}
         </Box>
       </Box>

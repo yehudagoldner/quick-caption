@@ -33,6 +33,7 @@ async function burn(page: Page, mobile: boolean) {
   await page.getByRole('button', { name: mobile ? 'עוד' : 'הורדה', exact: true }).click();
   const download = page.waitForEvent('download');
   await page.getByRole(mobile ? 'button' : 'menuitem', { name: 'הורד סרטון עם כתוביות', exact: true }).click(); await download;
+  await page.getByRole('button', { name: 'אולי אחר כך', exact: true }).click();
 }
 mkdirSync('tmp/caption-styles', { recursive: true });
 for (const mobile of [false, true]) test(`${mobile ? 'mobile' : 'desktop'} style cards apply complete appearances to preview, persistence and MP4 requests`, async ({ page }) => {

@@ -3,15 +3,20 @@ export type Segment = {
   start: number;
   end: number;
   text: string;
+  style?: import('../captionOverrides.js').CaptionOverrides;
 };
 
 export type Word = {
+  style?: import('../wordOverrides.js').WordOverrides;
   word: string;
   start: number;
   end: number;
   segmentId?: Segment["id"];
   wordIndex?: number;
   timingSource?: "original" | "aligned" | "estimated";
+  sourceId?: string;
+  sourceStart?: number;
+  sourceEnd?: number;
 };
 
 export type SubtitlePayload = {

@@ -1,4 +1,5 @@
 import { synchronizeWords, activeWordAtTime } from "./wordAlignment.js";
+import { sanitizeCaptionOverrides } from './captionOverrides.js';
 
 const escapeText = text => text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 const timestamp = ms => {
@@ -14,6 +15,7 @@ export function renderActiveWordSrt(segments, sourceWords, direction = "rtl", ac
   const words = synchronizeWords(segments, sourceWords);
   const events = [];
   for (const segment of segments) {
+    const activeWordEnabled = sanitizeCaptionOverrides(segment.style).activeWordEnabled ?? true;
     const owned = words.filter(w => w.segmentId === segment.id);
     const start = Math.max(0, Math.round(segment.start * 1000));
     const end = Math.max(start, Math.round(segment.end * 1000));
@@ -22,7 +24,7 @@ export function renderActiveWordSrt(segments, sourceWords, direction = "rtl", ac
     for (let i = 0; i < boundaries.length - 1; i++) {
       const from = boundaries[i], to = boundaries[i + 1];
       if (to <= from) continue;
-      const active = activeWordAtTime(owned, (from + to) / 2000)?.wordIndex;
+      const active = activeWordEnabled ? activeWordAtTime(owned, (from + to) / 2000)?.wordIndex : undefined;
       let wordIndex = 0;
       const content = String(segment.text).replace(/[\u202a-\u202e]/g, "").split(/(\s+)/).map(part => {
         if (!part.trim()) return part;

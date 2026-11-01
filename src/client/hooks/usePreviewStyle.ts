@@ -1,3 +1,4 @@
+import { captionBackgroundCss } from "../../captionBackground.js";
 import { useEffect, useMemo } from "react";
 import { createOutlineShadow } from "../utils/transcriptionUtils";
 import { useEditorPreferences } from "../contexts/EditorPreferences";
@@ -7,7 +8,11 @@ import { getCaptionFont } from "../../captionFonts.js";
 
 type UsePreviewStyleProps = {
   fontId?: string;
+  positionXPercent?: number;
+  rotation?: number;
   scaleOutline?: boolean;
+  backgroundColor?: string;
+  backgroundOpacity?: number;
   fontColor: string;
   fontSize: number;
   offsetYPercent: number;
@@ -18,6 +23,7 @@ type UsePreviewStyleProps = {
 };
 
 export function usePreviewStyle({
+  backgroundColor = "#000000", backgroundOpacity = 0,
   fontColor,
   fontSize,
   offsetYPercent,
@@ -26,6 +32,8 @@ export function usePreviewStyle({
   videoDimensions,
   renderDimensions,
   fontId,
+  positionXPercent = 50,
+  rotation = 0,
   scaleOutline = false,
 }: UsePreviewStyleProps) {
   const { preferences } = useEditorPreferences();
@@ -42,17 +50,19 @@ export function usePreviewStyle({
       const widthPercent = Math.max(10, 100 - clampedMarginPercent * 2);
 
       return {
+        "--caption-background": captionBackgroundCss({ backgroundColor, backgroundOpacity }),
         position: "absolute" as const,
-        left: "50%",
+        left: `${positionXPercent}%`,
         bottom: `${clampedBottomPercent}%`,
-        transform: "translate(-50%, 0)",
+        transform: `translate(-50%, 0) rotate(${rotation}deg)`,
+        transformOrigin: '50% 100%',
         color: fontColor,
         fontFamily: fontStack,
         fontSize: `${fontSize * font.emRatio}px`,
         fontWeight: font.weight,
         lineHeight,
         textAlign: "center" as const,
-        whiteSpace: "pre-wrap" as const,
+        whiteSpace: "pre" as const,
         pointerEvents: "none" as const,
         textShadow: createOutlineShadow(outlineColor, scaleOutline ? CAPTION_OUTLINE_WIDTH : undefined),
         width: `${widthPercent}%`,
@@ -73,24 +83,26 @@ export function usePreviewStyle({
     const bottomPx = bottomVideo * scaleY;
 
     return {
+      "--caption-background": captionBackgroundCss({ backgroundColor, backgroundOpacity }),
       position: "absolute" as const,
-      left: "50%",
+      left: `${positionXPercent}%`,
       bottom: `${bottomPx}px`,
-      transform: "translate(-50%, 0)",
+      transform: `translate(-50%, 0) rotate(${rotation}deg)`,
+      transformOrigin: '50% 100%',
       color: fontColor,
       fontFamily: fontStack,
       fontSize: `${fontSizePx}px`,
       fontWeight: font.weight,
       lineHeight,
       textAlign: "center" as const,
-      whiteSpace: "pre-wrap" as const,
+      whiteSpace: "pre" as const,
       pointerEvents: "none" as const,
       textShadow: createOutlineShadow(outlineColor, scaleOutline ? CAPTION_OUTLINE_WIDTH * scaleY : undefined),
       width: `${widthPx}px`,
       maxWidth: `${widthPx}px`,
       direction: preferences.direction,
     };
-  }, [fontColor, fontSize, offsetYPercent, outlineColor, marginPercent, videoDimensions, renderDimensions, preferences.direction, font, fontStack, lineHeight, scaleOutline]);
+  }, [backgroundColor, backgroundOpacity, fontColor, fontSize, offsetYPercent, outlineColor, marginPercent, videoDimensions, renderDimensions, preferences.direction, font, fontStack, lineHeight, scaleOutline, positionXPercent, rotation]);
 
   useEffect(() => {
     if (import.meta.env.DEV && videoDimensions && renderDimensions) {

@@ -2,6 +2,10 @@ import { useContext, useEffect, useRef, useState, type ChangeEvent, type ReactNo
 import { DownloadContext } from "../contexts/DownloadContext";
 import { VideoSeekBar } from "./VideoSeekBar";
 import { CaptionFontPicker } from "./CaptionFontPicker";
+import { CaptionAppearanceContext } from '../contexts/CaptionAppearanceContext';
+import { CaptionAppearanceEditor } from './CaptionAppearanceEditor';
+import { AudiogramContext } from '../contexts/AudiogramContext';
+import { AudiogramSettings } from './AudiogramSettings';
 import {
   Alert,
   Box,
@@ -76,6 +80,7 @@ export type MobileCaptionEditorProps = {
   onNavigateAway: EditorNavigationGuard;
   timelineEditing: Pick<SubtitleTimelineProps, "onSaveSegment" | "onUndo" | "onRedo" | "canUndo" | "canRedo" | "onPlayFrom" | "loopEnabled" | "onLoopChange" | "onDraftStateChange">;
   editorSettings: ReactNode;
+  captionBackgroundControls?: ReactNode;
   captionStyles?: ReactNode;
   fontId?: string;
   onFontChange?: (id: string) => void;
@@ -141,7 +146,7 @@ export function MobileCaptionEditor({
   onNavigateAway,
   timelineEditing,
   editorSettings,
-  captionStyles, fontId, onFontChange, activeWordColor, onActiveWordColorChange,
+  captionBackgroundControls, captionStyles, fontId, onFontChange, activeWordColor, onActiveWordColorChange,
   mediaUrl,
   activeSegmentText,
   previewStyle,
@@ -197,7 +202,13 @@ export function MobileCaptionEditor({
   const downloads = useContext(DownloadContext);
   const { preferences } = useEditorPreferences();
   const [mode, setMode] = useState<MobileMode>("timing");
-  const [styleOpen, setStyleOpen] = useState(false);
+  const [globalStyleOpen, setStyleOpen] = useState(false);
+  const appearance = useContext(CaptionAppearanceContext);
+  const audiogram = useContext(AudiogramContext);
+  const individualStyleOpen = Boolean(appearance?.segment && appearance.controlsOpen);
+  const styleOpen = globalStyleOpen || individualStyleOpen;
+  const drawerHeight = individualStyleOpen ? 'min(44dvh, 400px)' : STYLE_DRAWER_HEIGHT;
+  const closeStyle = () => { appearance?.close(); setStyleOpen(false); };
   const [moreOpen, setMoreOpen] = useState(false);
   const [downloadOpen, setDownloadOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -458,6 +469,8 @@ export function MobileCaptionEditor({
       pb: "env(safe-area-inset-bottom, 0px)",
     }}>
       {burnError && <Alert severity="error" sx={{ flexShrink: 0, mx: 1.5, mt: 1 }}>{burnError}</Alert>}
+      {videoSharing.shareError && !videoSharing.readyToShare && <Alert severity="error" sx={{ flexShrink: 0, mx: 1.5, mt: 1 }}>{videoSharing.shareError}</Alert>}
+      {sharing && !isBurning && !videoSharing.readyToShare && <Typography role="status" sx={{ px: 2, py: 1 }}>מכין סרטון לשיתוף...</Typography>}
       {isBurning && <Stack direction="row" spacing={1} alignItems="center" sx={{ flexShrink: 0, px: 2, py: 1 }}><CircularProgress size={18} /><Typography variant="caption">יוצר וידאו...</Typography></Stack>}
 
       <Box sx={{
@@ -468,7 +481,7 @@ export function MobileCaptionEditor({
         boxSizing: "border-box",
         px: 1.5,
         pt: 1,
-        pb: styleOpen ? `calc(${STYLE_DRAWER_HEIGHT} - ${MOBILE_EDITOR_NAV_HEIGHT + 1}px)` : 0.5,
+        pb: styleOpen ? `calc(${drawerHeight} - ${MOBILE_EDITOR_NAV_HEIGHT + 1}px)` : 0.5,
         display: "flex",
         flexDirection: "column",
         overflow: "hidden",
@@ -570,7 +583,7 @@ export function MobileCaptionEditor({
               {player}
             </Box>
             {/* Reserve room for zoom, the card controls and two caption lines. */}
-            <Box sx={{ flex: "0 0 calc(30dvh - 82px)", minWidth: 0, minHeight: 216, width: "100%", display: "flex", overflow: "hidden" }}>
+            {!styleOpen && <Box sx={{ flex: "0 0 calc(30dvh - 82px)", minWidth: 0, minHeight: 216, width: "100%", display: "flex", overflow: "hidden" }}>
             <MobileTimingTimeline
               mediaUrl={mediaUrl}
               segments={editableSegments}
@@ -600,7 +613,7 @@ export function MobileCaptionEditor({
                 setTimingWordsId(id);
               }}
             />
-            </Box>
+            </Box>}
           </Stack>
         )}
 
@@ -672,9 +685,9 @@ export function MobileCaptionEditor({
         variant="persistent"
         anchor="bottom"
         open={styleOpen}
-        onClose={() => setStyleOpen(false)}
+        onClose={closeStyle}
         slotProps={{ paper: { role: "region", "aria-label": "עיצוב כתוביות", dir: "rtl", sx: {
-          height: STYLE_DRAWER_HEIGHT,
+          height: drawerHeight,
           borderTopLeftRadius: 18,
           borderTopRightRadius: 18,
           bgcolor: "#ffffff",
@@ -695,11 +708,14 @@ export function MobileCaptionEditor({
         } } }}
       >
         <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ px: 1.8, pt: 0.9, pb: 0.45, flexShrink: 0 }}>
-          <Typography fontWeight={500}>עיצוב כתוביות</Typography>
-          <IconButton aria-label="סגירת עיצוב" onClick={() => setStyleOpen(false)} sx={{ p: 0.9 }}><CheckRounded sx={{ fontSize: 21.6 }} /></IconButton>
+          <Typography fontWeight={500}>{individualStyleOpen ? 'כתובית נבחרת' : 'עיצוב כל הכתוביות'}</Typography>
+          <IconButton aria-label="סגירת עיצוב" onClick={closeStyle} sx={{ p: 0.9 }}><CheckRounded sx={{ fontSize: 21.6 }} /></IconButton>
         </Stack>
         <Box sx={{ px: 1.8, pb: "max(14.4px, env(safe-area-inset-bottom, 0px))", overflowY: "auto", minHeight: 0 }}>
+          {individualStyleOpen ? <CaptionAppearanceEditor /> : <>
+          {audiogram && <Box sx={{ pb: 1.5, mb: 1.5, borderBottom: 1, borderColor: "divider" }}><AudiogramSettings /></Box>}
           {captionStyles}
+          <Box sx={{ mt: 2 }}>{captionBackgroundControls}</Box>
           <Box sx={{ mt: captionStyles ? 2 : 0 }}><CaptionFontPicker disabled={isBurning} fontId={fontId} onFontChange={onFontChange} /></Box>
           <Box sx={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 0.9, my: 1.35, "& > *": { minWidth: 0 } }}>
             <FormControl fullWidth size="small">
@@ -719,6 +735,7 @@ export function MobileCaptionEditor({
           <Slider aria-label="שולי הכתובית" value={marginPercent} onChange={onMarginChange} min={0} max={40} valueLabelDisplay="auto" />
           <FormControlLabel control={<Switch checked={activeWordEnabled} onChange={onToggleActiveWord} />} label="מילה אקטיבית" />
           <FormControlLabel control={<Switch checked={showSubtitles} onChange={(_, checked) => onShowSubtitlesChange(checked)} />} label="הצג כתוביות בתצוגה המקדימה" />
+          </>}
         </Box>
       </Drawer>
 
@@ -783,10 +800,11 @@ export function MobileCaptionEditor({
             <Button variant="outlined" startIcon={<SubtitlesRounded />} disabled={!downloadUrl || hasTimelineDrafts || saveState === "saving"}
               onClick={() => void downloadSrt()} sx={{ minHeight: 48, gap: 1, "& .MuiButton-startIcon": { m: 0 } }}>קובץ כתוביות SRT</Button>
             <Button variant="contained" startIcon={isBurning ? <CircularProgress size={20} color="inherit" /> : <MovieFilterRounded />}
-              disabled={isBurning || !mediaUrl || !canBurn || !fontReady || hasTimelineDrafts || saveState === "saving"}
+              disabled={!canShareVideo}
               onClick={() => {
                 setDownloadOpen(false);
-                if (burnedVideo) void downloads.downloadVideo(burnedVideo);
+                if (videoSharing.isAppleMobile) void shareVideo();
+                else if (burnedVideo) void downloads.downloadVideo(burnedVideo);
                 else void onBurnVideo();
               }} sx={{ minHeight: 48, gap: 1, "& .MuiButton-startIcon": { m: 0 } }}>וידאו מלא עם כתוביות</Button>
           </Stack>
@@ -796,7 +814,9 @@ export function MobileCaptionEditor({
         <DialogActions><Button onClick={() => setDownloadOpen(false)}>סגור</Button></DialogActions>
       </Dialog>
 
-      <VideoShareDialog open={Boolean(videoSharing.readyToShare)} onClose={videoSharing.closeShare} onShare={videoSharing.shareReadyVideo} />
+      <VideoShareDialog open={Boolean(videoSharing.readyToShare)} onClose={videoSharing.closeShare} onShare={videoSharing.shareReadyVideo}
+        onDownload={videoSharing.downloadReadyVideo} canShare={Boolean(videoSharing.readyToShare?.file)}
+        isAppleMobile={videoSharing.isAppleMobile} busy={sharing} error={videoSharing.shareError} />
 
       <Dialog open={settingsOpen} onClose={() => setSettingsOpen(false)} fullWidth>
         <DialogTitle>הגדרות כתוביות</DialogTitle>

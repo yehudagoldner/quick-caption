@@ -12,7 +12,8 @@ export function wordsForSegment(words: Word[], segment: Segment): Word[];
 export function retimeCaption(original: Segment, next: Segment, words: Word[], fitWords?: boolean): Word[];
 export function retimeCaptionChanges(originalSegments: Segment[], nextSegments: Segment[], words: Word[], fitWords?: boolean): Word[];
 export function validateWordRange(word: Word, segment: Segment, others?: Word[]): string | null;
-export function placeMobileWord(words: Word[], index: number, segment: Segment, delta: number, mode: "move" | "start" | "end", fps?: number): Word[];
+export function placeWord(words: Word[], index: number, segment: Segment, delta: number, mode: "move" | "start" | "end", fps?: number): Word[];
+export { placeWord as placeMobileWord };
 export function snapshot(segments: Segment[], words: Word[]): EditSnapshot;
 export class EditHistory {
   past: EditSnapshot[];

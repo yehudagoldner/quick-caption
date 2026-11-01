@@ -1,16 +1,18 @@
 import { useContext, useId, useState, type ChangeEvent, type ReactNode } from "react";
-import { DownloadContext } from "../contexts/DownloadContext";
+import { VideoDownloadMenu } from './VideoDownloadMenu';
 import type { Segment, Word } from "../types";
 import { AUTO_CAPTION_FONT_SIZE, CAPTION_FONT_SIZES, type CaptionFontSizeSetting } from "../../captionStyle.js";
 import { CaptionFontPicker } from "./CaptionFontPicker";
 import type { CaptionMotion, PopIntensity } from "../../captionMotion.js";
 import type { BurnProgress } from '../utils/burnRequest';
+import type { AudiogramSettings as AudiogramOptions } from "../../audiogram.js";
+import { AudiogramContext } from "../contexts/AudiogramContext";
+import { AudiogramSettings } from "./AudiogramSettings";
 import {
   Box,
   Button,
   IconButton,
   FormLabel,
-  Menu,
   MenuItem,
   Paper,
   Popover,
@@ -25,21 +27,22 @@ import {
   Typography,
 } from "@mui/material";
 import {
-  DownloadRounded,
   HeightRounded,
   SpaceBarRounded,
   FormatSizeRounded,
   PaletteRounded,
   ViewSidebarRounded,
-  MovieFilterRounded,
-  SubtitlesRounded,
   RecordVoiceOverRounded,
   AutoFixHighRounded,
   SettingsRounded,
   CloseRounded,
+  WallpaperRounded,
 } from "@mui/icons-material";
 
 export type BurnOptions = {
+  backgroundColor?: string;
+  backgroundOpacity?: number;
+  crop?: import('../../videoVersions.js').VideoCrop | null;
   onProgress?: (progress: BurnProgress) => void;
   activeWordColor?: string;
   captionMotion?: CaptionMotion;
@@ -57,6 +60,7 @@ export type BurnOptions = {
   marginPercent: number;
   videoWidth?: number | null;
   videoHeight?: number | null;
+  audiogram?: { settings: AudiogramOptions; image: Blob | null } | null;
 };
 
 type BurnedVideo = {
@@ -68,6 +72,7 @@ type VideoToolbarProps = {
   fontReady?: boolean;
   pendingEdits?: boolean;
   editorSettings: ReactNode;
+  captionBackgroundControls?: ReactNode;
   captionStyles?: ReactNode;
   fontId?: string;
   onFontChange?: (id: string) => void;
@@ -104,7 +109,7 @@ export function VideoToolbar({
   fontReady = true,
   pendingEdits = false,
   editorSettings,
-  captionStyles, fontId, onFontChange, activeWordColor, onActiveWordColorChange,
+  captionBackgroundControls, captionStyles, fontId, onFontChange, activeWordColor, onActiveWordColorChange,
   canBurn = true,
   fontSize,
   autoFontSize,
@@ -130,16 +135,15 @@ export function VideoToolbar({
   onToggleActiveWord,
   onAIEdit,
 }: VideoToolbarProps) {
-  const downloads = useContext(DownloadContext);
-  // Download menu state
-  const [downloadAnchorEl, setDownloadAnchorEl] = useState<null | HTMLElement>(null);
-  const downloadMenuOpen = Boolean(downloadAnchorEl);
   const [settingsAnchorEl, setSettingsAnchorEl] = useState<HTMLElement | null>(null);
   const settingsId = useId();
   const settingsTitleId = useId();
   const [stylesAnchorEl, setStylesAnchorEl] = useState<HTMLElement | null>(null);
   const stylesId = useId();
   const stylesTitleId = useId();
+  const audiogram = useContext(AudiogramContext);
+  const [backgroundAnchorEl, setBackgroundAnchorEl] = useState<HTMLElement | null>(null);
+  const backgroundId = useId();
 
   // Popover states
   const [positionAnchorEl, setPositionAnchorEl] = useState<null | HTMLElement>(null);
@@ -150,19 +154,6 @@ export function VideoToolbar({
   const [aiEditError, setAiEditError] = useState<string | null>(null);
   const [aiEditInstructions, setAiEditInstructions] = useState("");
   const [isAIEditing, setIsAIEditing] = useState(false);
-
-  const handleDownloadClick = (event: React.MouseEvent<HTMLElement>) => {
-    setDownloadAnchorEl(event.currentTarget);
-  };
-
-  const handleDownloadClose = () => {
-    setDownloadAnchorEl(null);
-  };
-
-  const handleBurnAndDownload = async () => {
-    handleDownloadClose();
-    onBurnVideo();
-  };
 
   const handleApplyAIEdit = async () => {
     if (onAIEdit && aiEditInstructions.trim()) {
@@ -207,16 +198,10 @@ export function VideoToolbar({
         {captionStyles && <Button size="small" variant="contained" startIcon={<PaletteRounded />}
           aria-haspopup="dialog" aria-expanded={Boolean(stylesAnchorEl)} aria-controls={stylesAnchorEl ? stylesId : undefined}
           onClick={event => setStylesAnchorEl(event.currentTarget)}>סגנונות</Button>}
-        <Button
-          variant="outlined"
-          startIcon={<DownloadRounded />}
-          onClick={handleDownloadClick}
-          disabled={pendingEdits}
-          size="small"
-          sx={{ justifyContent: "flex-start", minWidth: "fit-content" }}
-        >
-          הורדה
-        </Button>
+        {audiogram && <Button size="small" variant="outlined" startIcon={<WallpaperRounded />}
+          aria-haspopup="dialog" aria-expanded={Boolean(backgroundAnchorEl)} aria-controls={backgroundAnchorEl ? backgroundId : undefined}
+          onClick={event => setBackgroundAnchorEl(event.currentTarget)}>רקע</Button>}
+        <VideoDownloadMenu {...{ pendingEdits, isBurning, mediaUrl, canBurn, fontReady, downloadUrl, downloadName, burnedVideo, onBurnVideo }} />
 
         <Button
           variant={settingsAnchorEl ? "outlined" : "text"}
@@ -338,6 +323,14 @@ export function VideoToolbar({
         </Stack>
         {stylesAnchorEl && <Box sx={{ p: 2 }}>{captionStyles}</Box>}
       </Popover>
+      <Popover open={Boolean(backgroundAnchorEl && audiogram)} anchorEl={backgroundAnchorEl} onClose={() => setBackgroundAnchorEl(null)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }} transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+        slotProps={{ paper: { id: backgroundId, role: 'dialog', dir: 'rtl', 'aria-label': 'רקע לסרטון', sx: { width: 340, maxWidth: 'calc(100vw - 32px)', maxHeight: 'calc(100dvh - 32px)', borderRadius: 3 } } }}>
+        <Stack direction="row" justifyContent="flex-end" sx={{ px: 1, pt: 1 }}>
+          <IconButton aria-label="סגירת הגדרות הרקע" onClick={() => setBackgroundAnchorEl(null)} size="small"><CloseRounded /></IconButton>
+        </Stack>
+        <Box sx={{ px: 2, pb: 2, mt: -3 }}><AudiogramSettings /></Box>
+      </Popover>
       <Popover
         open={Boolean(settingsAnchorEl)}
         anchorEl={settingsAnchorEl}
@@ -365,38 +358,6 @@ export function VideoToolbar({
           {burnError}
         </Alert>
       )}
-
-      {/* Download Menu */}
-      <Menu
-        anchorEl={downloadAnchorEl}
-        open={downloadMenuOpen}
-        onClose={handleDownloadClose}
-        anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
-        transformOrigin={{ vertical: "top", horizontal: "right" }}
-      >
-        <MenuItem component="a" href={downloadUrl ?? undefined} download={downloadName} onClick={event => {
-          event.preventDefault(); handleDownloadClose();
-          if (downloadUrl) void downloads.downloadSubtitles({ url: downloadUrl, name: downloadName });
-        }} disabled={!downloadUrl}>
-          <SubtitlesRounded sx={{ mr: 1 }} />
-          הורד קובץ כתוביות
-        </MenuItem>
-        <MenuItem onClick={handleBurnAndDownload} disabled={isBurning || !mediaUrl || !canBurn || !fontReady}>
-          <MovieFilterRounded sx={{ mr: 1 }} />
-          {canBurn ? (fontReady ? "הורד סרטון עם כתוביות" : "ממתינים לטעינת הפונט") : "צריבה זמינה לקובץ וידאו בלבד"}
-        </MenuItem>
-        {burnedVideo && (
-          <MenuItem
-            component="a"
-            href={burnedVideo.url}
-            download={burnedVideo.name}
-            onClick={event => { event.preventDefault(); handleDownloadClose(); void downloads.downloadVideo(burnedVideo); }}
-          >
-            <DownloadRounded sx={{ mr: 1 }} />
-            הורד סרטון צרוב מוכן
-          </MenuItem>
-        )}
-      </Menu>
 
       {/* Position Popover */}
       <Popover
@@ -554,6 +515,7 @@ export function VideoToolbar({
               size="small"
               InputLabelProps={{ shrink: true }}
             />
+            {captionBackgroundControls}
             {onActiveWordColorChange && <TextField label="צבע מילה פעילה" type="color" value={activeWordColor ?? '#ffd700'} onChange={event => onActiveWordColorChange(event.target.value)} disabled={isBurning} fullWidth size="small" InputLabelProps={{ shrink: true }} />}
           </Stack>
         </Paper>

@@ -22,6 +22,7 @@ type BurnedVideo = {
 };
 
 type UseTranscriptionHandlersProps = {
+  crop?: BurnOptions['crop'];
   fontId: string;
   activeWordColor: string;
   editableSegments: Segment[];
@@ -43,7 +44,7 @@ type UseTranscriptionHandlersProps = {
   setIsBurning: (burning: boolean) => void;
   setBurnProgress: (progress: BurnProgress) => void;
   setBurnedVideo: (video: BurnedVideo | null) => void;
-  persistSegments: (segments: Segment[], words?: Word[], options?: { throwOnError?: boolean }) => Promise<void>;
+  persistSegments: (segments: Segment[], words?: Word[], options?: { throwOnError?: boolean; layoutOnly?: boolean }) => Promise<void>;
   videoPlayer: HTMLVideoElement | null;
   mediaUrl: string | null;
   response: ApiResponse;
@@ -53,14 +54,18 @@ type UseTranscriptionHandlersProps = {
   fontReady?: boolean;
   fontColor: string;
   outlineColor: string;
+  backgroundColor: string;
+  backgroundOpacity: number;
   offsetYPercent: number;
   marginPercent: number;
   videoDimensions: { width: number; height: number } | null;
+  audiogram?: (NonNullable<BurnOptions["audiogram"]> & { imageVersion: number }) | null;
   onBurn: (options: BurnOptions) => Promise<BurnResult>;
   onDownloadVideo?: (file: DownloadFile) => Promise<boolean>;
 };
 
 export function useTranscriptionHandlers({
+  crop,
   fontId, activeWordColor,
   editableSegments,
   editableWords,
@@ -90,10 +95,11 @@ export function useTranscriptionHandlers({
   fontSize,
   fontReady = true,
   fontColor,
-  outlineColor,
+  outlineColor, backgroundColor, backgroundOpacity,
   offsetYPercent,
   marginPercent,
   videoDimensions,
+  audiogram = null,
   onBurn,
   onDownloadVideo,
 }: UseTranscriptionHandlersProps) {
@@ -158,7 +164,7 @@ export function useTranscriptionHandlers({
         if (error) throw new Error(error);
       }
       const words = retimeCaptionChanges(editableSegments, newSegments, editableWords, options?.fitWords);
-      await persistSegments(newSegments, words, { throwOnError: true });
+      await persistSegments(newSegments, words, { throwOnError: true, layoutOnly: true });
     },
     [persistSegments, editableSegments, editableWords, videoPlayer],
   );
@@ -192,8 +198,9 @@ export function useTranscriptionHandlers({
 
   const burnedSignature = useRef<string | null>(null);
   const burnSignature = () => JSON.stringify({
-    segments: editableSegments.map(segment => [segment.id, segment.start, segment.end, segment.text]),
-    words: editableWords.map(word => [word.word, word.start, word.end, word.segmentId]),
+    crop,
+    segments: editableSegments.map(segment => [segment.id, segment.start, segment.end, segment.text, segment.style]),
+    words: editableWords.map(word => [word.word, word.start, word.end, word.segmentId, word.style]),
     mediaUrl,
     activeWordEnabled,
     captionMotion,
@@ -203,11 +210,12 @@ export function useTranscriptionHandlers({
     activeWordColor,
     fontSize,
     fontColor,
-    outlineColor,
+    outlineColor, backgroundColor, backgroundOpacity,
     offsetYPercent,
     marginPercent,
     width: videoDimensions?.width ?? null,
     height: videoDimensions?.height ?? null,
+    audiogram: audiogram && { ...audiogram.settings, image: audiogram.imageVersion && audiogram.image ? audiogram.imageVersion : null },
   });
   const currentBurnSignature = burnSignature();
   useEffect(() => {
@@ -234,6 +242,7 @@ export function useTranscriptionHandlers({
     setBurnError(null);
     try {
       const result = await onBurn({
+        crop,
         onProgress: setBurnProgress,
         captionMotion,
         popIntensity,
@@ -246,11 +255,12 @@ export function useTranscriptionHandlers({
         activeWordColor,
         fontSize,
         fontColor,
-        outlineColor,
+        outlineColor, backgroundColor, backgroundOpacity,
         offsetYPercent,
         marginPercent,
         videoWidth: videoDimensions?.width ?? null,
         videoHeight: videoDimensions?.height ?? null,
+        audiogram: audiogram && { settings: audiogram.settings, image: audiogram.image },
       });
       if (latestBurnSignature.current !== signature) {
         setBurnError("הכתוביות השתנו במהלך יצירת הווידאו. צרבו שוב את הגרסה המעודכנת.");
@@ -258,7 +268,7 @@ export function useTranscriptionHandlers({
       }
       const url = URL.createObjectURL(result.blob);
       const baseName = downloadName.replace(/\.[^.]+$/, "") || "video";
-      const filename = result.filename ?? `${baseName}-burned.mp4`;
+      const filename = crop ? `${baseName}-${crop.format}.mp4` : result.filename ?? `${baseName}-burned.mp4`;
       const next = { url, name: filename };
       burnedSignature.current = signature;
       setBurnedVideo(next);
@@ -275,6 +285,7 @@ export function useTranscriptionHandlers({
       setIsBurning(false);
     }
   }, [
+    crop,
     response.subtitle?.content,
     mediaUrl,
     setBurnError,
@@ -293,10 +304,11 @@ export function useTranscriptionHandlers({
     fontReady,
     fontSize,
     fontColor,
-    outlineColor,
+    outlineColor, backgroundColor, backgroundOpacity,
     offsetYPercent,
     marginPercent,
     videoDimensions,
+    audiogram,
     burnedVideo,
     setBurnedVideo,
     downloadName,

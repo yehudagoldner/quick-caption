@@ -28,7 +28,7 @@ export function MobileWordTimeline({ segment, words, fps, currentTime, activeWor
   const pps = trackWidth / duration;
   const view = preview ?? words;
   const chosen = view[selected];
-  const activeWord = useActiveWord({ words: view, currentTime, enabled: activeWordEnabled });
+  const activeWord = useActiveWord({ words: view, currentTime, enabled: segment.style?.activeWordEnabled ?? activeWordEnabled });
   const changeZoom = (next: number) => {
     const el = scroller.current;
     if (el) {
@@ -100,7 +100,7 @@ export function MobileWordTimeline({ segment, words, fps, currentTime, activeWor
       <IconButton size="small" aria-label="ביטול תזמון מילה" disabled={disabled || !canUndo} onClick={onUndo}><UndoRounded fontSize="small" /></IconButton>
       <IconButton size="small" aria-label="ביצוע חוזר של תזמון מילה" disabled={disabled || !canRedo} onClick={onRedo}><RedoRounded fontSize="small" /></IconButton>
       <Box sx={{ width: 72, flexShrink: 0 }}>
-        <CompactTimelineZoom label="זום ציר המילים" value={zoom} min={1} max={4} step={0.01}
+        <CompactTimelineZoom label="זום ציר המילים" value={zoom} min={1} max={16} step={0.01}
           valueText={`פי ${Number(zoom.toFixed(2))}`} onChange={changeZoom} />
       </Box>
     </Stack>

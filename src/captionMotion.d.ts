@@ -8,4 +8,4 @@ export function wordPopCues(words: Word[]): Word[];
 export function popKeyframes(durationSeconds: number, intensity?: PopIntensity): { time: number; scale: number }[];
 export function wordPopScale(word: Word, currentTime: number, intensity?: PopIntensity): number;
 export function escapeAssText(text: string): string;
-export function renderWordPopAss(segments: Segment[], sourceWords: Word[], options?: { intensity?: PopIntensity; direction?: "rtl" | "ltr"; videoWidth?: number; videoHeight?: number; outlineWidth?: number }): string;
+export function renderWordPopAss(segments: Segment[], sourceWords: Word[], options?: { intensity?: PopIntensity; direction?: "rtl" | "ltr"; videoWidth?: number; videoHeight?: number; outlineWidth?: number; styleTags?: (word: Word) => string }): string;

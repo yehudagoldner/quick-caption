@@ -1,19 +1,21 @@
 import "react-virtualized/styles.css";
 import "./SubtitleTimeline.css";
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { VideoVersionContext } from '../contexts/VideoVersionContext';
 import { Alert, Box, Button, Dialog, DialogActions, DialogContent, DialogTitle, IconButton, InputAdornment, Slider, Stack, TextField, ThemeProvider, Tooltip, Typography, createTheme, useTheme } from "@mui/material";
-import { PlayArrowRounded, PauseRounded, UndoRounded, RedoRounded, RepeatRounded, CloseRounded, RestartAltRounded, EditOutlined, OpenInFullRounded } from "@mui/icons-material";
+import { PlayArrowRounded, PauseRounded, UndoRounded, RedoRounded, RepeatRounded, CloseRounded, RestartAltRounded, EditOutlined, OpenInFullRounded, GraphicEqRounded } from "@mui/icons-material";
 import { Timeline, type TimelineRow, type TimelineState } from "@xzdarcy/react-timeline-editor";
 import type { Segment, Word } from "../types";
 import { useEditorPreferences } from "../contexts/EditorPreferences";
 import { formatTimecode, snapToFrame } from "../utils/timecode";
-import { retimeCaption, overwriteCaptionRange, validateCaptionRange, wordsForSegment, timelineZoomForWindow, timelineScrollForTime } from "../../timelineEditing.js";
+import { overwriteCaptionRange, validateCaptionRange, wordsForSegment, timelineZoomForWindow, timelineScrollForTime } from "../../timelineEditing.js";
 import { synchronizeWords } from "../../wordAlignment.js";
 import { WordTimeline } from "./WordTimeline";
 import { CaptionSelectionToolbar } from "./CaptionSelectionToolbar";
 import { moveCaptionSelection } from "../../captionSelection.js";
 import { canMergeCaptions, canSplitCaptionAtTime, type CaptionBatchAction } from "../../captionBatchEditing.js";
 import { AudioWaveform } from "./AudioWaveform";
+import { useAudioWaveform } from "../hooks/useAudioWaveform";
 import { useTimelineScrubbing } from "../hooks/useTimelineScrubbing";
 import { VideoSeekBar } from "./VideoSeekBar";
 import { useTimelineWheelZoom } from "../hooks/useTimelineWheelZoom";
@@ -42,12 +44,19 @@ export function SubtitleTimeline({ activeWordEnabled, segments, words = [], disa
   selectedSegmentId, onSegmentSelect, onRequestTimeChange, onSegmentsChange, onAddSubtitle, onCaptionBatch, onSaveSegment,
   isPlaying, onPlayPause, onPlayFrom, loopEnabled, onLoopChange,   onUndo, onRedo, canUndo, canRedo, onDraftStateChange, layout = "full", compactDesktop = false,
 }: SubtitleTimelineProps) {
+  const version = useContext(VideoVersionContext);
   const { preferences } = useEditorPreferences();
   const fps = preferences.fps;
   const theme = useTheme();
   const ltrTheme = useMemo(() => createTheme(theme, { direction: "ltr" }), [theme]);
   const total = duration && Number.isFinite(duration) ? duration : Math.max(1, ...segments.map(s => s.end));
   const time = Math.max(0, Math.min(total, currentTime ?? 0));
+  const waveform = useAudioWaveform(layout === "timing" ? null : mediaUrl, total);
+  const [waveformVisible, setWaveformVisible] = useState(true);
+  const showWaveform = layout !== "timing" && waveformVisible;
+  const timelineHeight = (layout === "timing" || compactDesktop ? 88 : 130) + (showWaveform ? 36 : 0);
+  // Ruler (32), top gap (10), captions (32), and space for the scrollbar (4).
+  const waveformHeight = timelineHeight - 78;
   const root = useRef<HTMLDivElement | null>(null);
   const [selection, setSelection] = useState<Segment["id"][]>([]);
   const [wordSelection, setWordSelection] = useState<{ segmentId: Segment["id"] | null; indexes: number[] }>({ segmentId: null, indexes: [] });
@@ -60,10 +69,11 @@ export function SubtitleTimeline({ activeWordEnabled, segments, words = [], disa
   const timeline = useRef<TimelineState | null>(null);
   const container = useRef<HTMLDivElement | null>(null);
   const scrollLeft = useRef(0);
+  const [waveformScroll, setWaveformScroll] = useState(0);
   const [width, setWidth] = useState(800);
   // Null keeps the 30-second window automatic while metadata/width loads.
   const [zoom, setZoom] = useState<number | null>(null);
-  useEffect(() => { setZoom(null); scrollLeft.current = 0; timeline.current?.setScrollLeft(0); }, [mediaUrl]);
+  useEffect(() => { setZoom(null); scrollLeft.current = 0; setWaveformScroll(0); timeline.current?.setScrollLeft(0); }, [mediaUrl]);
   const [error, setError] = useState<string | null>(null);
   const [trackVersion, setTrackVersion] = useState(0);
   const [saving, setSaving] = useState(false);
@@ -74,6 +84,7 @@ export function SubtitleTimeline({ activeWordEnabled, segments, words = [], disa
     if (expandedSegmentId !== null && expandedSegmentId !== selectedSegmentId) setExpandedSegmentId(null);
   }, [selectedSegmentId, expandedSegmentId]);
   const locked = disabled || busy || saving;
+  useEffect(() => { setSelection([]); setDrafts({}); setExpandedSegmentId(null); }, [version?.activeId]);
   const dirty = Object.keys(drafts).length > 0;
   const groupLocked = !!locked || dirty || movePreview !== null;
   useEffect(() => { setSelection([]); selectionAnchor.current = null; setMovePreview(null); dragging.current = null; }, [mediaUrl]);
@@ -139,7 +150,9 @@ export function SubtitleTimeline({ activeWordEnabled, segments, words = [], disa
   const trackStructure = displaySegments.map(segment => `${segment.id}:${segment.start}:${segment.end}`).join("|");
   const rows = useMemo<TimelineRow[]>(() => [{ id: "captions", actions: displaySegments.map(s => ({
     id: String(s.id), effectId: String(s.id), start: s.start, end: s.end, minStart: 0, maxEnd: total, movable: false, flexible: !locked && !dirty && selection.length <= 1,
-  })) }], [trackStructure, trackVersion, total, locked, dirty, selection.length]);
+  })) }, ...(showWaveform ? [{ id: "audio", rowHeight: waveformHeight, classNames: ["audio-waveform-row"], actions: [{
+    id: "audio-waveform", effectId: "audio-waveform", start: 0, end: total, movable: false, flexible: false,
+  }] }] : [])], [trackStructure, trackVersion, total, locked, dirty, selection.length, showWaveform, waveformHeight]);
   const effects = useMemo(() => Object.fromEntries(segments.map(s => [String(s.id), { id: String(s.id), name: String(s.id) }])), [trackStructure]);
   const selected = segments.find(s => s.id === selectedSegmentId);
   // Playback changes time each frame, not the track data. Keep the word array stable
@@ -298,9 +311,6 @@ export function SubtitleTimeline({ activeWordEnabled, segments, words = [], disa
       if (locked || dirty || dragging.current || flight.current) return;
       if (command && event.code === "KeyA") { event.preventDefault(); applySelection(segments.map(s => s.id)); }
       else if (event.code === "Escape") { event.preventDefault(); clearSelection(); }
-      else if (command && event.code === "KeyZ") {
-        event.preventDefault(); if (event.shiftKey) { if (canRedo) onRedo(); } else if (canUndo) onUndo();
-      } else if (command && event.code === "KeyY") { event.preventDefault(); if (canRedo) onRedo(); }
       else if (command && event.code === "KeyM") { event.preventDefault(); if (canMergeCaptions(segments, selection)) void runSelectionAction("merge"); }
       else if (command && event.code === "KeyK") { event.preventDefault(); if (canSplitCaptionAtTime(selectedCaption, time)) void runSelectionAction("split"); }
       else if (!command && !event.altKey && (event.code === "Delete" || event.code === "Backspace")) { event.preventDefault(); if (!event.repeat && selection.length) void runSelectionAction("delete"); }
@@ -340,9 +350,8 @@ export function SubtitleTimeline({ activeWordEnabled, segments, words = [], disa
       {compactDesktop && <Box dir="ltr" sx={{ flex: 1, px: 2 }}><VideoSeekBar currentTime={time} duration={total} fps={fps} mediaUrl={mediaUrl} onSeek={onRequestTimeChange} /></Box>}
     </Stack>
     {!compactDesktop && <Box dir="ltr" sx={{ px: 1 }}><VideoSeekBar currentTime={time} duration={total} fps={fps} mediaUrl={mediaUrl} onSeek={onRequestTimeChange} /></Box>}
-    {!compactTiming && <AudioWaveform mediaUrl={mediaUrl} duration={total} currentTime={time} onSeek={seek} />}
     <Box data-testid="timeline-tracks" sx={{ minWidth: 0 }}>
-    <Stack data-testid="main-timeline-zoom" direction="row" gap={1} alignItems="center" sx={{ height: compactTiming ? 36 : 40, px: 1, bgcolor: "action.hover", minWidth: 0 }}>
+    <Stack data-testid="main-timeline-zoom" direction="row" gap={1} alignItems="center" sx={{ flexWrap: "wrap", minHeight: compactTiming ? 36 : 40, py: .5, px: 1, bgcolor: "action.hover", minWidth: 0 }}>
       {!compactTiming && <Typography variant="caption" sx={{ whiteSpace: "nowrap" }}>זום ציר ראשי</Typography>}
       <ThemeProvider theme={ltrTheme}><Box dir="ltr" sx={{ flex: 1, minWidth: 40, maxWidth: 240, px: 1 }}>
         <Slider size="small" aria-label="זום ציר ראשי" min={0} max={maximumZoom} value={effectiveZoom}
@@ -350,16 +359,19 @@ export function SubtitleTimeline({ activeWordEnabled, segments, words = [], disa
       </Box></ThemeProvider>
       <Button size="small" aria-label="תצוגת 30 שניות" aria-pressed={zoom === null} variant={zoom === null ? "contained" : "text"} onClick={() => setZoom(null)} sx={{ whiteSpace: "nowrap", minWidth: 0 }}>30 שנ׳</Button>
       <Button size="small" aria-label="התאם את כל ההקלטה" aria-pressed={zoom === 0} onClick={() => { setZoom(0); scrollLeft.current = 0; timeline.current?.setScrollLeft(0); }} sx={{ whiteSpace: "nowrap", minWidth: 0 }}>הכול</Button>
+      {!compactTiming && <Button size="small" startIcon={<GraphicEqRounded />} aria-label={waveformVisible ? "סגור גל קול" : "הצג גל קול"}
+        aria-pressed={waveformVisible} onClick={() => setWaveformVisible(value => !value)} sx={{ whiteSpace: "nowrap", minWidth: 0 }}>גל קול</Button>}
       <CaptionSelectionToolbar count={selection.length} disabled={groupLocked} canMerge={canMergeCaptions(segments, selection)} canSplit={canSplitCaptionAtTime(selectedCaption, time)}
+        splitAll={version ? () => { setSaving(true); void version.splitAll(time).then(() => { setError(null); applySelection([]); }).catch(e => setError(e.message || 'הפיצול נכשל.')).finally(() => setSaving(false)); } : undefined}
         canAdd={time < total} add={() => { if (isPlaying) onPlayPause?.(); onLoopChange(false); void Promise.resolve().then(() => onAddSubtitle("הכנס טקסט כאן", time, Math.min(total, time + 0.5))).then(() => setError(null)).catch(e => setError(e.message || "לא ניתן להוסיף כתובית כאן.")); }}
         selectAll={() => applySelection(segments.map(s => s.id))} clear={clearSelection} merge={() => void runSelectionAction("merge")} split={() => void runSelectionAction("split")} remove={() => void runSelectionAction("delete")} move={nudge} />
     </Stack>
     <Box ref={container} data-testid="caption-track" {...scrubbing} title="Ctrl + גלגלת לזום פנימה והחוצה" sx={{ minWidth: 0, direction: "ltr", "& *": { direction: "ltr !important" } }}>
       <Timeline ref={timeline} editorData={rows} effects={effects} disableDrag={locked || dirty || movePreview !== null} gridSnap={false} dragLine
         scale={scale} scaleWidth={scaleWidth} scaleSplitCount={4} minScaleCount={Math.max(2, Math.ceil(total / scale) + 1)}
-        getScaleRender={value => <span>{formatTimecode(value, fps)}</span>}
+        getScaleRender={value => <span title="גררו ימינה ושמאלה להזזת ציר הזמן · לחיצה למעבר לזמן · Ctrl + גלגלת לזום">{formatTimecode(value, fps)}</span>}
         onCursorDrag={seek} onCursorDragEnd={seek} onClickTimeArea={seek}
-        onScroll={p => { scrollLeft.current = p.scrollLeft; }}
+        onScroll={p => { scrollLeft.current = p.scrollLeft; setWaveformScroll(p.scrollLeft); }}
         onChange={nextRows => {
           let next = nextRows[0].actions.map(action => {
             const original = segments.find(s => String(s.id) === action.id)!;
@@ -379,11 +391,6 @@ export function SubtitleTimeline({ activeWordEnabled, segments, words = [], disa
               const resizing = original.start === item.start || original.end === item.end;
               const problem = validateCaptionRange(item, next, total, { allowOverlap: resizing });
               if (problem) throw new Error(problem);
-              try { retimeCaption(original, item, words); }
-              catch (e) {
-                const hint = activeWordEnabled ? "" : ' הפעילו ״מילה אקטיבית״ כדי להציג את ציר המילים.';
-                throw new Error((e as Error).message + hint);
-              }
               if (resizing) next = overwriteCaptionRange(item, next);
             }
             for (const item of next) {
@@ -391,6 +398,8 @@ export function SubtitleTimeline({ activeWordEnabled, segments, words = [], disa
               if (problem) throw new Error(problem);
             }
             setError(null);
+            // Fit words to the final caption ranges, including trimmed neighbours.
+            // A strict word-boundary check here would reject valid speech trims.
             void commitMove(next, { fitWords: true });
           } catch (e) {
             setError((e as Error).message);
@@ -400,7 +409,9 @@ export function SubtitleTimeline({ activeWordEnabled, segments, words = [], disa
             return false;
           }
         }}
-        getActionRender={action => {
+        getActionRender={(action, row) => {
+          if (row.id === "audio") return <AudioWaveform waveform={waveform} pixelsPerSecond={pixelsPerSecond} scrollLeft={waveformScroll}
+            viewportWidth={width} duration={total} currentTime={time} fps={fps} onSeek={seek} />;
           // The timeline library retains the previous row for one render after split/undo.
           const segment = segments.find(s => String(s.id) === action.id);
           if (!segment) return null;
@@ -450,7 +461,7 @@ export function SubtitleTimeline({ activeWordEnabled, segments, words = [], disa
             sx={{ touchAction: "none", userSelect: "none", bgcolor: selection.includes(segment.id) ? (selectedWords.length && draft?.segment.id === segment.id ? "success.main" : "primary.main") : "#9b5700", color: "white", height: "100%", px: 1, display: "flex", alignItems: "center", borderRadius: 1, overflow: "hidden" }}>
             <Typography noWrap variant="caption" sx={{ direction: `${preferences.direction} !important`, unicodeBidi: "plaintext" }}>{segment.text}</Typography>
           </Box>;
-        }} style={{ height: compactTiming || compactDesktop ? 88 : 130, width: "100%" }} />
+        }} style={{ height: timelineHeight, width: "100%" }} />
     </Box>
     {!compactTiming && draft && !disabled && <Box data-testid="segment-inspector">
         <WordTimeline compact={compactDesktop} enabled={activeWordEnabled} segment={draft.segment} words={draft.words} currentTime={time} disabled={locked} onSeek={seek}

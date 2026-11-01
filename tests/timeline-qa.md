@@ -6,7 +6,7 @@ No commit, push, production deployment, or changes to stored user videos.
 
 - Caption and word drafts survive selection changes; caption text, timing and words share one explicit save.
 - Split includes the draft and remains available regardless of active-word highlighting.
-- Overlap rejection does not modify neighbours. Trimming silence preserves word anchors; cutting through timed words requires an explicit word-timing edit first.
+- Moving captions rejects overlaps. Resizing can trim neighbours; trimming silence preserves word anchors, while cutting through speech fits the words inside the edited range without losing text. Undo restores caption boundaries and word timing together.
 - Both rulers seek the same media player. Frame buttons and playhead update on every frame.
 - Caption timing is edited on the track, without duplicate start/end fields. Optional precise word timing remains in the word-edit dialog (HH:MM:SS:FF and frame nudges).
 - 100-step session undo/redo restores caption text and word timings together. Keyboard shortcuts ignore text inputs.
