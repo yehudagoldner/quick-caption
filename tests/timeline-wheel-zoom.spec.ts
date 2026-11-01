@@ -12,6 +12,7 @@ async function open(page: Page) {
 }
 
 async function wheel(page: Page, track: Locator, delta: number, ctrl = true, fraction = .6) {
+  await track.scrollIntoViewIfNeeded();
   const rect = (await track.boundingBox())!;
   await page.mouse.move(rect.x + rect.width * fraction, rect.y + 50);
   if (ctrl) await page.keyboard.down('Control');
@@ -19,38 +20,50 @@ async function wheel(page: Page, track: Locator, delta: number, ctrl = true, fra
   if (ctrl) await page.keyboard.up('Control');
 }
 
-async function timeAtPointer(track: Locator, fraction = .6) {
-  return track.evaluate((el, fraction) => {
-    const editor = el.querySelector('.timeline-editor')!;
+async function playheadFromCenter(track: Locator) {
+  return track.evaluate(el => {
     const grid = el.querySelector('.timeline-editor-edit-area .ReactVirtualized__Grid')!;
-    const action = el.querySelector<HTMLElement>('.timeline-editor-action')!;
-    const clip = action.querySelector<HTMLElement>('[data-testid="subtitle-clip"]')!;
-    const scale = action.getBoundingClientRect().width / (Number(clip.dataset.end) - Number(clip.dataset.start));
-    return (grid.scrollLeft + el.getBoundingClientRect().width * fraction + el.getBoundingClientRect().left - editor.getBoundingClientRect().left - 20) / scale;
-  }, fraction);
+    const cursor = el.querySelector('.timeline-editor-cursor')!;
+    return cursor.getBoundingClientRect().left - grid.getBoundingClientRect().left - grid.clientWidth / 2;
+  });
 }
 
-test('Ctrl+wheel zooms the main track around the pointer without changing playback, captions or page zoom', async ({ page }) => {
-  const saves = await open(page);
+test('wheel, slider and keyboard zoom center the playhead regardless of mouse position', async ({ page }) => {
+  await page.setViewportSize({ width: 1366, height: 768 });
+  await prepareApp(page);
+  await page.goto('/tests/editor-harness.html');
+  await page.getByRole('button', { name: 'בדיקת ציר ארוך — 90 שניות', exact: true }).click();
+  await expect.poll(() => page.locator('video').evaluate((video: HTMLVideoElement) => video.readyState)).toBeGreaterThan(0);
   const track = page.getByTestId('caption-track');
   const slider = page.getByRole('slider', { name: 'זום ציר ראשי' });
-  const pointerTime = await timeAtPointer(track);
+  const ruler = track.locator('.timeline-editor-time-area');
+  await track.scrollIntoViewIfNeeded();
+  const rect = (await ruler.boundingBox())!;
+  await page.mouse.click(rect.x + rect.width * .7, rect.y + 8);
   const pageScale = await page.evaluate(() => ({ width: innerWidth, dpr: devicePixelRatio, viewport: visualViewport?.scale }));
-  const clips = await page.getByTestId('subtitle-clip').evaluateAll(els => els.map(el => [el.getAttribute('data-start'), el.getAttribute('data-end')]));
+  const captions = await page.getByTestId('saved-test-data').textContent();
   const time = await page.locator('video').evaluate((video: HTMLVideoElement) => video.currentTime);
-  await wheel(page, track, -120);
-  await expect.poll(async () => Number(await slider.inputValue())).toBeGreaterThan(0);
-  await expect.poll(() => timeAtPointer(track)).toBeCloseTo(pointerTime, 2);
-  await wheel(page, track, -120);
-  await expect.poll(async () => Number(await slider.inputValue())).toBeGreaterThan(15);
-  await expect.poll(() => timeAtPointer(track)).toBeCloseTo(pointerTime, 2);
-  await wheel(page, track, 120);
-  await expect.poll(async () => Number(await slider.inputValue())).toBeLessThan(15);
-  await expect.poll(() => timeAtPointer(track)).toBeCloseTo(pointerTime, 2);
+  expect(time).toBeGreaterThan(10);
+  for (const [delta, fraction] of [[-120, .15], [-120, .85], [120, .25]]) {
+    const before = Number(await slider.inputValue());
+    await wheel(page, track, delta, true, fraction);
+    await expect.poll(async () => Number(await slider.inputValue())).not.toBe(before);
+    await expect.poll(async () => Math.abs(await playheadFromCenter(track))).toBeLessThan(2);
+  }
+  await slider.focus();
+  await page.keyboard.press('ArrowRight');
+  await expect.poll(async () => Math.abs(await playheadFromCenter(track))).toBeLessThan(2);
+  // Pan away, then use the keyboard shortcut to bring the playhead back to center.
+  await page.mouse.move(rect.x + rect.width * .2, rect.y + 8);
+  await page.mouse.wheel(0, 200);
+  await expect.poll(async () => Math.abs(await playheadFromCenter(track))).toBeGreaterThan(100);
+  await page.locator('.subtitle-timeline').focus();
+  await page.keyboard.press('Equal');
+  await expect.poll(async () => Math.abs(await playheadFromCenter(track))).toBeLessThan(2);
   expect(await page.evaluate(() => ({ width: innerWidth, dpr: devicePixelRatio, viewport: visualViewport?.scale }))).toEqual(pageScale);
   expect(await page.locator('video').evaluate((video: HTMLVideoElement) => video.currentTime)).toBe(time);
-  expect(await page.getByTestId('subtitle-clip').evaluateAll(els => els.map(el => [el.getAttribute('data-start'), el.getAttribute('data-end')]))).toEqual(clips);
-  expect(saves).toHaveLength(0);
+  expect(await page.getByTestId('saved-test-data').textContent()).toBe(captions);
+  await expect(page.getByTestId('save-count')).toHaveText('שמירות בדיקה: 0');
   await page.screenshot({ path: 'tmp/review/timeline-wheel-zoom.png' });
 });
 
@@ -77,6 +90,40 @@ test('word track zoom is independent, keeps word selection and works again after
   await wheel(page, track, -120);
   await expect.poll(async () => Number(await slider.inputValue())).toBeGreaterThan(160);
   expect(saves).toHaveLength(0);
+});
+
+test('word zoom centers the relative playhead in a later caption and clamps at the start', async ({ page }) => {
+  await page.setViewportSize({ width: 1366, height: 768 });
+  await prepareApp(page);
+  await page.goto('/tests/editor-harness.html');
+  await page.getByRole('button', { name: 'בדיקת ציר ארוך — 90 שניות', exact: true }).click();
+  await expect.poll(() => page.locator('video').evaluate((video: HTMLVideoElement) => video.readyState)).toBeGreaterThan(0);
+  await page.getByTestId('subtitle-clip').nth(1).click();
+  await page.getByRole('button', { name: 'מילה אקטיבית', exact: true }).click();
+  const track = page.getByTestId('word-track');
+  const slider = page.getByRole('slider', { name: 'זום מילים' });
+  await track.scrollIntoViewIfNeeded();
+  const ruler = (await track.locator('.timeline-editor-time-area').boundingBox())!;
+  // The selected caption starts at 3 seconds; its ruler uses relative positions.
+  await page.mouse.click(ruler.x + 20 + 1.5 * 160, ruler.y + 8);
+  await expect.poll(() => page.locator('video').evaluate((video: HTMLVideoElement) => video.currentTime)).toBeCloseTo(4.5, 1);
+  const time = await page.locator('video').evaluate((video: HTMLVideoElement) => video.currentTime);
+  const mainZoom = await page.getByRole('slider', { name: 'זום ציר ראשי' }).inputValue();
+  await slider.focus();
+  await page.keyboard.press('End');
+  await expect(slider).toHaveValue('2560');
+  await expect.poll(async () => Math.abs(await playheadFromCenter(track))).toBeLessThan(2);
+  await wheel(page, track, 120, true, .1);
+  await expect.poll(async () => Number(await slider.inputValue())).toBeLessThan(2560);
+  await expect.poll(async () => Math.abs(await playheadFromCenter(track))).toBeLessThan(2);
+  await expect(page.getByRole('slider', { name: 'זום ציר ראשי' })).toHaveValue(mainZoom);
+  expect(await page.locator('video').evaluate((video: HTMLVideoElement) => video.currentTime)).toBe(time);
+  // Zooming out far enough cannot center the playhead without negative scrolling.
+  await slider.focus();
+  await page.keyboard.press('Home');
+  await expect(slider).toHaveValue('80');
+  await expect.poll(() => track.locator('.timeline-editor-edit-area .ReactVirtualized__Grid').evaluate(el => el.scrollLeft)).toBe(0);
+  await expect(page.getByTestId('save-count')).toHaveText('שמירות בדיקה: 0');
 });
 
 test('plain scrolling leaves zoom alone and Ctrl+wheel respects limits and cancels the browser default', async ({ page }) => {
