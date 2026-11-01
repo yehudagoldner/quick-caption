@@ -42,7 +42,8 @@ export function WordTimeline({ enabled, segment, words, selection, onSelectionCh
     const time = Math.max(0, Math.min(duration, currentTime - segment.start));
     if (timeline.current?.getTime() !== time) timeline.current?.setTime(time);
   }, [currentTime, segment.start, duration, zoom, enabled]);
-  useTimelineWheelZoom(container, timeline, zoom, MIN_WORD_ZOOM, MAX_WORD_ZOOM, setZoom, enabled);
+  useTimelineWheelZoom(container, timeline, zoom, MIN_WORD_ZOOM, MAX_WORD_ZOOM, setZoom,
+    Math.max(0, Math.min(duration, currentTime - segment.start)), enabled);
   const rows = useMemo<TimelineRow[]>(() => [{ id: "words", actions: words.map((word, i) => ({
     id: String(i), effectId: String(i), start: word.start - segment.start, end: word.end - segment.start,
     minStart: Math.max(0, (words[i - 1]?.end ?? segment.start) - segment.start),

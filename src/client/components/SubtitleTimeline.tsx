@@ -145,7 +145,7 @@ export function SubtitleTimeline({ activeWordEnabled, segments, words = [], disa
     }
   }, [time, pixelsPerSecond, width]);
   useTimelineWheelZoom(container, timeline, pixelsPerSecond, minimumScale, minimumScale * 2 ** (maximumZoom / 25),
-    value => setZoom(Math.max(0, Math.min(maximumZoom, 25 * Math.log2(value / minimumScale)))));
+    value => setZoom(Math.max(0, Math.min(maximumZoom, 25 * Math.log2(value / minimumScale)))), time);
   const displaySegments = movePreview ?? segments;
   const trackStructure = displaySegments.map(segment => `${segment.id}:${segment.start}:${segment.end}`).join("|");
   const rows = useMemo<TimelineRow[]>(() => [{ id: "captions", actions: displaySegments.map(s => ({
