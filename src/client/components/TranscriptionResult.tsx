@@ -38,6 +38,10 @@ import { VideoVersionsBar } from './VideoVersionsBar';
 import { cropRectangle } from '../../videoVersions.js';
 import { WordAppearanceContext } from '../contexts/WordAppearanceContext';
 import { styleCaptionWords, moveCaptionWords } from '../../wordOverrides.js';
+import { apiFetch } from '../api';
+import { clearVideoLibrary } from '../videoLibrary';
+import { ReplaceVideoSettings } from './ReplaceVideoSettings';
+import { useUploadProtection } from '../hooks/useUploadProtection';
 
 export type { BurnOptions };
 type BurnResult = { blob: Blob; filename?: string; };
@@ -61,14 +65,20 @@ export function TranscriptionResult({
   subtitleFormatLabel,
   downloadUrl: _originalDownloadUrl,
   downloadName: originalDownloadName,
-  mediaUrl,
+  mediaUrl: originalMediaUrl,
   onBack,
   onMyVideos,
   onBurn,
   onSaveSegments,
   videoId,
-  isEditable,
+  isEditable: canEdit,
 }: TranscriptionResultProps) {
+  const [replacingVideo, setReplacingVideo] = useState(false);
+  const replacementFlight = useRef(false);
+  const [replacement, setReplacement] = useState<{ videoId: number; originalUrl: string | null; url: string } | null>(null);
+  const mediaUrl = replacement?.videoId === videoId && replacement?.originalUrl === originalMediaUrl ? replacement.url : originalMediaUrl;
+  const isEditable = canEdit && !replacingVideo;
+  useUploadProtection(replacingVideo);
   const { preferences } = useEditorPreferences();
   const desktop = useMediaQuery(useTheme().breakpoints.up("md"));
   const [reframing, setReframing] = useState(false);
@@ -103,7 +113,7 @@ export function TranscriptionResult({
   const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
   const [exportFormat, setExportFormat] = useState(response.subtitle?.format || ".srt");
   const downloadName = originalDownloadName.replace(/\.[^.]+$/, "") + exportFormat;
-  useEffect(() => { setExportFormat(response.subtitle?.format || ".srt"); }, [mediaUrl, videoId, response.subtitle?.format]);
+  useEffect(() => { setExportFormat(response.subtitle?.format || ".srt"); }, [videoId, response.subtitle?.format]);
   const videoPlayer = useVideoPlayer();
   const responseSegments = response.segments ?? [];
   const savedSegments = useMemo(() => fixSegmentOverlaps(responseSegments.map(segment => ({ ...segment, text: cleanSegmentText(segment.text) })))
@@ -330,6 +340,7 @@ export function TranscriptionResult({
   const registerNavigation = useContext(EditorNavigationContext);
 
   const leaveEditor = async (destination: () => void) => {
+    if (replacementFlight.current) return;
     if (isEditable && (saveState === "error" || JSON.stringify(editableSegments) !== JSON.stringify(savedSegments) || JSON.stringify(editableWords) !== JSON.stringify(savedWords))) {
       try { await persistSegments(editableSegments, editableWords, { throwOnError: true }); }
       catch { return; }
@@ -340,7 +351,23 @@ export function TranscriptionResult({
   const handleMyVideos = () => leaveEditor(onMyVideos);
   const navigationRef = useRef(leaveEditor);
   navigationRef.current = leaveEditor;
-  const navigationBlocked = isBurning || versionDownloadPending || reframing || hasTimelineDrafts || saveState === "saving";
+  const navigationBlocked = replacingVideo || isBurning || versionDownloadPending || reframing || hasTimelineDrafts || saveState === "saving";
+  const handleReplaceVideo = async (file: File) => {
+    if (!videoId || !isEditable || navigationBlocked || replacementFlight.current || saveState === 'error') throw new Error('סיימו ושמרו את העריכה לפני החלפת הסרטון.');
+    replacementFlight.current = true;
+    setReplacingVideo(true);
+    videoPlayer?.pause();
+    try {
+      const form = new FormData(); form.append('media', file);
+      const base = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '');
+      const result = await apiFetch(`${base}/api/videos/${videoId}/media`, { method: 'PUT', body: form });
+      const data = await result.json().catch(() => null);
+      if (!result.ok || data?.success !== true || typeof data.mediaToken !== 'string') throw new Error(data?.error || 'החלפת הסרטון נכשלה. נסו שוב.');
+      clearVideoLibrary();
+      setLoopEnabled(false); loopEnabledRef.current = false;
+      setReplacement({ videoId, originalUrl: originalMediaUrl, url: `${base}/api/videos/${videoId}/media?mediaToken=${encodeURIComponent(data.mediaToken)}&revision=${Date.now()}` });
+    } finally { replacementFlight.current = false; setReplacingVideo(false); }
+  };
   useEffect(() => {
     if (narrow) return;
     registerNavigation(async destination => {
@@ -522,11 +549,11 @@ export function TranscriptionResult({
             onNavigateAway={destination => navigationRef.current(destination)}
             fontId={fontId} onFontChange={setFontId} activeWordColor={activeWordColor}
             onActiveWordColorChange={setActiveWordColor}
-            captionBackgroundControls={<CaptionBackgroundSettings backgroundColor={backgroundColor} backgroundOpacity={backgroundOpacity} disabled={isBurning}
+            captionBackgroundControls={<CaptionBackgroundSettings backgroundColor={backgroundColor} backgroundOpacity={backgroundOpacity} disabled={isBurning || replacingVideo}
               onChange={patch => { if (patch.backgroundColor !== undefined) setBackgroundColor(patch.backgroundColor); if (patch.backgroundOpacity !== undefined) setBackgroundOpacity(patch.backgroundOpacity); }} />}
-            captionStyles={<CaptionStylePicker appearance={{ fontId, fontSize, fontColor, outlineColor, backgroundColor, backgroundOpacity, activeWordColor, activeWordEnabled, offsetYPercent, marginPercent, captionMotion, popIntensity }} onApply={applyCaptionStyle} disabled={isBurning} />}
+            captionStyles={<CaptionStylePicker appearance={{ fontId, fontSize, fontColor, outlineColor, backgroundColor, backgroundOpacity, activeWordColor, activeWordEnabled, offsetYPercent, marginPercent, captionMotion, popIntensity }} onApply={applyCaptionStyle} disabled={isBurning || replacingVideo} />}
             fontReady={fontReady}
-            hasTimelineDrafts={hasTimelineDrafts || reframing}
+            hasTimelineDrafts={hasTimelineDrafts || reframing || replacingVideo}
             timelineEditing={{ onSaveSegment: handleSaveSegment, onUndo: handleUndo, onRedo: handleRedo, canUndo, canRedo,
               onDraftStateChange: setHasTimelineDrafts, loopEnabled,
               onPlayFrom: time => { handleTimelineTimeChange(time); void videoPlayer?.play().catch(() => setBurnError("לא ניתן להתחיל ניגון.")); },
@@ -538,8 +565,9 @@ export function TranscriptionResult({
               },
             }}
             editorSettings={<>
-              <CaptionMotionSettings motion={captionMotion} intensity={popIntensity} onMotionChange={setCaptionMotion} onIntensityChange={setPopIntensity} disabled={isBurning} />
-              <EditorSettings disabled={!isEditable || saveState === "saving" || hasTimelineDrafts} onApply={handleCharacterReflow} onUndo={handleUndoReflow} canUndo={canUndoReflow} exportFormat={exportFormat} onExportFormatChange={setExportFormat} />
+              <CaptionMotionSettings motion={captionMotion} intensity={popIntensity} onMotionChange={setCaptionMotion} onIntensityChange={setPopIntensity} disabled={isBurning || replacingVideo} />
+              <EditorSettings disabled={!isEditable || isBurning || saveState === "saving" || hasTimelineDrafts} onApply={handleCharacterReflow} onUndo={handleUndoReflow} canUndo={canUndoReflow} exportFormat={exportFormat} onExportFormatChange={setExportFormat}
+                replaceVideoControls={desktop && videoId && <ReplaceVideoSettings disabled={!canEdit || navigationBlocked || saveState === 'error'} busy={replacingVideo} onReplace={handleReplaceVideo} />} />
             </>}
             captionMotion={captionMotion}
             popIntensity={popIntensity}

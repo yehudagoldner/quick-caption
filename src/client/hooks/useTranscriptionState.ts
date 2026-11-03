@@ -35,6 +35,7 @@ export function useTranscriptionState({
   videoId,
   onSaveSegments,
 }: UseTranscriptionStateProps) {
+  const projectKey = videoId ?? mediaUrl;
   const versions = useVideoVersions(videoId, mediaUrl);
   const versionsRef = useRef(versions); versionsRef.current = versions;
   const versionHistories = useRef<Record<string, EditHistory>>({});
@@ -97,12 +98,20 @@ export function useTranscriptionState({
   useEffect(() => {
     setActiveSegmentId(null);
     setCurrentTime(0);
+    setVideoDimensions(null);
+    setRenderDimensions(null);
+    setVideoDuration(null);
+    setBurnedVideo(null);
+    setBurnError(null);
+  }, [mediaUrl, videoId]);
+
+  useEffect(() => {
     setReflowUndo(null);
     setSplitUndo(null);
     history.current = new EditHistory();
     versionHistories.current = {}; sharedHistory.current = { past: [], future: [] };
     setHistoryVersion(v => v + 1);
-  }, [mediaUrl, videoId]);
+  }, [projectKey]);
 
   useEffect(() => {
     return () => {

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Alert, Box, Button, FormControlLabel, MenuItem, Slider, Stack, Switch, TextField, Typography } from "@mui/material";
 import { FRAME_RATES, useEditorPreferences } from "../contexts/EditorPreferences";
+import type { ReactNode } from 'react';
 
 type EditorSettingsProps = {
   onApply: (limit: number | null) => Promise<void>;
@@ -9,9 +10,10 @@ type EditorSettingsProps = {
   exportFormat: string;
   onExportFormatChange: (format: string) => void;
   disabled?: boolean;
+  replaceVideoControls?: ReactNode;
 };
 
-export function EditorSettings({ onApply, onUndo, canUndo, exportFormat, onExportFormatChange, disabled = false }: EditorSettingsProps) {
+export function EditorSettings({ onApply, onUndo, canUndo, exportFormat, onExportFormatChange, disabled = false, replaceVideoControls }: EditorSettingsProps) {
   const { preferences, update } = useEditorPreferences();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -20,6 +22,7 @@ export function EditorSettings({ onApply, onUndo, canUndo, exportFormat, onExpor
     try { await action(); } catch { setError("שמירת החלוקה נכשלה. נסו שוב או בטלו את החלוקה."); } finally { setBusy(false); }
   };
   return <Stack spacing={2} sx={{ width: "100%", minWidth: 0, p: 2, bgcolor: "grey.50", borderRadius: 2 }}>
+    {replaceVideoControls}
     <Stack component="fieldset" disabled={disabled || busy} direction="row" useFlexGap flexWrap="wrap" gap={2} alignItems="center" sx={{ border: 0, p: 0, m: 0, minWidth: 0 }}>
       <TextField disabled={disabled || busy} select size="small" label="FPS של הפרויקט" value={preferences.fps} onChange={e => update({ fps: Number(e.target.value) })} sx={{ minWidth: 150 }}>
         {FRAME_RATES.map(fps => <MenuItem key={fps} value={fps}>{fps} FPS</MenuItem>)}

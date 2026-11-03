@@ -16,6 +16,8 @@ import { parseTranscriptionSettings } from "./src/transcriptionSettings.js";
 import { createBurnSubtitlesRouter } from "./routes/burnSubtitles.js";
 import { createBurnSourceResolver } from './src/burnSource.js';
 import { createVideoThumbnailHandler, withVideoThumbnail } from './src/videoThumbnails.js';
+import { createVideoMediaRouter } from './routes/videoMedia.js';
+import { createVideoMediaStore } from './src/videoMedia.js';
 import { createThumbnailCache } from './src/thumbnailCache.js';
 import paypalRouter from "./routes/paypal.js";
 import pool from "./db.js";
@@ -236,6 +238,9 @@ app.get("/api/videos", async (req, res) => {
 });
 
 app.get('/api/videos/:id/thumbnail', createVideoThumbnailHandler({ getVideoById, bunny: bunnyStorage, cache: thumbnailCache }));
+
+app.use('/api/videos', createVideoMediaRouter({ upload, getVideoById, updateMedia: createVideoMediaStore(pool), mediaStorage,
+  issueMediaToken: (videoId, req) => videoTokens.issue(videoId, req.identity.uid, 'media', undefined, connectionBinding(req.identity)) }));
 
 // Secure video loading endpoint using token (must be before /api/videos/:id)
 app.get("/api/videos/load", async (req, res) => {
