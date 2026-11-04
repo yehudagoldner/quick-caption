@@ -42,6 +42,8 @@ import { apiFetch } from '../api';
 import { clearVideoLibrary } from '../videoLibrary';
 import { ReplaceVideoSettings } from './ReplaceVideoSettings';
 import { useUploadProtection } from '../hooks/useUploadProtection';
+import { useVideoPreview, type PreviewQuality } from '../hooks/useVideoPreview';
+import { VideoPreviewQuality } from './VideoPreviewQuality';
 
 export type { BurnOptions };
 type BurnResult = { blob: Blob; filename?: string; };
@@ -77,7 +79,10 @@ export function TranscriptionResult({
   const replacementFlight = useRef(false);
   const [replacement, setReplacement] = useState<{ videoId: number; originalUrl: string | null; url: string } | null>(null);
   const mediaUrl = replacement?.videoId === videoId && replacement?.originalUrl === originalMediaUrl ? replacement.url : originalMediaUrl;
-  const isEditable = canEdit && !replacingVideo;
+  const preview = useVideoPreview(videoId, mediaUrl);
+  const qualityResume = useRef<{ time: number; playing: boolean } | null>(null);
+  const [changingPreview, setChangingPreview] = useState(false);
+  const isEditable = canEdit && !replacingVideo && !changingPreview;
   useUploadProtection(replacingVideo);
   const { preferences } = useEditorPreferences();
   const desktop = useMediaQuery(useTheme().breakpoints.up("md"));
@@ -351,7 +356,14 @@ export function TranscriptionResult({
   const handleMyVideos = () => leaveEditor(onMyVideos);
   const navigationRef = useRef(leaveEditor);
   navigationRef.current = leaveEditor;
-  const navigationBlocked = replacingVideo || isBurning || versionDownloadPending || reframing || hasTimelineDrafts || saveState === "saving";
+  const navigationBlocked = changingPreview || replacingVideo || isBurning || versionDownloadPending || reframing || hasTimelineDrafts || saveState === "saving";
+  const changePreviewQuality = (quality: PreviewQuality) => {
+    if (navigationBlocked || quality === preview.quality) return;
+    qualityResume.current = { time: videoPlayer?.currentTime ?? currentTime, playing: Boolean(videoPlayer && !videoPlayer.paused) };
+    videoPlayer?.pause();
+    setChangingPreview(true);
+    preview.select(quality);
+  };
   const handleReplaceVideo = async (file: File) => {
     if (!videoId || !isEditable || navigationBlocked || replacementFlight.current || saveState === 'error') throw new Error('סיימו ושמרו את העריכה לפני החלפת הסרטון.');
     replacementFlight.current = true;
@@ -429,8 +441,33 @@ export function TranscriptionResult({
   });
   const handleLoadedMetadata = useCallback((dimensions: { width: number; height: number }, duration: number) => {
     setAudioOnly(!dimensions.width || !dimensions.height);
-    handleVideoLoadedMetadata(dimensions, duration);
-  }, [handleVideoLoadedMetadata]);
+    // The preview is smaller; caption geometry and exports stay in source pixels.
+    handleVideoLoadedMetadata(preview.sourceDimensions ?? dimensions, duration);
+  }, [handleVideoLoadedMetadata, preview.sourceDimensions]);
+  useEffect(() => {
+    if (!qualityResume.current || !videoPlayer) return;
+    const restore = () => {
+      const resume = qualityResume.current;
+      if (!resume || videoPlayer.readyState < 2) return;
+      qualityResume.current = null;
+      handleTimelineTimeChange(resume.time);
+      setChangingPreview(false);
+      if (resume.playing) void videoPlayer.play().catch(() => {});
+    };
+    const failed = () => { qualityResume.current = null; setChangingPreview(false); };
+    videoPlayer.addEventListener('loadeddata', restore);
+    videoPlayer.addEventListener('canplay', restore);
+    videoPlayer.addEventListener('error', failed);
+    const timer = window.setTimeout(failed, 20000);
+    restore();
+    return () => {
+      window.clearTimeout(timer);
+      videoPlayer.removeEventListener('loadeddata', restore); videoPlayer.removeEventListener('canplay', restore); videoPlayer.removeEventListener('error', failed);
+    };
+  }, [preview.mediaUrl, videoPlayer, handleTimelineTimeChange]);
+  useEffect(() => { qualityResume.current = null; setChangingPreview(false); }, [mediaUrl, videoId]);
+  const previewControls = <VideoPreviewQuality status={preview.status} quality={preview.quality} qualities={preview.qualities}
+    disabled={navigationBlocked} error={preview.error} onChange={changePreviewQuality} onRetry={preview.retry} onSource={preview.useSource} />;
   const selectVersion = async (id: string) => {
     if (hasTimelineDrafts || reframing || isBurning) return;
     closeAppearance(); setLoopEnabled(false); loopEnabledRef.current = false;
@@ -542,8 +579,9 @@ export function TranscriptionResult({
           {!narrow && !desktop && activeWordEnabled && !hasEstimatedTimingWarning && editableWords.some(word => word.timingSource === "estimated") && <Alert severity="info">לחלק מהמילים הושלם תזמון משוער. אפשר לדייק אותן בציר המילים של המקטע; הטקסט המתוקן נשמר במלואו.</Alert>}
 
           <TranscriptionMainContent
+            previewControls={previewControls}
             versionsBar={desktop && !audioOnly && <VideoVersionsBar eligible={Boolean(videoDimensions && videoDimensions.width / videoDimensions.height >= 1.3)}
-              enabled={versions.enabled} dismissed={versions.dismissed} activeId={versions.activeId} crop={crop} mediaUrl={mediaUrl}
+              enabled={versions.enabled} dismissed={versions.dismissed} activeId={versions.activeId} crop={crop} mediaUrl={preview.mediaUrl}
               disabled={navigationBlocked || !isEditable} shareAllowed={fontReady && Boolean(mediaDimensions)} onBurnVideo={options => { videoPlayer?.pause(); return handleBurnVideo(options); }}
               create={versions.create} dismiss={versions.dismiss} select={selectVersion} updateCrop={versions.updateCrop} onBusy={setReframing} />}
             onNavigateAway={destination => navigationRef.current(destination)}
@@ -553,7 +591,7 @@ export function TranscriptionResult({
               onChange={patch => { if (patch.backgroundColor !== undefined) setBackgroundColor(patch.backgroundColor); if (patch.backgroundOpacity !== undefined) setBackgroundOpacity(patch.backgroundOpacity); }} />}
             captionStyles={<CaptionStylePicker appearance={{ fontId, fontSize, fontColor, outlineColor, backgroundColor, backgroundOpacity, activeWordColor, activeWordEnabled, offsetYPercent, marginPercent, captionMotion, popIntensity }} onApply={applyCaptionStyle} disabled={isBurning || replacingVideo} />}
             fontReady={fontReady}
-            hasTimelineDrafts={hasTimelineDrafts || reframing || replacingVideo}
+            hasTimelineDrafts={hasTimelineDrafts || reframing || replacingVideo || changingPreview}
             timelineEditing={{ onSaveSegment: handleSaveSegment, onUndo: handleUndo, onRedo: handleRedo, canUndo, canRedo,
               onDraftStateChange: setHasTimelineDrafts, loopEnabled,
               onPlayFrom: time => { handleTimelineTimeChange(time); void videoPlayer?.play().catch(() => setBurnError("לא ניתן להתחיל ניגון.")); },
@@ -567,11 +605,12 @@ export function TranscriptionResult({
             editorSettings={<>
               <CaptionMotionSettings motion={captionMotion} intensity={popIntensity} onMotionChange={setCaptionMotion} onIntensityChange={setPopIntensity} disabled={isBurning || replacingVideo} />
               <EditorSettings disabled={!isEditable || isBurning || saveState === "saving" || hasTimelineDrafts} onApply={handleCharacterReflow} onUndo={handleUndoReflow} canUndo={canUndoReflow} exportFormat={exportFormat} onExportFormatChange={setExportFormat}
+                previewQualityControls={previewControls}
                 replaceVideoControls={desktop && videoId && <ReplaceVideoSettings disabled={!canEdit || navigationBlocked || saveState === 'error'} busy={replacingVideo} onReplace={handleReplaceVideo} />} />
             </>}
             captionMotion={captionMotion}
             popIntensity={popIntensity}
-            mediaUrl={mediaUrl}
+            mediaUrl={preview.mediaUrl}
             activeSegmentText={activeSegment?.text ?? null}
             previewStyle={previewStyle}
             editableSegments={editableSegments}
@@ -598,6 +637,7 @@ export function TranscriptionResult({
             downloadName={downloadName}
             activeWordEnabled={activeWordEnabled}
             onVideoTimeUpdate={time => {
+              if (qualityResume.current) return;
               const selected = loopEnabledRef.current && editableSegments.find(s => s.id === selectedSegmentId);
               if (selected && videoPlayer && (time >= selected.end || time < selected.start)) {
                 const wasEnded = videoPlayer.ended;

@@ -57,6 +57,23 @@ export function createBunnyStreamStorage(env = process.env, fetchImpl = fetch) {
     return url;
   };
   const thumbnailNames = new Map();
+  const previewMetadata = new Map();
+  const openMedia = async (storedPath, filename, { method = 'GET', range, signal } = {}) => {
+    const { videoId } = reference(storedPath);
+    let response;
+    try {
+      response = await fetchImpl(cdnUrl(videoId, filename), { method, redirect: 'error', signal: signal ?? AbortSignal.timeout(15 * 60 * 1000),
+        headers: { Referer: env.BUNNY_STREAM_REFERER || 'https://player.mediadelivery.net/', 'Accept-Encoding': 'identity', ...(range ? { Range: range } : {}) } });
+    } catch { throw storageError('לא ניתן להתחבר לסרטון המאוחסן. נסו שוב.'); }
+    if (!response.ok && response.status !== 416) {
+      await response.body?.cancel();
+      throw storageError(filename === 'original' && response.status === 404
+        ? 'קובץ המקור לא זמין ב־Bunny. ודאו שהאפשרות Keep original files מופעלת.'
+        : filename !== 'original' && response.status === 404 ? 'גרסת התצוגה עדיין אינה זמינה. נסו שוב בעוד כמה שניות.'
+          : filename === 'original' ? 'Bunny חסם את קריאת הסרטון. בדקו את הגדרות הגישה לספרייה.' : 'טעינת הסרטון נכשלה. נסו שוב.', response.status === 404 ? 404 : 502);
+    }
+    return response;
+  };
   const storage = {
     async upload(file, title) {
       const { libraryId } = config();
@@ -90,18 +107,28 @@ export function createBunnyStreamStorage(env = process.env, fetchImpl = fetch) {
       const response = await api(endpoint(libraryId, videoId), { method: 'DELETE' });
       await response.body?.cancel();
     },
-    async open(storedPath, { method = 'GET', range, signal } = {}) {
-      const { videoId } = reference(storedPath);
-      let response;
-      try {
-        response = await fetchImpl(cdnUrl(videoId, 'original'), { method, redirect: 'error', signal: signal ?? AbortSignal.timeout(15 * 60 * 1000),
-          headers: { Referer: env.BUNNY_STREAM_REFERER || 'https://player.mediadelivery.net/', 'Accept-Encoding': 'identity', ...(range ? { Range: range } : {}) } });
-      } catch { throw storageError('לא ניתן להתחבר לסרטון המאוחסן. נסו שוב.'); }
-      if (!response.ok && response.status !== 416) {
-        await response.body?.cancel();
-        throw storageError(response.status === 404 ? 'קובץ המקור לא זמין ב־Bunny. ודאו שהאפשרות Keep original files מופעלת.' : 'Bunny חסם את קריאת הסרטון. בדקו את הגדרות הגישה לספרייה.', response.status === 404 ? 404 : 502);
-      }
-      return response;
+    open(storedPath, options) {
+      return openMedia(storedPath, 'original', options);
+    },
+    openPreview(storedPath, quality, options) {
+      if (!['240p', '360p', '480p', '720p', '1080p'].includes(quality)) throw storageError('איכות התצוגה אינה תקינה.', 400);
+      return openMedia(storedPath, `play_${quality}.mp4`, options);
+    },
+    async previewInfo(storedPath) {
+      const { libraryId, videoId } = reference(storedPath);
+      const cached = previewMetadata.get(storedPath);
+      if (cached && cached.expires > Date.now()) return cached.info;
+      const metadata = await (await api(endpoint(libraryId, videoId), { signal: AbortSignal.timeout(15_000) })).json();
+      const qualities = metadata.hasMP4Fallback && metadata.status === 4 ? ['240p', '360p', '480p', '720p', '1080p'].filter(quality =>
+        String(metadata.availableResolutions ?? '').split(',').map(value => value.trim()).includes(quality)) : [];
+      const sourceDimensions = Number(metadata.width) > 0 && Number(metadata.height) > 0
+        ? { width: Number(metadata.width), height: Number(metadata.height) } : null;
+      const mode = qualities.length && sourceDimensions ? 'rendition' : metadata.status === 4 ? 'unavailable' : 'pending';
+      const defaultQuality = qualities.includes('720p') ? '720p' : qualities.filter(q => parseInt(q) <= 720).at(-1) ?? qualities[0] ?? null;
+      const info = { mode, qualities, defaultQuality, sourceDimensions };
+      if (previewMetadata.size >= 500) previewMetadata.delete(previewMetadata.keys().next().value);
+      previewMetadata.set(storedPath, { info, expires: Date.now() + (mode === 'rendition' ? 60_000 : 5_000) });
+      return info;
     },
     async openThumbnail(storedPath, { method = 'GET', signal } = {}) {
       const { libraryId, videoId } = reference(storedPath);
@@ -155,18 +182,20 @@ export function createMediaStorage({ bunny, localDir }) {
   };
 }
 
-export async function serveBunnyMedia(req, res, video, bunny) {
+export async function serveBunnyMedia(req, res, video, bunny, quality = null) {
   const controller = new AbortController();
   const abort = () => controller.abort();
   res.once('close', abort);
   try {
-    const upstream = await bunny.open(video.stored_path, { method: req.method === 'HEAD' ? 'HEAD' : 'GET', range: req.headers.range, signal: controller.signal });
+    const options = { method: req.method === 'HEAD' ? 'HEAD' : 'GET', range: req.headers.range, signal: controller.signal };
+    const upstream = quality ? await bunny.openPreview(video.stored_path, quality, options) : await bunny.open(video.stored_path, options);
     res.status(upstream.status);
     for (const name of ['content-length', 'content-range', 'accept-ranges']) {
       const value = upstream.headers.get(name);
       if (value) res.set(name, value);
     }
-    res.set('Content-Type', video.mime_type || upstream.headers.get('content-type') || 'application/octet-stream');
+    res.set('Accept-Ranges', upstream.headers.get('accept-ranges') || 'bytes');
+    res.set('Content-Type', quality ? 'video/mp4' : video.mime_type || upstream.headers.get('content-type') || 'application/octet-stream');
     if (req.method === 'HEAD' || !upstream.body) { await upstream.body?.cancel(); return res.end(); }
     await pipeline(Readable.fromWeb(upstream.body), res);
   } finally { res.off('close', abort); }

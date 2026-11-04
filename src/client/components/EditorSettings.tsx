@@ -11,9 +11,10 @@ type EditorSettingsProps = {
   onExportFormatChange: (format: string) => void;
   disabled?: boolean;
   replaceVideoControls?: ReactNode;
+  previewQualityControls?: ReactNode;
 };
 
-export function EditorSettings({ onApply, onUndo, canUndo, exportFormat, onExportFormatChange, disabled = false, replaceVideoControls }: EditorSettingsProps) {
+export function EditorSettings({ onApply, onUndo, canUndo, exportFormat, onExportFormatChange, disabled = false, replaceVideoControls, previewQualityControls }: EditorSettingsProps) {
   const { preferences, update } = useEditorPreferences();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -23,6 +24,7 @@ export function EditorSettings({ onApply, onUndo, canUndo, exportFormat, onExpor
   };
   return <Stack spacing={2} sx={{ width: "100%", minWidth: 0, p: 2, bgcolor: "grey.50", borderRadius: 2 }}>
     {replaceVideoControls}
+    {previewQualityControls}
     <Stack component="fieldset" disabled={disabled || busy} direction="row" useFlexGap flexWrap="wrap" gap={2} alignItems="center" sx={{ border: 0, p: 0, m: 0, minWidth: 0 }}>
       <TextField disabled={disabled || busy} select size="small" label="FPS של הפרויקט" value={preferences.fps} onChange={e => update({ fps: Number(e.target.value) })} sx={{ minWidth: 150 }}>
         {FRAME_RATES.map(fps => <MenuItem key={fps} value={fps}>{fps} FPS</MenuItem>)}

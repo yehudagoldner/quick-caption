@@ -61,7 +61,7 @@ test('desktop replacement keeps edits, timings, styles and undo; preview, export
   const projectStyle = await page.evaluate(() => localStorage.getItem('caption-style:review-user:42'));
   const dialog = await settings(page);
   await dialog.getByLabel('בחירת סרטון חלופי').setInputFiles(replacementFile);
-  await expect(dialog.getByRole('alert')).toContainText('הסרטון הוחלף');
+  await expect(dialog.getByRole('alert').filter({ hasText: 'הסרטון הוחלף' })).toBeVisible();
   await expect.poll(() => page.locator('video').evaluate((v: HTMLVideoElement) => v.videoWidth)).toBe(640);
   await expect(page.locator('video')).toHaveAttribute('src', /replacement-token/);
   expect(state.data()).toEqual(before);
@@ -91,7 +91,7 @@ test('failed upload retains the current source and captions; selecting the same 
   await expect(dialog.getByRole('alert')).toHaveText('העלאת הסרטון נכשלה לבדיקה');
   await expect(page.locator('video')).toHaveAttribute('src', source!); expect(state.data()).toEqual(before);
   state.fail(false); await dialog.getByLabel('בחירת סרטון חלופי').setInputFiles(replacementFile);
-  await expect(dialog.getByRole('alert')).toContainText('הסרטון הוחלף'); expect(state.count()).toBe(2); expect(state.data()).toEqual(before);
+  await expect(dialog.getByRole('alert').filter({ hasText: 'הסרטון הוחלף' })).toBeVisible(); expect(state.count()).toBe(2); expect(state.data()).toEqual(before);
 });
 
 test('upload blocks another replacement and export until acknowledged; audio selection never uploads', async ({ page }) => {
@@ -103,5 +103,5 @@ test('upload blocks another replacement and export until acknowledged; audio sel
   await expect(dialog.getByRole('button', { name: 'מחליף סרטון...' })).toBeDisabled();
   await expect(page.getByRole('button', { name: 'הורדה', exact: true, includeHidden: true })).toBeDisabled();
   await expect(page.locator('video')).toHaveAttribute('src', /original-token/);
-  release(); await expect(dialog.getByRole('alert')).toContainText('הסרטון הוחלף');
+  release(); await expect(dialog.getByRole('alert').filter({ hasText: 'הסרטון הוחלף' })).toBeVisible();
 });
