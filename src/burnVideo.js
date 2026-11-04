@@ -1,7 +1,8 @@
 import { spawn } from 'node:child_process';
 import { audiogramWaveBox } from './audiogram.js';
 
-const ENCODE_ARGUMENTS = ['-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23', '-pix_fmt', 'yuv420p',
+// Preserve more source detail without switching to a slower encoding preset.
+const ENCODE_ARGUMENTS = ['-c:v', 'libx264', '-preset', 'veryfast', '-crf', '18', '-pix_fmt', 'yuv420p',
   '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart'];
 
 export function buildBurnArguments(input, filter, output, filterScript) {
