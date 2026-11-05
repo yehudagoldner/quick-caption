@@ -33,8 +33,10 @@ async function setup(page: Page, initialMode = 'rendition', landscape = false) {
 
 test('720p default, 1080p selection retains playhead, caption edits and history; exports retain original dimensions', async ({ page }) => {
   const state = await setup(page);
+  await page.getByRole('button', { name: 'איכות וידאו', exact: true }).click();
   const quality = page.getByRole('combobox', { name: 'איכות תצוגה מקדימה' });
   await expect(quality).toContainText('720p');
+  await page.getByRole('button', { name: 'סגירת איכות וידאו' }).click();
   await expect(page.locator('video')).toHaveAttribute('src', /preview=720p/);
   await expect.poll(() => page.locator('video').evaluate((v: HTMLVideoElement) => v.readyState)).toBeGreaterThan(1);
   await page.getByTestId('subtitle-clip').first().click();
@@ -43,9 +45,11 @@ test('720p default, 1080p selection retains playhead, caption edits and history;
   await page.getByRole('button', { name: 'פיצול כתובית בנקודת הקו', exact: true }).click();
   await expect(page.getByTestId('subtitle-clip')).toHaveCount(3);
   const before = structuredClone(state.saved());
+  await page.getByRole('button', { name: 'איכות וידאו', exact: true }).click();
   await quality.click(); await page.getByRole('option', { name: /1080p/ }).click();
   await expect(page.locator('video')).toHaveAttribute('src', /preview=1080p/);
   await expect(quality).toBeEnabled();
+  await page.getByRole('button', { name: 'סגירת איכות וידאו' }).click();
   await expect.poll(() => page.locator('video').evaluate((v: HTMLVideoElement) => v.currentTime)).toBeCloseTo(1, 1);
   expect(await page.locator('video').evaluate((v: HTMLVideoElement) => v.paused)).toBe(true);
   await expect(page.getByTestId('subtitle-clip')).toHaveCount(3); expect(state.saved()).toEqual(before);
@@ -58,13 +62,14 @@ test('720p default, 1080p selection retains playhead, caption edits and history;
   expect(state.burns[0]).toMatch(/name="videoWidth"\r\n\r\n1080/); expect(state.burns[0]).toMatch(/name="videoHeight"\r\n\r\n1920/);
   expect(state.burns[0]).not.toContain('name="preview"');
   expect(state.originalReads()).toBe(0);
-  await page.reload(); await expect(quality).toContainText('720p'); expect(state.saved()).toEqual(before);
+  await page.reload(); await page.getByRole('button', { name: 'איכות וידאו', exact: true }).click(); await expect(quality).toContainText('720p'); expect(state.saved()).toEqual(before);
 });
 
 test('changing quality while playing resumes at the same position', async ({ page }) => {
   const state = await setup(page);
   await expect.poll(() => page.locator('video').evaluate((v: HTMLVideoElement) => v.readyState)).toBeGreaterThan(1);
   await page.locator('video').evaluate(async (v: HTMLVideoElement) => { v.muted = true; v.playbackRate = .1; v.currentTime = 1; await v.play(); });
+  await page.getByRole('button', { name: 'איכות וידאו', exact: true }).click();
   await page.getByRole('combobox', { name: 'איכות תצוגה מקדימה' }).click(); await page.getByRole('option', { name: /1080p/ }).click();
   await expect.poll(() => page.locator('video').evaluate((v: HTMLVideoElement) => v.paused)).toBe(false);
   const position = await page.locator('video').evaluate((v: HTMLVideoElement) => v.currentTime);
@@ -85,6 +90,7 @@ test('cropped versions export with source-sized geometry while editing the light
 
 test('pending previews do not start downloading the source, and retry loads the ready rendition', async ({ page }) => {
   const state = await setup(page, 'pending');
+  await page.getByRole('button', { name: 'איכות וידאו', exact: true }).click();
   await expect(page.getByText('גרסת העריכה עדיין בהכנה.', { exact: false }).first()).toBeVisible();
   await expect(page.locator('video')).toHaveCount(0); expect(state.originalReads()).toBe(0);
   state.mode('rendition'); await page.getByRole('button', { name: 'נסה שוב', exact: true }).click();
@@ -98,7 +104,8 @@ test('mobile settings can increase preview quality without changing the source',
   await expect.poll(() => page.locator('video').evaluate((v: HTMLVideoElement) => v.readyState)).toBeGreaterThan(1);
   await page.getByRole('button', { name: 'עוד', exact: true }).click();
   await page.getByRole('button', { name: 'הגדרות כתוביות', exact: true }).click();
-  const quality = page.getByRole('dialog').getByRole('combobox', { name: 'איכות תצוגה מקדימה' });
+  await page.getByRole('button', { name: 'איכות וידאו', exact: true }).click();
+  const quality = page.getByRole('dialog', { name: 'איכות וידאו', exact: true }).getByRole('combobox', { name: 'איכות תצוגה מקדימה' });
   await expect(quality).toContainText('720p'); await quality.click(); await page.getByRole('option', { name: /1080p/ }).click();
   await expect(page.locator('video')).toHaveAttribute('src', /preview=1080p/); await expect(quality).toBeEnabled();
   expect(state.originalReads()).toBe(0);

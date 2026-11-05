@@ -43,6 +43,7 @@ import { clearVideoLibrary } from '../videoLibrary';
 import { ReplaceVideoSettings } from './ReplaceVideoSettings';
 import { useUploadProtection } from '../hooks/useUploadProtection';
 import { useVideoPreview, type PreviewQuality } from '../hooks/useVideoPreview';
+import { ExportSettingsDialog } from './ExportSettingsDialog';
 import { VideoPreviewQuality } from './VideoPreviewQuality';
 
 export type { BurnOptions };
@@ -579,7 +580,7 @@ export function TranscriptionResult({
           {!narrow && !desktop && activeWordEnabled && !hasEstimatedTimingWarning && editableWords.some(word => word.timingSource === "estimated") && <Alert severity="info">לחלק מהמילים הושלם תזמון משוער. אפשר לדייק אותן בציר המילים של המקטע; הטקסט המתוקן נשמר במלואו.</Alert>}
 
           <TranscriptionMainContent
-            previewControls={previewControls}
+            videoQualityControls={<ExportSettingsDialog duration={videoDuration} dimensions={mediaDimensions} previewControls={previewControls} compact disabled={isBurning || replacingVideo} />}
             versionsBar={desktop && !audioOnly && <VideoVersionsBar eligible={Boolean(videoDimensions && videoDimensions.width / videoDimensions.height >= 1.3)}
               enabled={versions.enabled} dismissed={versions.dismissed} activeId={versions.activeId} crop={crop} mediaUrl={preview.mediaUrl}
               disabled={navigationBlocked || !isEditable} shareAllowed={fontReady && Boolean(mediaDimensions)} onBurnVideo={options => { videoPlayer?.pause(); return handleBurnVideo(options); }}
@@ -605,7 +606,6 @@ export function TranscriptionResult({
             editorSettings={<>
               <CaptionMotionSettings motion={captionMotion} intensity={popIntensity} onMotionChange={setCaptionMotion} onIntensityChange={setPopIntensity} disabled={isBurning || replacingVideo} />
               <EditorSettings disabled={!isEditable || isBurning || saveState === "saving" || hasTimelineDrafts} onApply={handleCharacterReflow} onUndo={handleUndoReflow} canUndo={canUndoReflow} exportFormat={exportFormat} onExportFormatChange={setExportFormat}
-                videoDuration={videoDuration} videoDimensions={mediaDimensions} previewQualityControls={previewControls}
                 replaceVideoControls={desktop && videoId && <ReplaceVideoSettings disabled={!canEdit || navigationBlocked || saveState === 'error'} busy={replacingVideo} onReplace={handleReplaceVideo} />} />
             </>}
             captionMotion={captionMotion}

@@ -1,4 +1,4 @@
-export const DEFAULT_EXPORT_SETTINGS = Object.freeze({ mode: 'quality', quality: 'high', bitrateMbps: 8 });
+export const DEFAULT_EXPORT_SETTINGS = Object.freeze({ mode: 'quality', quality: 'high', bitrateMbps: 50 });
 export const EXPORT_QUALITIES = Object.freeze({ high: 18, balanced: 23, compact: 28 });
 export const MIN_EXPORT_BITRATE = 0.25;
 export const MAX_EXPORT_BITRATE = 100;

@@ -23,7 +23,7 @@ type BurnedVideo = {
 
 type TranscriptionMainContentProps = {
   versionsBar?: ReactNode;
-  previewControls?: ReactNode;
+  videoQualityControls?: ReactNode;
   onNavigateAway: EditorNavigationGuard;
   fontReady?: boolean;
   timelineEditing: Pick<SubtitleTimelineProps, "onSaveSegment" | "onUndo" | "onRedo" | "canUndo" | "canRedo" | "onPlayFrom" | "loopEnabled" | "onLoopChange" | "onDraftStateChange">;
@@ -97,7 +97,7 @@ type TranscriptionMainContentProps = {
 
 export function TranscriptionMainContent({
   versionsBar,
-  previewControls,
+  videoQualityControls,
   onNavigateAway,
   fontReady = true,
   timelineEditing,
@@ -182,7 +182,7 @@ export function TranscriptionMainContent({
         captionMotion={captionMotion}
         popIntensity={popIntensity}
         timelineEditing={timelineEditing}
-        editorSettings={editorSettingsBlock}
+        editorSettings={<>{videoQualityControls}{editorSettingsBlock}</>}
         mediaUrl={mediaUrl}
         activeSegmentText={activeSegmentText}
         previewStyle={previewStyle}
@@ -249,6 +249,7 @@ export function TranscriptionMainContent({
               activeWordColor={activeWordColor} onActiveWordColorChange={onActiveWordColorChange}
               pendingEdits={hasTimelineDrafts || saveState === "saving"}
               editorSettings={editorSettingsBlock}
+              videoQualityControls={videoQualityControls}
               fontSize={fontSize}
               autoFontSize={autoFontSize}
               fontColor={fontColor}
@@ -278,7 +279,6 @@ export function TranscriptionMainContent({
             />
 
           </Stack>
-            {previewControls}
             {versionsBar}
             <Box sx={{ minWidth: 0, width: "100%", flex: { md: 1 }, minHeight: { md: 96 }, position: { xs: selectedSegmentId !== null ? "sticky" : "static", sm: "static" }, top: 8, zIndex: 5, bgcolor: "background.paper", borderRadius: 2 }}>
               <VideoPlayer

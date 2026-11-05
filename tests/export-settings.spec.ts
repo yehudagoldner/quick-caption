@@ -11,18 +11,21 @@ async function setup(page: Page, mobile: boolean) {
   return burns;
 }
 async function openSettings(page: Page, mobile: boolean) {
-  if (mobile) await page.getByRole('button', { name: 'עוד', exact: true }).click();
-  await page.getByRole('button', { name: 'הגדרות כתוביות', exact: true }).click();
-  await page.getByRole('button', { name: /^הגדרות ייצוא/ }).click();
-  return page.getByRole('dialog', { name: 'הגדרות ייצוא', exact: true });
+  if (mobile) {
+    await page.getByRole('button', { name: 'עוד', exact: true }).click();
+    await page.getByRole('button', { name: 'הגדרות כתוביות', exact: true }).click();
+  }
+  await page.getByRole('button', { name: /^איכות וידאו/ }).click();
+  return page.getByRole('dialog', { name: 'איכות וידאו', exact: true });
 }
 
 for (const mobile of [false, true]) test(`export dialog estimates, validates, persists and sends settings (${mobile ? 'mobile' : 'desktop'})`, async ({ page }) => {
   const burns = await setup(page, mobile);
   const dialog = await openSettings(page, mobile);
   const estimate = dialog.getByRole('status');
+  await expect(dialog.getByRole('spinbutton', { name: 'Bitrate וידאו (Mbps)' })).toHaveValue('50');
   const initialSize = await estimate.textContent();
-  await dialog.getByRole('combobox', { name: /איכות ייצוא/ }).click();
+  await dialog.getByRole('combobox', { name: /^איכות תמונה/ }).click();
   await page.getByRole('option', { name: /חסכונית/ }).click();
   await expect(estimate).not.toHaveText(initialSize!);
   await dialog.getByRole('combobox', { name: 'שיטת ייצוא' }).click();
@@ -44,12 +47,11 @@ for (const mobile of [false, true]) test(`export dialog estimates, validates, pe
   await expect(bitrate).toHaveValue('2.5');
   await bitrate.fill('12');
   await dialog.getByRole('button', { name: 'ביטול', exact: true }).click();
-  await page.getByRole('button', { name: /^הגדרות ייצוא/ }).click();
+  await page.getByRole('button', { name: /^איכות וידאו/ }).click();
   await expect(bitrate).toHaveValue('2.5');
-  await dialog.getByRole('button', { name: 'סגירת הגדרות ייצוא', exact: true }).click();
+  await dialog.getByRole('button', { name: 'סגירת איכות וידאו', exact: true }).click();
   await expect(dialog).not.toBeVisible();
   if (mobile) await page.getByRole('dialog', { name: 'הגדרות כתוביות', exact: true }).getByRole('button', { name: 'סגור', exact: true }).click();
-  else await page.getByRole('button', { name: 'סגירת הגדרות כתוביות', exact: true }).click();
   if (mobile) await page.getByRole('button', { name: 'עוד', exact: true }).click();
   else await page.getByRole('button', { name: 'הורדה', exact: true }).click();
   const download = page.waitForEvent('download');

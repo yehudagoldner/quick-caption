@@ -5,7 +5,7 @@ export function VideoPreviewQuality({ status, quality, qualities, disabled, erro
   status: string; quality: PreviewQuality; qualities: PreviewQuality[]; disabled: boolean; error: string | null;
   onChange: (quality: PreviewQuality) => void; onRetry: () => void; onSource: () => void;
 }) {
-  if (status === 'source') return null;
+  if (status === 'source') return <TextField select fullWidth size="small" label="איכות תצוגה מקדימה" value="source" disabled helperText="הניגון משתמש בקובץ המקור."><MenuItem value="source">איכות מקור</MenuItem></TextField>;
   return <Stack spacing={1} dir="rtl">
     {status === 'rendition' ? <>
       <TextField select size="small" label="איכות תצוגה מקדימה" value={quality} disabled={disabled} onChange={event => onChange(event.target.value as PreviewQuality)} sx={{ minWidth: 210, alignSelf: 'flex-start' }}>

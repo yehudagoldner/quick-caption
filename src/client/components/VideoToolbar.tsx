@@ -73,6 +73,7 @@ type VideoToolbarProps = {
   fontReady?: boolean;
   pendingEdits?: boolean;
   editorSettings: ReactNode;
+  videoQualityControls?: ReactNode;
   captionBackgroundControls?: ReactNode;
   captionStyles?: ReactNode;
   fontId?: string;
@@ -110,6 +111,7 @@ export function VideoToolbar({
   fontReady = true,
   pendingEdits = false,
   editorSettings,
+  videoQualityControls,
   captionBackgroundControls, captionStyles, fontId, onFontChange, activeWordColor, onActiveWordColorChange,
   canBurn = true,
   fontSize,
@@ -195,6 +197,7 @@ export function VideoToolbar({
           maxWidth: "100%",
         }}
       >
+        {videoQualityControls}
         {/* Download Button */}
         {captionStyles && <Button size="small" variant="contained" startIcon={<PaletteRounded />}
           aria-haspopup="dialog" aria-expanded={Boolean(stylesAnchorEl)} aria-controls={stylesAnchorEl ? stylesId : undefined}
