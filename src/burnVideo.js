@@ -1,13 +1,13 @@
 import { spawn } from 'node:child_process';
 import { audiogramWaveBox } from './audiogram.js';
-import { exportEncodeArguments } from './exportSettings.js';
+import { exportEncodeArguments, exportScaleFilter } from './exportSettings.js';
 
 export function buildBurnArguments(input, filter, output, filterScript, exportSettings) {
   return ['-hide_banner', '-loglevel', 'error', '-nostdin', '-y',
     '-progress', 'pipe:1', '-nostats', '-i', input,
     // Photos needs a compatible video/audio combination, not just an .mp4
     // extension. Padding retains the full frame for odd-sized source videos.
-    ...(filterScript ? ['-filter_script:v', filterScript] : ['-vf', `${filter},pad=ceil(iw/2)*2:ceil(ih/2)*2`]), ...exportEncodeArguments(exportSettings), output];
+    ...(filterScript ? ['-filter_script:v', filterScript] : ['-vf', `${filter}${exportScaleFilter(exportSettings)},pad=ceil(iw/2)*2:ceil(ih/2)*2`]), ...exportEncodeArguments(exportSettings), output];
 }
 
 export function probeVideoDimensions(input, { signal } = {}) {
@@ -51,7 +51,7 @@ export function buildAudiogramArguments(audio, { width, height, background, imag
     graph.push(`${frame}[wave]overlay=0:${band.top}:eof_action=pass[waved]`);
     frame = '[waved]';
   }
-  graph.push(`${frame}${filter}[captioned]`);
+  graph.push(`${frame}${filter}${exportScaleFilter(exportSettings)}[captioned]`);
   return ['-hide_banner', '-loglevel', 'error', '-nostdin', '-y', '-progress', 'pipe:1', '-nostats', ...inputs,
     '-filter_complex', graph.join(';'), '-map', '[captioned]', '-map', '0:a:0', '-shortest', '-r', '30', ...exportEncodeArguments(exportSettings), output];
 }

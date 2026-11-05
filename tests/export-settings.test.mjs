@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { DEFAULT_EXPORT_SETTINGS, estimateExportSize, sanitizeExportSettings, validateExportSettings } from '../src/exportSettings.js';
+import { DEFAULT_EXPORT_SETTINGS, availableExportResolutions, exportDimensions, estimateExportSize, sanitizeExportSettings, validateExportSettings } from '../src/exportSettings.js';
 import { buildBurnArguments, buildAudiogramArguments } from '../src/burnVideo.js';
 import { mkdtemp, stat, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -67,4 +67,33 @@ test('FFmpeg fixtures produce smaller files at lower quality and bitrate with co
     assert.ok(sizes.compact < sizes.high * .8, JSON.stringify(sizes));
     assert.ok(sizes.lowBitrate < sizes.highBitrate * .5, JSON.stringify(sizes));
   } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test('resolution choices use source short edge and estimates use exported pixels', () => {
+  assert.deepEqual(availableExportResolutions({width:3840,height:2160}), [2160,1440,1080,720,480,360]);
+  assert.deepEqual(availableExportResolutions({width:1080,height:1920}), [1080,720,480,360]);
+  assert.deepEqual(availableExportResolutions({width:606,height:1080}), [480,360]);
+  assert.deepEqual(availableExportResolutions(null), []);
+  assert.deepEqual(exportDimensions({...DEFAULT_EXPORT_SETTINGS,resolution:720},{width:1080,height:1920}),{width:720,height:1280});
+  assert.deepEqual(exportDimensions({...DEFAULT_EXPORT_SETTINGS,resolution:2160},{width:640,height:360}),{width:640,height:360});
+  assert.throws(()=>validateExportSettings({...DEFAULT_EXPORT_SETTINGS,resolution:900}));
+  assert.equal(validateExportSettings({mode:'quality',quality:'high',bitrateMbps:8}).resolution,'source');
+  assert.ok(estimateExportSize({...DEFAULT_EXPORT_SETTINGS,resolution:720},60,{width:3840,height:2160}).bytes < estimateExportSize(DEFAULT_EXPORT_SETTINGS,60,{width:3840,height:2160}).bytes);
+});
+test('FFmpeg exports selected resolution after composition, without upscaling', async () => {
+  const dir=await mkdtemp(path.join(tmpdir(),'caption-resolution-'));
+  try {
+    const source=path.join(dir,'source.mp4');
+    execFileSync('ffmpeg',['-v','error','-y','-f','lavfi','-i','testsrc2=s=1280x720:r=10:d=1','-f','lavfi','-i','sine=duration=1','-c:v','libx264','-preset','ultrafast','-c:a','aac',source]);
+    for(const [name,filter,resolution,width,height] of [['landscape','null',480,852,480],['crop','crop=720:720',480,480,480],['no-upscale','null',2160,1280,720]]) {
+      const out=path.join(dir,name+'.mp4');
+      execFileSync('ffmpeg',buildBurnArguments(source,filter,out,null,{...DEFAULT_EXPORT_SETTINGS,resolution}));
+      const stream=JSON.parse(execFileSync('ffprobe',['-v','error','-select_streams','v:0','-show_streams','-of','json',out])).streams[0];
+      assert.deepEqual([stream.width,stream.height],[width,height]);
+    }
+    const out=path.join(dir,'audiogram.mp4');
+    execFileSync('ffmpeg',buildAudiogramArguments(source,{width:720,height:1280,background:'#000000',duration:1},'null',out,{...DEFAULT_EXPORT_SETTINGS,resolution:480}));
+    const stream=JSON.parse(execFileSync('ffprobe',['-v','error','-select_streams','v:0','-show_streams','-of','json',out])).streams[0];
+    assert.deepEqual([stream.width,stream.height],[480,852]);
+  } finally { await rm(dir,{recursive:true,force:true}); }
 });

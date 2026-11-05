@@ -15,7 +15,7 @@ import { getCaptionFont } from "../src/captionFonts.js";
 import { sanitizeCaptionOverrides } from '../src/captionOverrides.js';
 import { renderStyledCaptionsAss } from '../src/styledCaptions.js';
 import { sanitizeWordOverrides } from '../src/wordOverrides.js';
-import { validateExportSettings } from '../src/exportSettings.js';
+import { validateExportSettings, exportScaleFilter } from '../src/exportSettings.js';
 
 const CAPTION_FONTS_DIR = fileURLToPath(new URL("../public/fonts", import.meta.url));
 const TEMP_SUBTITLE_DIR = path.join(os.tmpdir(), "subtitles-api-subtitle-temp");
@@ -174,7 +174,7 @@ export function createBurnSubtitlesRouter(upload, { resolveVideo } = {}) {
       });
 
       const duration = await probeBurnDuration(source.path, { signal });
-      if (crop) await fsp.writeFile(filterScript, `scale=trunc(iw*sar/2)*2:ih,setsar=1,${cropFilter(crop)},${filter},pad=ceil(iw/2)*2:ceil(ih/2)*2`, 'utf8');
+      if (crop) await fsp.writeFile(filterScript, `scale=trunc(iw*sar/2)*2:ih,setsar=1,${cropFilter(crop)},${filter}${exportScaleFilter(exportSettings)},pad=ceil(iw/2)*2:ceil(ih/2)*2`, 'utf8');
       job.stage = 'burning';
       job.percent = duration ? 0 : null;
       const args = audiogram

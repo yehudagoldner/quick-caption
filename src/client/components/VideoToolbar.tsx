@@ -197,7 +197,6 @@ export function VideoToolbar({
           maxWidth: "100%",
         }}
       >
-        {videoQualityControls}
         {/* Download Button */}
         {captionStyles && <Button size="small" variant="contained" startIcon={<PaletteRounded />}
           aria-haspopup="dialog" aria-expanded={Boolean(stylesAnchorEl)} aria-controls={stylesAnchorEl ? stylesId : undefined}
@@ -306,6 +305,8 @@ export function VideoToolbar({
         >
           {sidebarOpen ? "הסתר עורך" : "הצג עורך"}
         </Button>
+
+        {videoQualityControls}
 
         {/* Burn Status/Error */}
         {isBurning && (
