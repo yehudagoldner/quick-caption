@@ -1,5 +1,5 @@
 export const DEFAULT_EXPORT_SETTINGS = Object.freeze({ mode: 'quality', quality: 'high', bitrateMbps: 50, resolution: 'source' });
-export const EXPORT_QUALITIES = Object.freeze({ high: 18, balanced: 23, compact: 28 });
+export const EXPORT_QUALITIES = Object.freeze({ high: 20, balanced: 15, compact: 10 });
 export const MIN_EXPORT_BITRATE = 0.25;
 export const MAX_EXPORT_BITRATE = 100;
 
@@ -19,22 +19,17 @@ export function sanitizeExportSettings(value) {
   try { return validateExportSettings(value); } catch { return { ...DEFAULT_EXPORT_SETTINGS }; }
 }
 
-export function exportEncodeArguments(settings) {
-  const { mode, quality, bitrateMbps } = validateExportSettings(settings);
-  return ['-c:v', 'libx264', '-preset', 'veryfast',
-    ...(mode === 'bitrate' ? ['-b:v', `${Math.round(bitrateMbps * 1000)}k`] : ['-crf', String(EXPORT_QUALITIES[quality])]),
+// Presets are average video bitrate targets at 1080p, scaled by exported pixel count.
+export function exportEncodeArguments(settings, dimensions) {
+  const bitrate = exportVideoBitrate(settings, dimensions);
+  return ['-c:v', 'libx264', '-preset', 'veryfast', '-b:v', `${Math.round(bitrate * 1000)}k`,
     '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart'];
 }
 
-// CRF has no fixed bitrate. These broad ranges are a planning aid, not a size guarantee.
 export function estimateExportSize(settings, duration, dimensions) {
   if (!Number.isFinite(duration) || duration <= 0) return null;
-  const { mode, quality, bitrateMbps } = validateExportSettings(settings);
-  dimensions = exportDimensions(settings, dimensions);
-  const pixels = dimensions?.width > 0 && dimensions?.height > 0 ? dimensions.width * dimensions.height : 1920 * 1080;
-  const videoMbps = mode === 'bitrate' ? bitrateMbps : { high: 12, balanced: 8, compact: 4 }[quality] * pixels / (1920 * 1080);
-  const bytes = (videoMbps + 0.192) * 1_000_000 / 8 * duration * 1.01;
-  return { bytes, minBytes: bytes * (mode === 'bitrate' ? .85 : .5), maxBytes: bytes * (mode === 'bitrate' ? 1.15 : 1.5) };
+  const bytes = (exportVideoBitrate(settings, dimensions) + 0.192) * 1_000_000 / 8 * duration * 1.01;
+  return { bytes, minBytes: bytes * .85, maxBytes: bytes * 1.15 };
 }
 
 export const EXPORT_RESOLUTIONS = [2160, 1440, 1080, 720, 480, 360];
@@ -55,8 +50,8 @@ export function exportScaleFilter(settings) {
   const factor = `min(1,${resolution}/min(iw*sar,ih))`;
   return `,scale=w='max(2,trunc(iw*sar*${factor}/2)*2)':h='max(2,trunc(ih*${factor}/2)*2)':flags=lanczos,setsar=1`;
 }
-export function estimatedVideoBitrate(settings, dimensions) {
+export function exportVideoBitrate(settings, dimensions) {
   const normalized = validateExportSettings(settings);
   const output = exportDimensions(normalized, dimensions);
-  return normalized.mode === 'bitrate' ? normalized.bitrateMbps : { high: 12, balanced: 8, compact: 4 }[normalized.quality] * (output ? output.width * output.height / (1920 * 1080) : 1);
+  return normalized.mode === 'bitrate' ? normalized.bitrateMbps : Math.max(MIN_EXPORT_BITRATE, EXPORT_QUALITIES[normalized.quality] * (output ? output.width * output.height / (1920 * 1080) : 1));
 }

@@ -28,7 +28,7 @@ for (const mobile of [false, true]) test(`export dialog estimates, validates, pe
   expect(await dialog.locator('.MuiDialogContent-root').evaluate(el => el.scrollHeight <= el.clientHeight + 1)).toBe(true);
   const initialSize = await estimate.textContent();
   await dialog.getByRole('combobox', { name: /^איכות תמונה/ }).click();
-  await page.getByRole('option', { name: /חסכונית/ }).click();
+  await page.getByRole('option', { name: /נמוכה/ }).click();
   await expect(estimate).not.toHaveText(initialSize!);
   await dialog.getByRole('combobox', { name: 'שיטת ייצוא' }).click();
   await page.getByRole('option', { name: 'Bitrate ידני' }).click();

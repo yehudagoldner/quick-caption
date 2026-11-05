@@ -1,20 +1,20 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { DEFAULT_EXPORT_SETTINGS, availableExportResolutions, exportDimensions, estimateExportSize, sanitizeExportSettings, validateExportSettings } from '../src/exportSettings.js';
+import { DEFAULT_EXPORT_SETTINGS, exportVideoBitrate, availableExportResolutions, exportDimensions, estimateExportSize, sanitizeExportSettings, validateExportSettings } from '../src/exportSettings.js';
 import { buildBurnArguments, buildAudiogramArguments } from '../src/burnVideo.js';
 import { mkdtemp, stat, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 
-test('legacy exports preserve CRF 18; presets and manual bitrate reach both video encoders', () => {
+test('presets use requested bitrate targets; manual bitrate reaches both video encoders', () => {
   const defaults = buildBurnArguments('source.mp4', 'null', 'out.mp4');
-  assert.equal(defaults[defaults.indexOf('-crf') + 1], '18');
-  for (const [quality, crf] of [['high', '18'], ['balanced', '23'], ['compact', '28']]) {
+  assert.equal(defaults[defaults.indexOf('-b:v') + 1], '20000k');
+  for (const [quality, bitrate] of [['high', '20000k'], ['balanced', '15000k'], ['compact', '10000k']]) {
     const args = buildBurnArguments('source.mp4', 'null', 'out.mp4', 'crop.filter', { ...DEFAULT_EXPORT_SETTINGS, quality });
-    assert.equal(args[args.indexOf('-crf') + 1], crf);
+    assert.equal(args[args.indexOf('-b:v') + 1], bitrate);
     assert.ok(args.includes('crop.filter'));
-    assert.ok(!args.includes('-b:v'));
+    assert.ok(!args.includes('-crf'));
   }
   const settings = { ...DEFAULT_EXPORT_SETTINGS, mode: 'bitrate', bitrateMbps: 2.5 };
   for (const args of [buildBurnArguments('in', 'null', 'out', null, settings), buildAudiogramArguments('audio', { width: 1080, height: 1920, background: '#000000' }, 'null', 'out', settings)]) {
@@ -57,7 +57,7 @@ test('FFmpeg fixtures produce smaller files at lower quality and bitrate with co
     for (const [name, settings] of Object.entries({ high: DEFAULT_EXPORT_SETTINGS, compact: { ...DEFAULT_EXPORT_SETTINGS, quality: 'compact' },
       lowBitrate: { ...DEFAULT_EXPORT_SETTINGS, mode: 'bitrate', bitrateMbps: .25 }, highBitrate: { ...DEFAULT_EXPORT_SETTINGS, mode: 'bitrate', bitrateMbps: 2 } })) {
       const output = path.join(dir, `${name}.mp4`);
-      execFileSync('ffmpeg', buildBurnArguments(source, 'null', output, null, settings));
+      execFileSync('ffmpeg', buildBurnArguments(source, 'null', output, null, settings, { width: 640, height: 360 }));
       sizes[name] = (await stat(output)).size;
       const probe = JSON.parse(execFileSync('ffprobe', ['-v', 'error', '-show_streams', '-of', 'json', output], { encoding: 'utf8' }));
       assert.equal(probe.streams.find(s => s.codec_type === 'video').codec_name, 'h264');
@@ -96,4 +96,17 @@ test('FFmpeg exports selected resolution after composition, without upscaling', 
     const stream=JSON.parse(execFileSync('ffprobe',['-v','error','-select_streams','v:0','-show_streams','-of','json',out])).streams[0];
     assert.deepEqual([stream.width,stream.height],[480,852]);
   } finally { await rm(dir,{recursive:true,force:true}); }
+});
+
+test('preset targets scale with actual output dimensions while manual targets stay fixed', () => {
+  for (const [quality, rate] of [['high',20],['balanced',15],['compact',10]]) {
+    const settings={...DEFAULT_EXPORT_SETTINGS,quality};
+    assert.equal(exportVideoBitrate(settings,{width:1920,height:1080}),rate);
+    assert.equal(exportVideoBitrate(settings,{width:1080,height:1920}),rate);
+    assert.equal(exportVideoBitrate(settings,{width:3840,height:2160}),rate*4);
+    assert.equal(exportVideoBitrate({...settings,resolution:1080},{width:3840,height:2160}),rate);
+    const args=buildBurnArguments('in','null','out',null,settings,{width:3840,height:2160});
+    assert.equal(args[args.indexOf('-b:v')+1],`${rate*4000}k`);
+  }
+  assert.equal(exportVideoBitrate({...DEFAULT_EXPORT_SETTINGS,mode:'bitrate',bitrateMbps:50},{width:3840,height:2160}),50);
 });

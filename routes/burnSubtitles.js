@@ -145,10 +145,12 @@ export function createBurnSubtitlesRouter(upload, { resolveVideo } = {}) {
       const hasVideo = await probeHasVideo(source.path, { signal });
       if (hasVideo && audiogram) throw refuse(400, 'הגדרות רקע מתאימות לקובץ אודיו בלבד.');
       if (!hasVideo && !audiogram) throw refuse(400, 'כדי ליצור סרטון מקובץ אודיו צריך לבחור רקע. רעננו את העמוד ונסו שוב.');
+      let encodingDimensions = frame;
+      if (hasVideo) encodingDimensions = await probeVideoDimensions(source.path, { signal });
       if (crop) {
-        const dimensions = await probeVideoDimensions(source.path, { signal });
+        const dimensions = encodingDimensions;
         const rectangle = cropRectangle(dimensions, crop);
-        videoWidth = rectangle.width; videoHeight = rectangle.height;
+        videoWidth = rectangle.width; videoHeight = rectangle.height; encodingDimensions = rectangle;
       }
       // Wrap subtitle lines with RTL markers for proper Hebrew punctuation rendering
       const rtlSubtitleContent = styled
@@ -179,7 +181,7 @@ export function createBurnSubtitlesRouter(upload, { resolveVideo } = {}) {
       job.percent = duration ? 0 : null;
       const args = audiogram
         ? buildAudiogramArguments(source.path, { ...audiogram, ...frame, image: background?.path, duration }, filter, outputPath, exportSettings)
-        : buildBurnArguments(source.path, filter, outputPath, filterScript, exportSettings);
+        : buildBurnArguments(source.path, filter, outputPath, filterScript, exportSettings, encodingDimensions);
       await runBurnFfmpeg(args, {
         duration, signal, onProgress: percent => { job.percent = percent; },
       });

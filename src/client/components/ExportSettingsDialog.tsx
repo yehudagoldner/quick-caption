@@ -2,9 +2,9 @@ import { useId, useState, type ReactNode } from 'react';
 import { Box, Button, Dialog, DialogActions, DialogContent, DialogTitle, IconButton, MenuItem, Slider, Stack, TextField, Typography } from '@mui/material';
 import { CloseRounded, TuneRounded } from '@mui/icons-material';
 import { useEditorPreferences } from '../contexts/EditorPreferences';
-import { availableExportResolutions, exportDimensions, estimatedVideoBitrate, estimateExportSize, MIN_EXPORT_BITRATE, MAX_EXPORT_BITRATE, type ExportSettings } from '../../exportSettings.js';
+import { availableExportResolutions, exportDimensions, exportVideoBitrate, estimateExportSize, MIN_EXPORT_BITRATE, MAX_EXPORT_BITRATE, type ExportSettings } from '../../exportSettings.js';
 
-const qualityLabels = { high: 'גבוהה', balanced: 'מאוזנת', compact: 'חסכונית' };
+const qualityLabels = { high: 'גבוהה', balanced: 'בינונית', compact: 'נמוכה' };
 const resolutionLabel = (value: number) => value === 2160 ? '4K · 2160p' : `${value}p`;
 const sizeLabel = (bytes: number) => bytes >= 1e9 ? `${(bytes / 1e9).toFixed(2)} GB` : `${(bytes / 1e6).toFixed(1)} MB`;
 
@@ -25,7 +25,7 @@ export function ExportSettingsDialog({ duration, dimensions, previewControls, co
   const output = exportDimensions(next, dimensions);
   const hasDuration = duration !== null && Number.isFinite(duration) && duration > 0;
   const estimate = canSave ? estimateExportSize(next, hasDuration ? duration : 60, dimensions) : null;
-  const rate = estimatedVideoBitrate(next, dimensions);
+  const rate = exportVideoBitrate(next, dimensions);
   return <>
     <Button aria-label="איכות וידאו" size={compact ? 'small' : 'medium'} variant={compact ? 'text' : 'outlined'} disabled={disabled} aria-haspopup="dialog"
       onClick={() => { setDraft(saved); setBitrate(String(saved.bitrateMbps)); setOpen(true); }} startIcon={<TuneRounded />}
@@ -49,7 +49,7 @@ export function ExportSettingsDialog({ duration, dimensions, previewControls, co
             </TextField>
             <TextField select fullWidth size="small" label="איכות תמונה" slotProps={{ select: { renderValue: value => qualityLabels[value as ExportSettings['quality']] } }} value={draft.quality} disabled={disabled || draft.mode !== 'quality'} onChange={e => setDraft({ ...draft, quality: e.target.value as ExportSettings['quality'] })}>
               {(['high', 'balanced', 'compact'] as const).map(quality => <MenuItem key={quality} value={quality}>
-                <Box><Typography variant="body2">{qualityLabels[quality]}</Typography><Typography variant="caption" color="text.secondary">Bitrate משוער: <bdi>{estimatedVideoBitrate({ ...next, mode: 'quality', quality }, dimensions).toFixed(1)} Mbps</bdi></Typography></Box>
+                <Box><Typography variant="body2">{qualityLabels[quality]}</Typography><Typography variant="caption" color="text.secondary">יעד Bitrate: <bdi>{exportVideoBitrate({ ...next, mode: 'quality', quality }, dimensions).toFixed(1)} Mbps</bdi></Typography></Box>
               </MenuItem>)}
             </TextField>
             <TextField size="small" label="Bitrate וידאו (Mbps)" type="number" value={bitrate} disabled={disabled || draft.mode !== 'bitrate'} error={draft.mode === 'bitrate' && !valid}
@@ -58,7 +58,7 @@ export function ExportSettingsDialog({ duration, dimensions, previewControls, co
           {draft.mode === 'bitrate' && <Box sx={{ px: 1 }}><Slider aria-label="קצב נתוני הווידאו" disabled={disabled} value={valid ? Number(bitrate) : MIN_EXPORT_BITRATE}
             min={MIN_EXPORT_BITRATE} max={MAX_EXPORT_BITRATE} step={.25} valueLabelDisplay="auto" sx={{ py: 1 }} onChange={(_, value) => setBitrate(String(value))} /></Box>}
           <Typography variant="caption" color={canSave ? 'text.secondary' : 'error'} sx={{ lineHeight: 1.5 }}>
-            {!canSave ? 'יש להזין מספר בין 0.25 ל־100 Mbps.' : <>{output && <><bdi>{output.width}×{output.height}</bdi> · </>}{draft.mode === 'quality' ? `איכות ${qualityLabels[draft.quality]} · Bitrate אוטומטי, כ־` : 'Bitrate ממוצע: '}<bdi>{rate.toFixed(1)} Mbps</bdi> · MP4</>}
+            {!canSave ? 'יש להזין מספר בין 0.25 ל־100 Mbps.' : <>{output && <><bdi>{output.width}×{output.height}</bdi> · </>}{draft.mode === 'quality' ? `איכות ${qualityLabels[draft.quality]} · יעד Bitrate: ` : 'Bitrate ממוצע: '}<bdi>{rate.toFixed(1)} Mbps</bdi> · MP4</>}
           </Typography>
           <Box sx={{ borderTop: 1, borderColor: 'divider', pt: 1.5, '& .MuiTextField-root': { width: '100%', minWidth: '0 !important' }, '& .MuiTypography-caption': { fontSize: 11, lineHeight: 1.4 } }}>{previewControls}</Box>
           <Box role="status" aria-live="polite" sx={{ p: 1.5, bgcolor: 'grey.50', border: 1, borderColor: 'divider', borderRadius: 2 }}>
