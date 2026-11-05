@@ -605,7 +605,7 @@ export function TranscriptionResult({
             editorSettings={<>
               <CaptionMotionSettings motion={captionMotion} intensity={popIntensity} onMotionChange={setCaptionMotion} onIntensityChange={setPopIntensity} disabled={isBurning || replacingVideo} />
               <EditorSettings disabled={!isEditable || isBurning || saveState === "saving" || hasTimelineDrafts} onApply={handleCharacterReflow} onUndo={handleUndoReflow} canUndo={canUndoReflow} exportFormat={exportFormat} onExportFormatChange={setExportFormat}
-                previewQualityControls={previewControls}
+                videoDuration={videoDuration} videoDimensions={mediaDimensions} previewQualityControls={previewControls}
                 replaceVideoControls={desktop && videoId && <ReplaceVideoSettings disabled={!canEdit || navigationBlocked || saveState === 'error'} busy={replacingVideo} onReplace={handleReplaceVideo} />} />
             </>}
             captionMotion={captionMotion}

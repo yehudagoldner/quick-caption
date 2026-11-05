@@ -622,6 +622,7 @@ export function useTranscriptionWorkflow(): TranscriptionWorkflow {
       }
       appendAudiogram(formData, options.audiogram);
       if (options.crop) formData.append('crop', JSON.stringify(options.crop));
+      if (options.exportSettings) formData.append('exportSettings', JSON.stringify(options.exportSettings));
 
       return requestBurn(BURN_ENDPOINT, formData, options.onProgress);
     },

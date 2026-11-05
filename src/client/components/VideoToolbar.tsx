@@ -40,6 +40,7 @@ import {
 } from "@mui/icons-material";
 
 export type BurnOptions = {
+  exportSettings?: import('../../exportSettings.js').ExportSettings;
   backgroundColor?: string;
   backgroundOpacity?: number;
   crop?: import('../../videoVersions.js').VideoCrop | null;

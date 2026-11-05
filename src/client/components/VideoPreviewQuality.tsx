@@ -11,7 +11,7 @@ export function VideoPreviewQuality({ status, quality, qualities, disabled, erro
       <TextField select size="small" label="איכות תצוגה מקדימה" value={quality} disabled={disabled} onChange={event => onChange(event.target.value as PreviewQuality)} sx={{ minWidth: 210, alignSelf: 'flex-start' }}>
         {qualities.map(value => <MenuItem key={value} value={value}>{value}{value === '720p' ? ' — עריכה מהירה' : value === '1080p' ? ' — פירוט גבוה' : ''}</MenuItem>)}
       </TextField>
-      <Typography variant="caption" color="text.secondary">איכות הניגון בעורך בלבד. הייצוא משתמש בקובץ המקור באיכות גבוהה.</Typography>
+      <Typography variant="caption" color="text.secondary">איכות הניגון בעורך בלבד. הייצוא משתמש בקובץ המקור ובהגדרות הייצוא שבחרתם.</Typography>
     </> : <Alert severity={error ? 'warning' : 'info'} action={status !== 'loading' && <Button disabled={disabled} onClick={onRetry}>נסה שוב</Button>}>
       {error || (status === 'pending' ? 'גרסת העריכה עדיין בהכנה. ננסה שוב אוטומטית בעוד כמה שניות.' : status === 'unavailable' ? 'גרסת העריכה הקלה עדיין אינה זמינה.' : 'טוען את התצוגה המקדימה...')}
     </Alert>}

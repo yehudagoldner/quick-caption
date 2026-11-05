@@ -15,6 +15,7 @@ import { getCaptionFont } from "../src/captionFonts.js";
 import { sanitizeCaptionOverrides } from '../src/captionOverrides.js';
 import { renderStyledCaptionsAss } from '../src/styledCaptions.js';
 import { sanitizeWordOverrides } from '../src/wordOverrides.js';
+import { validateExportSettings } from '../src/exportSettings.js';
 
 const CAPTION_FONTS_DIR = fileURLToPath(new URL("../public/fonts", import.meta.url));
 const TEMP_SUBTITLE_DIR = path.join(os.tmpdir(), "subtitles-api-subtitle-temp");
@@ -78,6 +79,9 @@ export function createBurnSubtitlesRouter(upload, { resolveVideo } = {}) {
 
     let audiogram = null;
     let crop = null;
+    let exportSettings;
+    try { exportSettings = validateExportSettings(req.body?.exportSettings === undefined ? undefined : JSON.parse(req.body.exportSettings)); }
+    catch { return reject(400, 'הגדרות הייצוא אינן תקינות. קצב הנתונים צריך להיות בין 0.25 ל־100 Mbps.'); }
     if (req.body?.crop) {
       try { crop = validateVideoCrop(JSON.parse(req.body.crop)); }
       catch { return reject(400, 'הגדרות החיתוך אינן תקינות.'); }
@@ -174,8 +178,8 @@ export function createBurnSubtitlesRouter(upload, { resolveVideo } = {}) {
       job.stage = 'burning';
       job.percent = duration ? 0 : null;
       const args = audiogram
-        ? buildAudiogramArguments(source.path, { ...audiogram, ...frame, image: background?.path, duration }, filter, outputPath)
-        : buildBurnArguments(source.path, filter, outputPath, filterScript);
+        ? buildAudiogramArguments(source.path, { ...audiogram, ...frame, image: background?.path, duration }, filter, outputPath, exportSettings)
+        : buildBurnArguments(source.path, filter, outputPath, filterScript, exportSettings);
       await runBurnFfmpeg(args, {
         duration, signal, onProgress: percent => { job.percent = percent; },
       });
