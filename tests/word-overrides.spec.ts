@@ -4,9 +4,9 @@ import { readFileSync } from 'node:fs';
 import type { Word } from '../src/client/types';
 const landscape = Buffer.from(readFileSync('tests/fixtures/landscape-video.base64', 'utf8'), 'base64');
 
-async function setup(page: Page, width = 1440, versions = false) {
+async function setup(page: Page, width = 1440, versions = false, source?: { segments: typeof segments; words: Word[] }) {
   await page.setViewportSize({ width, height: 1000 }); await prepareApp(page);
-  let saved = structuredClone(segments), words: Word[] = [], fail = false;
+  let saved = structuredClone(source?.segments ?? segments), words: Word[] = structuredClone(source?.words ?? []), fail = false;
   const burns: string[] = []; const media = versions ? landscape : portraitVideo;
   await page.route('**/api/videos/42/media?**', route => {
     const range = route.request().headers().range?.match(/bytes=(\d+)-(\d*)/);
@@ -26,10 +26,82 @@ async function setup(page: Page, width = 1440, versions = false) {
 }
 const panel = (page: Page) => page.getByRole('region', { name: 'עיצוב מילים נבחרות', exact: true });
 const word = (page: Page, index: number) => page.getByTestId('subtitle-overlay').locator(`[data-word-index="${index}"]`);
+const alignmentSource = {
+  segments: [{ id: 1, start: 0, end: 2, text: 'אחת עוד סוף' }],
+  words: [
+    { word: 'אחת', start: 0, end: .6, segmentId: 1, wordIndex: 0, style: { offsetY: -1 } },
+    { word: 'עוד', start: .6, end: 1.2, segmentId: 1, wordIndex: 1 },
+    { word: 'סוף', start: 1.2, end: 2, segmentId: 1, wordIndex: 2, style: { offsetY: .5, fontScale: 1.25 } },
+  ],
+};
 async function choose(page: Page, index = 0) {
   await page.getByTestId('caption-position').focus(); await page.keyboard.press('Enter');
   await word(page, index).click(); await expect(panel(page)).toBeVisible();
 }
+
+test('word dragging guides and snaps to the lowest other word, releases and persists the alignment', async ({ page }) => {
+  const state = await setup(page, 1440, false, alignmentSource); await choose(page);
+  const from = (await word(page, 0).boundingBox())!, target = (await word(page, 2).boundingBox())!;
+  const x = from.x + from.width / 2, y = from.y + from.height / 2;
+  const dy = target.y + target.height - from.y - from.height;
+  const guide = page.getByTestId('word-alignment-guide');
+  await page.mouse.move(x, y); await page.mouse.down();
+  await page.mouse.move(x - 10, y + dy - 4, { steps: 8 });
+  await expect(guide).toHaveAttribute('data-snapped', 'true');
+  const aligned = (await word(page, 0).boundingBox())!;
+  expect(Math.abs(aligned.y + aligned.height - target.y - target.height)).toBeLessThan(1);
+  expect(Math.abs((await guide.boundingBox())!.y - target.y - target.height)).toBeLessThan(1);
+  await page.screenshot({ path: 'tmp/review/word-bottom-alignment.png' });
+  await page.mouse.move(x - 10, y + dy + 18, { steps: 4 });
+  await expect(guide).toHaveAttribute('data-snapped', 'false');
+  await page.mouse.move(x - 10, y + dy + 3, { steps: 4 });
+  await expect(guide).toHaveAttribute('data-snapped', 'true');
+  await page.mouse.up(); await expect(guide).toHaveCount(0);
+  await expect.poll(() => state.words()[0].style?.offsetY).toBeGreaterThan(0);
+  expect(state.words()[2].style).toEqual(alignmentSource.words[2].style);
+  await page.reload();
+  await expect.poll(async () => {
+    const restored = (await word(page, 0).boundingBox())!, unchanged = (await word(page, 2).boundingBox())!;
+    return Math.abs(restored.y + restored.height - unchanged.y - unchanged.height);
+  }).toBeLessThan(1);
+});
+
+test('word alignment follows the local bottom edge of a rotated caption', async ({ page }) => {
+  await setup(page, 1440, false, { ...alignmentSource, segments: alignmentSource.segments.map(segment => ({ ...segment, style: { rotation: 90 } })) });
+  await choose(page);
+  const from = (await word(page, 0).boundingBox())!, target = (await word(page, 2).boundingBox())!;
+  const x = from.x + from.width / 2, y = from.y + from.height / 2;
+  await page.mouse.move(x, y); await page.mouse.down();
+  await page.mouse.move(x + target.x - from.x + 3, y, { steps: 8 });
+  const guide = page.getByTestId('word-alignment-guide');
+  await expect(guide).toHaveAttribute('data-snapped', 'true');
+  expect(Math.abs((await word(page, 0).boundingBox())!.x - target.x)).toBeLessThan(1);
+  const line = (await guide.boundingBox())!;
+  expect(line.height).toBeGreaterThan(line.width);
+  await page.mouse.up(); await expect(guide).toHaveCount(0);
+});
+
+test('group alignment preserves relative word positions and offers no self-alignment when all words are selected', async ({ page }) => {
+  const state = await setup(page, 1440, false, alignmentSource); await choose(page);
+  await word(page, 1).click({ modifiers: ['Control'] });
+  const first = (await word(page, 0).boundingBox())!, second = (await word(page, 1).boundingBox())!, target = (await word(page, 2).boundingBox())!;
+  const x = second.x + second.width / 2, y = second.y + second.height / 2;
+  const dy = target.y + target.height - second.y - second.height;
+  await page.mouse.move(x, y); await page.mouse.down(); await page.mouse.move(x, y + dy - 3, { steps: 6 });
+  await expect(page.getByTestId('word-alignment-guide')).toHaveAttribute('data-snapped', 'true');
+  const movedFirst = (await word(page, 0).boundingBox())!, movedSecond = (await word(page, 1).boundingBox())!;
+  expect(movedFirst.y - movedSecond.y).toBeCloseTo(first.y - second.y, 0);
+  await page.mouse.up();
+  await expect.poll(() => state.words()[1].style?.offsetY).toBeGreaterThan(0);
+  await word(page, 2).click({ modifiers: ['Control'] });
+  const all = structuredClone(state.words());
+  const last = (await word(page, 2).boundingBox())!;
+  await page.mouse.move(last.x + last.width / 2, last.y + last.height / 2); await page.mouse.down();
+  await page.mouse.move(last.x + last.width / 2, last.y + last.height / 2 - 15, { steps: 5 });
+  await expect(page.getByTestId('word-alignment-guide')).toHaveCount(0);
+  await word(page, 2).dispatchEvent('pointercancel'); await page.mouse.up();
+  expect(state.words()).toEqual(all);
+});
 
 test('desktop word styles save, multi-select, undo/redo, reload, burn and reset', async ({ page }) => {
   const state = await setup(page); await choose(page);

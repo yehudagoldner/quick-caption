@@ -104,9 +104,12 @@ function CaptionPreview({ activeSegmentText, activeSegmentId, words, currentTime
       {pop ? escapeAssText(text) : text}
     </span>;
   };
-  return <Box data-testid="subtitle-overlay" data-segment-id={activeSegmentId} sx={{ display: 'inline-block', ...(captionMotion !== 'pop' ? { bgcolor: 'var(--caption-background, transparent)', boxShadow: '0 0 0 .06em var(--caption-background, transparent)' } : {}) }}>
+  return <Box data-testid="subtitle-overlay" data-segment-id={activeSegmentId} sx={{ position: 'relative', display: 'inline-block', ...(captionMotion !== 'pop' ? { bgcolor: 'var(--caption-background, transparent)', boxShadow: '0 0 0 .06em var(--caption-background, transparent)' } : {}) }}>
     {captionMotion === 'pop' && popWord ? renderWord(popWord.word, popWord.wordIndex!, true)
       : captionParts.map((part, index) => part.wordIndex === undefined ? <Fragment key={`space-${index}`}>{part.text}</Fragment> : renderWord(part.text, part.wordIndex))}
+    {drag.live?.guide && <Box aria-hidden data-testid="word-alignment-guide" data-snapped={drag.live.guide.snapped}
+      sx={{ position: 'absolute', left: drag.live.guide.left, top: drag.live.guide.top, width: drag.live.guide.width,
+        borderTop: '1px dashed #f472b6', opacity: drag.live.guide.snapped ? 1 : .55, pointerEvents: 'none', zIndex: 4 }} />}
   </Box>;
 }
 
