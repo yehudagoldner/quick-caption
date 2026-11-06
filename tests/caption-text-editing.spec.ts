@@ -38,6 +38,34 @@ async function setup(page: Page, mobile: boolean, automatic = false) {
   return { edit, open, initial, segments: () => segments, words: () => words };
 }
 
+for (const mobile of [false, true]) test(`clearing a new caption saves empty words, survives reload and supports undo (${mobile ? 'mobile' : 'desktop'})`, async ({ page }) => {
+  const state = await setup(page, mobile, true);
+  await state.edit('');
+  expect(state.segments()).toEqual([{ ...state.initial.segments[0], text: '' }, state.initial.segments[1]]);
+  expect(state.words().filter(word => word.segmentId === 1)).toEqual([]);
+  if (mobile) await page.getByRole('button', { name: 'סיום', exact: true }).click();
+  await page.getByRole('button', { name: 'ביטול פעולה', exact: true }).click();
+  await expect.poll(() => state.segments()[0].text).toBe('שלום עולם');
+  expect(state.words().filter(word => word.segmentId === 1).map(({ start, end }) => [start, end])).toEqual([[0, .25], [.25, .5]]);
+  await page.getByRole('button', { name: 'ביצוע חוזר', exact: true }).click();
+  await expect.poll(() => state.segments()[0].text).toBe('');
+  await page.reload(); await state.open();
+  await expect(page.getByRole('textbox', { name: mobile ? 'טקסט הכתובית' : 'טקסט המקטע', exact: true })).toHaveValue('');
+  await state.edit('מילה חדשה');
+  for (const word of state.words().filter(word => word.segmentId === 1)) expect(word.end - word.start).toBeCloseTo(.25);
+  await state.edit('');
+  if (mobile) {
+    await page.getByRole('button', { name: 'סיום', exact: true }).click();
+    await page.getByRole('checkbox', { name: /^בחירת כתובית:/ }).first().check();
+    await page.getByRole('button', { name: 'מחיקת כתוביות נבחרות', exact: true }).click();
+  } else {
+    await page.getByTestId('subtitle-clip').first().click();
+    await page.keyboard.press('Delete');
+  }
+  await expect.poll(() => state.segments().length).toBe(1);
+  expect(state.segments()[0]).toEqual(state.initial.segments[1]);
+});
+
 for (const mobile of [false, true]) test(`existing caption keeps timing, adds four-frame words, trims its neighbour and undoes (${mobile ? 'mobile' : 'desktop'})`, async ({ page }) => {
   const state = await setup(page, mobile);
   await state.edit('שלום עולם ממש חדש');

@@ -99,7 +99,6 @@ export function MobileCaptionEditDialog({ segment, words, fps, currentTime, acti
   const save = async (): Promise<boolean> => {
     if (inFlight.current) return inFlight.current;
     const nextText = textRef.current.trim();
-    if (!nextText) { setError('הכתובית ריקה. הקלידו טקסט או בטלו את השינוי.'); return false; }
     if (nextText === savedText.current.trim() && !draftRef.current) return true;
     if (disabled) return false;
     let nextSegment = segment;
@@ -133,7 +132,7 @@ export function MobileCaptionEditDialog({ segment, words, fps, currentTime, acti
     return () => register.current(null);
   }, []);
   useEffect(() => {
-    if (!dirtyText || !text.trim() || error || saving) return;
+    if (!dirtyText || error || saving) return;
     const timer = window.setTimeout(() => { void flushRef.current(); }, 1000);
     return () => window.clearTimeout(timer);
   }, [text, dirtyText, error, saving]);

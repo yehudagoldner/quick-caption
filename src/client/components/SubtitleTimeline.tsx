@@ -20,7 +20,7 @@ import { useTimelineScrubbing } from "../hooks/useTimelineScrubbing";
 import { VideoSeekBar } from "./VideoSeekBar";
 import { useTimelineWheelZoom } from "../hooks/useTimelineWheelZoom";
 
-export type CaptionDraft = { segment: Segment; words: Word[]; allowEmpty?: boolean };
+export type CaptionDraft = { segment: Segment; words: Word[] };
 export type SubtitleTimelineProps = {
   activeWordEnabled: boolean;
   segments: Segment[]; words?: Word[]; disabled?: boolean; busy?: boolean;
@@ -168,6 +168,7 @@ export function SubtitleTimeline({ activeWordEnabled, segments, words = [], disa
     if (!draft || locked) return;
     try {
       setDraft(editCaptionText(draft.segment, draft.words, text, fps, total));
+      setWordSelection({ segmentId: draft.segment.id, indexes: [] });
       setError(null);
     } catch (error) { setError((error as Error).message); }
   };
@@ -197,7 +198,7 @@ export function SubtitleTimeline({ activeWordEnabled, segments, words = [], disa
   ]);
   const commitDraft = async (item: CaptionDraft) => {
     const source = segmentsRef.current.find(segment => segment.id === item.segment.id);
-    if (!source || (!item.segment.text.trim() && !item.allowEmpty)) return;
+    if (!source) return;
     const stamp = draftSignature(item);
     const persisted = draftSignature({ segment: source, words: wordsForSegment(wordsRef.current, source) });
     if (persisted === stamp) {
@@ -220,7 +221,7 @@ export function SubtitleTimeline({ activeWordEnabled, segments, words = [], disa
   useEffect(() => {
     const tick = async () => {
       if (flight.current || gateRef.current.disabled || gateRef.current.busy) return;
-      const pending = Object.values(draftsRef.current).filter(item => item.segment.text.trim() || item.allowEmpty);
+      const pending = Object.values(draftsRef.current);
       if (!pending.length) return;
       flight.current = true;
       try {
@@ -238,11 +239,11 @@ export function SubtitleTimeline({ activeWordEnabled, segments, words = [], disa
     flight.current = true; setSaving(true); setError(null);
     try {
       // Word deletion keeps the caption and its boundaries, even when all words
-      // are removed. Explicit empty drafts also participate in save retries.
+      // are removed. Empty drafts also participate in save retries.
       const text = remainingWords.map(word => word.word).join(" ");
       const next = { ...(draft.segment.wordTimingMode === 'automatic'
         ? editCaptionText(draft.segment, remainingWords, text, fps, total)
-        : { segment: { ...draft.segment, text }, words: remainingWords }), allowEmpty: !remainingWords.length };
+        : { segment: { ...draft.segment, text }, words: remainingWords }) };
       setDraft(next);
       await commitDraft(next);
       setWordSelection({ segmentId: draft.segment.id, indexes: [] });
@@ -474,7 +475,7 @@ export function SubtitleTimeline({ activeWordEnabled, segments, words = [], disa
           onDeleteWords={deleteWords}
           toolbarEditor={<TextField className="caption-text-editor" variant="standard" fullWidth value={draft.segment.text} disabled={locked}
           placeholder="טקסט המקטע" inputProps={{ dir: preferences.direction, "aria-label": "טקסט המקטע", title: draft.segment.text }}
-          onBlur={() => { if (draft.segment.text.trim()) void commitDraft(draft).then(() => setError(null)).catch(e => setError(e.message || "השמירה נכשלה; הטיוטה נשמרה בעורך.")); }}
+          onBlur={() => { void commitDraft(draft).then(() => setError(null)).catch(e => setError(e.message || "השמירה נכשלה; הטיוטה נשמרה בעורך.")); }}
           InputProps={{ disableUnderline: true,
             startAdornment: <InputAdornment position="start" sx={{ ml: .75, mr: 0, color: "primary.main", gap: .5 }}><EditOutlined sx={{ fontSize: 16 }} /><Typography component="span" variant="caption" sx={{ fontWeight: 700, color: "primary.main", display: { xs: "none", sm: "inline" } }}>ערכו כאן</Typography></InputAdornment>,
             endAdornment: <InputAdornment position="end" sx={{ ml: 0 }}><Tooltip title="פתח עריכה בחלון"><span><IconButton size="small" aria-label="פתח עריכה בחלון" disabled={locked} onClick={() => openExpandedEditor(draft.segment.id)}><OpenInFullRounded /></IconButton></span></Tooltip></InputAdornment>,
@@ -499,8 +500,8 @@ export function SubtitleTimeline({ activeWordEnabled, segments, words = [], disa
       <DialogContent>
         {draft && <TextField autoFocus fullWidth multiline minRows={4} maxRows={10} label="טקסט הכתובית" value={draft.segment.text} disabled={locked}
           inputProps={{ dir: preferences.direction }} sx={{ mt: 1 }} onChange={e => changeText(e.target.value)}
-          onBlur={() => { if (draft.segment.text.trim()) void commitDraft(draft).then(() => setError(null)).catch(e => setError(e.message || "השמירה נכשלה; הטיוטה נשמרה בעורך.")); }}
-          onKeyDown={e => { if ((e.ctrlKey || e.metaKey) && e.key === "Enter") { e.preventDefault(); if (draft.segment.text.trim()) void commitDraft(draft).then(() => setError(null)).catch(e => setError(e.message || "השמירה נכשלה; הטיוטה נשמרה בעורך.")); setExpandedSegmentId(null); } }}
+          onBlur={() => { void commitDraft(draft).then(() => setError(null)).catch(e => setError(e.message || "השמירה נכשלה; הטיוטה נשמרה בעורך.")); }}
+          onKeyDown={e => { if ((e.ctrlKey || e.metaKey) && e.key === "Enter") { e.preventDefault(); void commitDraft(draft).then(() => setError(null)).catch(e => setError(e.message || "השמירה נכשלה; הטיוטה נשמרה בעורך.")); setExpandedSegmentId(null); } }}
           helperText="הזמנים נקבעים בציר הראשי." />}
         {error && <Alert severity="error" sx={{ mt: 2 }}>{error}</Alert>}
       </DialogContent>

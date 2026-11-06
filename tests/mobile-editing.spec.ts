@@ -320,7 +320,7 @@ test('caption popup edits text, realigns words and fits a narrow phone', async (
   await page.screenshot({ path: 'tmp/review/mobile-word-timeline-320.png' });
 });
 
-test('empty caption text stays in the popup until corrected or discarded', async ({ page }) => {
+test('empty caption text can be saved and the popup closes', async ({ page }) => {
   await openEditor(page);
   await openCaption(page);
   const dialog = page.getByRole('dialog', { name: 'עריכת כתובית', exact: true });
@@ -329,14 +329,8 @@ test('empty caption text stays in the popup until corrected or discarded', async
   await page.route('**/api/videos/update-subtitles', route => { saves++; return route.fulfill({ json: { success: true } }); });
   await field.fill('');
   await dialog.getByRole('button', { name: 'שמירה וסיום', exact: true }).click();
-  await expect(dialog.getByRole('alert')).toContainText('הכתובית ריקה');
-  await expect(field).toHaveValue('');
-  expect(saves).toBe(0);
-  await dialog.getByRole('button', { name: 'ביטול השינוי', exact: true }).click();
-  await expect(field).toHaveValue('שלום עולם');
-  await dialog.getByRole('button', { name: 'סיום', exact: true }).click();
   await expect(dialog).toHaveCount(0);
-  expect(saves).toBe(0);
+  expect(saves).toBe(1);
 });
 
 test('word changes finish saving before switching captions', async ({ page }) => {
