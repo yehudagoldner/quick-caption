@@ -97,7 +97,9 @@ function CaptionPreview({ activeSegmentText, activeSegmentId, words, currentTime
       style={{ color: active ? activeWordColor : own.fontColor ?? 'inherit', fontSize: own.fontScale ? `${own.fontScale * 100}%` : undefined,
         fontWeight: own.bold ? 900 : undefined,
         position: 'relative', left: `${(own.offsetX ?? 0) / (own.fontScale ?? 1)}em`, top: `${(own.offsetY ?? 0) / (own.fontScale ?? 1)}em`,
-        ...(selectWord ? { cursor: chosen ? drag.live ? 'grabbing' : 'grab' : 'pointer', zIndex: chosen ? 2 : undefined, outline: chosen ? '2px solid #38bdf8' : undefined, outlineOffset: 2, borderRadius: 2 } : {}),
+        // Keep editable words above the frame handles even after deselection,
+        // including words moved outside the caption's original layout box.
+        ...(selectWord ? { cursor: chosen ? drag.live ? 'grabbing' : 'grab' : 'pointer', zIndex: chosen ? 3 : 2, outline: chosen ? '2px solid #38bdf8' : undefined, outlineOffset: 2, borderRadius: 2 } : {}),
         ...(pop ? { backgroundColor: 'var(--caption-background, transparent)', boxShadow: '0 0 0 .06em var(--caption-background, transparent)', display: 'inline-block', whiteSpace: 'nowrap', transformOrigin: '50% 100%', transform: `scale(${wordPopScale(popWord!, currentTime, popIntensity)})` } : {}) }}>
       {pop ? escapeAssText(text) : text}
     </span>;

@@ -144,3 +144,25 @@ test('cropped rotated caption supports word dragging, rollback and version isola
   state.fail(false); await page.getByRole('alert').filter({ hasText: 'הזזת המילה' }).getByRole('button', { name: 'נסו שוב' }).click();
   await expect.poll(() => state.words()[0]?.style?.offsetY).toBeLessThan(0);
 });
+
+for (const placement of ['above frame', 'rotate', 'scale']) test(`a word outside the caption frame can be reselected and dragged again (${placement})`, async ({ page }) => {
+  const state = await setup(page); await choose(page);
+  const before = (await word(page, 0).boundingBox())!;
+  await page.mouse.move(before.x + before.width / 2, before.y + before.height / 2);
+  const handle = (await page.locator(`[data-caption-handle="${placement === 'scale' ? 'scale' : 'rotate'}"]`).first().boundingBox())!;
+  const target = placement !== 'above frame' ? { x: handle.x + handle.width / 2, y: handle.y + handle.height / 2 }
+    : { x: before.x + before.width / 2, y: before.y + before.height / 2 - 100 };
+  await page.mouse.down(); await page.mouse.move(target.x, target.y, { steps: 8 }); await page.mouse.up();
+  await expect.poll(() => state.words()[0]?.style?.offsetY).toBeLessThan(0);
+  await panel(page).getByRole('button', { name: 'סיום עריכת מילים', exact: true }).click();
+  const moved = (await word(page, 0).boundingBox())!;
+  const frame = (await page.getByTestId('caption-selection-frame').boundingBox())!;
+  expect(moved.y).toBeLessThan(frame.y);
+  await word(page, 0).click({ timeout: 3000 });
+  await expect(word(page, 0)).toHaveAttribute('aria-pressed', 'true');
+  const offset = state.words()[0].style!.offsetY!;
+  const selected = (await word(page, 0).boundingBox())!;
+  await page.mouse.move(selected.x + selected.width / 2, selected.y + selected.height / 2);
+  await page.mouse.down(); await page.mouse.move(selected.x + selected.width / 2, selected.y + selected.height / 2 + 20, { steps: 8 }); await page.mouse.up();
+  await expect.poll(() => state.words()[0].style!.offsetY!).toBeGreaterThan(offset);
+});
