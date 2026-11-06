@@ -23,6 +23,7 @@ type BurnedVideo = {
 
 type TranscriptionMainContentProps = {
   versionsBar?: ReactNode;
+  videoQualityControls?: ReactNode;
   onNavigateAway: EditorNavigationGuard;
   fontReady?: boolean;
   timelineEditing: Pick<SubtitleTimelineProps, "onSaveSegment" | "onUndo" | "onRedo" | "canUndo" | "canRedo" | "onPlayFrom" | "loopEnabled" | "onLoopChange" | "onDraftStateChange">;
@@ -96,6 +97,7 @@ type TranscriptionMainContentProps = {
 
 export function TranscriptionMainContent({
   versionsBar,
+  videoQualityControls,
   onNavigateAway,
   fontReady = true,
   timelineEditing,
@@ -180,7 +182,7 @@ export function TranscriptionMainContent({
         captionMotion={captionMotion}
         popIntensity={popIntensity}
         timelineEditing={timelineEditing}
-        editorSettings={editorSettingsBlock}
+        editorSettings={<>{videoQualityControls}{editorSettingsBlock}</>}
         mediaUrl={mediaUrl}
         activeSegmentText={activeSegmentText}
         previewStyle={previewStyle}
@@ -247,6 +249,7 @@ export function TranscriptionMainContent({
               activeWordColor={activeWordColor} onActiveWordColorChange={onActiveWordColorChange}
               pendingEdits={hasTimelineDrafts || saveState === "saving"}
               editorSettings={editorSettingsBlock}
+              videoQualityControls={videoQualityControls}
               fontSize={fontSize}
               autoFontSize={autoFontSize}
               fontColor={fontColor}

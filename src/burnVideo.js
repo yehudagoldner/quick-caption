@@ -1,15 +1,13 @@
 import { spawn } from 'node:child_process';
 import { audiogramWaveBox } from './audiogram.js';
+import { exportEncodeArguments, exportScaleFilter } from './exportSettings.js';
 
-const ENCODE_ARGUMENTS = ['-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23', '-pix_fmt', 'yuv420p',
-  '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart'];
-
-export function buildBurnArguments(input, filter, output, filterScript) {
+export function buildBurnArguments(input, filter, output, filterScript, exportSettings, dimensions) {
   return ['-hide_banner', '-loglevel', 'error', '-nostdin', '-y',
     '-progress', 'pipe:1', '-nostats', '-i', input,
     // Photos needs a compatible video/audio combination, not just an .mp4
     // extension. Padding retains the full frame for odd-sized source videos.
-    ...(filterScript ? ['-filter_script:v', filterScript] : ['-vf', `${filter},pad=ceil(iw/2)*2:ceil(ih/2)*2`]), ...ENCODE_ARGUMENTS, output];
+    ...(filterScript ? ['-filter_script:v', filterScript] : ['-vf', `${filter}${exportScaleFilter(exportSettings)},pad=ceil(iw/2)*2:ceil(ih/2)*2`]), ...exportEncodeArguments(exportSettings, dimensions), output];
 }
 
 export function probeVideoDimensions(input, { signal } = {}) {
@@ -32,7 +30,7 @@ export function probeVideoDimensions(input, { signal } = {}) {
   });
 }
 
-export function buildAudiogramArguments(audio, { width, height, background, image, imageFit, waveform, waveColor, duration }, filter, output) {
+export function buildAudiogramArguments(audio, { width, height, background, image, imageFit, waveform, waveColor, duration }, filter, output, exportSettings) {
   const hex = value => `0x${value.slice(1)}`;
   // A bounded background ends the video with the audio even if -shortest overshoots.
   const length = Number.isFinite(duration) && duration > 0 ? `:d=${duration.toFixed(3)}` : '';
@@ -53,9 +51,9 @@ export function buildAudiogramArguments(audio, { width, height, background, imag
     graph.push(`${frame}[wave]overlay=0:${band.top}:eof_action=pass[waved]`);
     frame = '[waved]';
   }
-  graph.push(`${frame}${filter}[captioned]`);
+  graph.push(`${frame}${filter}${exportScaleFilter(exportSettings)}[captioned]`);
   return ['-hide_banner', '-loglevel', 'error', '-nostdin', '-y', '-progress', 'pipe:1', '-nostats', ...inputs,
-    '-filter_complex', graph.join(';'), '-map', '[captioned]', '-map', '0:a:0', '-shortest', '-r', '30', ...ENCODE_ARGUMENTS, output];
+    '-filter_complex', graph.join(';'), '-map', '[captioned]', '-map', '0:a:0', '-shortest', '-r', '30', ...exportEncodeArguments(exportSettings, { width, height }), output];
 }
 
 // Cover art in MP3/M4A files is a still "video" stream; it does not make the source a video.

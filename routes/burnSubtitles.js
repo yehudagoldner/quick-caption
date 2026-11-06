@@ -15,6 +15,7 @@ import { getCaptionFont } from "../src/captionFonts.js";
 import { sanitizeCaptionOverrides } from '../src/captionOverrides.js';
 import { renderStyledCaptionsAss } from '../src/styledCaptions.js';
 import { sanitizeWordOverrides } from '../src/wordOverrides.js';
+import { validateExportSettings, exportScaleFilter } from '../src/exportSettings.js';
 
 const CAPTION_FONTS_DIR = fileURLToPath(new URL("../public/fonts", import.meta.url));
 const TEMP_SUBTITLE_DIR = path.join(os.tmpdir(), "subtitles-api-subtitle-temp");
@@ -78,6 +79,9 @@ export function createBurnSubtitlesRouter(upload, { resolveVideo } = {}) {
 
     let audiogram = null;
     let crop = null;
+    let exportSettings;
+    try { exportSettings = validateExportSettings(req.body?.exportSettings === undefined ? undefined : JSON.parse(req.body.exportSettings)); }
+    catch { return reject(400, 'הגדרות הייצוא אינן תקינות. קצב הנתונים צריך להיות בין 0.25 ל־100 Mbps.'); }
     if (req.body?.crop) {
       try { crop = validateVideoCrop(JSON.parse(req.body.crop)); }
       catch { return reject(400, 'הגדרות החיתוך אינן תקינות.'); }
@@ -141,10 +145,12 @@ export function createBurnSubtitlesRouter(upload, { resolveVideo } = {}) {
       const hasVideo = await probeHasVideo(source.path, { signal });
       if (hasVideo && audiogram) throw refuse(400, 'הגדרות רקע מתאימות לקובץ אודיו בלבד.');
       if (!hasVideo && !audiogram) throw refuse(400, 'כדי ליצור סרטון מקובץ אודיו צריך לבחור רקע. רעננו את העמוד ונסו שוב.');
+      let encodingDimensions = frame;
+      if (hasVideo) encodingDimensions = await probeVideoDimensions(source.path, { signal });
       if (crop) {
-        const dimensions = await probeVideoDimensions(source.path, { signal });
+        const dimensions = encodingDimensions;
         const rectangle = cropRectangle(dimensions, crop);
-        videoWidth = rectangle.width; videoHeight = rectangle.height;
+        videoWidth = rectangle.width; videoHeight = rectangle.height; encodingDimensions = rectangle;
       }
       // Wrap subtitle lines with RTL markers for proper Hebrew punctuation rendering
       const rtlSubtitleContent = styled
@@ -170,12 +176,12 @@ export function createBurnSubtitlesRouter(upload, { resolveVideo } = {}) {
       });
 
       const duration = await probeBurnDuration(source.path, { signal });
-      if (crop) await fsp.writeFile(filterScript, `scale=trunc(iw*sar/2)*2:ih,setsar=1,${cropFilter(crop)},${filter},pad=ceil(iw/2)*2:ceil(ih/2)*2`, 'utf8');
+      if (crop) await fsp.writeFile(filterScript, `scale=trunc(iw*sar/2)*2:ih,setsar=1,${cropFilter(crop)},${filter}${exportScaleFilter(exportSettings)},pad=ceil(iw/2)*2:ceil(ih/2)*2`, 'utf8');
       job.stage = 'burning';
       job.percent = duration ? 0 : null;
       const args = audiogram
-        ? buildAudiogramArguments(source.path, { ...audiogram, ...frame, image: background?.path, duration }, filter, outputPath)
-        : buildBurnArguments(source.path, filter, outputPath, filterScript);
+        ? buildAudiogramArguments(source.path, { ...audiogram, ...frame, image: background?.path, duration }, filter, outputPath, exportSettings)
+        : buildBurnArguments(source.path, filter, outputPath, filterScript, exportSettings, encodingDimensions);
       await runBurnFfmpeg(args, {
         duration, signal, onProgress: percent => { job.percent = percent; },
       });

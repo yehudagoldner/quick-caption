@@ -40,6 +40,7 @@ import {
 } from "@mui/icons-material";
 
 export type BurnOptions = {
+  exportSettings?: import('../../exportSettings.js').ExportSettings;
   backgroundColor?: string;
   backgroundOpacity?: number;
   crop?: import('../../videoVersions.js').VideoCrop | null;
@@ -72,6 +73,7 @@ type VideoToolbarProps = {
   fontReady?: boolean;
   pendingEdits?: boolean;
   editorSettings: ReactNode;
+  videoQualityControls?: ReactNode;
   captionBackgroundControls?: ReactNode;
   captionStyles?: ReactNode;
   fontId?: string;
@@ -109,6 +111,7 @@ export function VideoToolbar({
   fontReady = true,
   pendingEdits = false,
   editorSettings,
+  videoQualityControls,
   captionBackgroundControls, captionStyles, fontId, onFontChange, activeWordColor, onActiveWordColorChange,
   canBurn = true,
   fontSize,
@@ -302,6 +305,8 @@ export function VideoToolbar({
         >
           {sidebarOpen ? "הסתר עורך" : "הצג עורך"}
         </Button>
+
+        {videoQualityControls}
 
         {/* Burn Status/Error */}
         {isBurning && (

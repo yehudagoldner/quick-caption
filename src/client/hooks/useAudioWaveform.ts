@@ -17,7 +17,10 @@ export function useAudioWaveform(mediaUrl: string | null, duration: number) {
       if (duration > 1200) throw new Error("Recording too long for local decoding");
       const response = await fetch(mediaUrl, { signal: controller.signal });
       if (!response.ok) throw new Error("Media unavailable");
-      if (Number(response.headers.get("content-length")) > 100 * 1024 * 1024) throw new Error("Media too large for local decoding");
+      if (Number(response.headers.get("content-length")) > 100 * 1024 * 1024) {
+        await response.body?.cancel();
+        throw new Error("Media too large for local decoding");
+      }
       const blob = await response.blob();
       if (blob.size > 100 * 1024 * 1024) throw new Error("Media too large for local decoding");
       if (id !== request.current) return;
@@ -36,7 +39,7 @@ export function useAudioWaveform(mediaUrl: string | null, duration: number) {
         }
       }
       if (id === request.current) { setData({ peaks, duration: decoded.duration }); setStatus("ready"); }
-    } catch { if (id === request.current) setStatus("error"); }
+    } catch { controller.abort(); if (id === request.current) setStatus("error"); }
     finally { if (audio) await audio.close(); }
   }, [mediaUrl, duration]);
   useEffect(() => {

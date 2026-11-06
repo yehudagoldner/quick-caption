@@ -198,6 +198,7 @@ export function useTranscriptionHandlers({
 
   const burnedSignature = useRef<string | null>(null);
   const burnSignature = () => JSON.stringify({
+    exportSettings: preferences.exportSettings,
     crop,
     segments: editableSegments.map(segment => [segment.id, segment.start, segment.end, segment.text, segment.style]),
     words: editableWords.map(word => [word.word, word.start, word.end, word.segmentId, word.style]),
@@ -242,6 +243,7 @@ export function useTranscriptionHandlers({
     setBurnError(null);
     try {
       const result = await onBurn({
+        exportSettings: preferences.exportSettings,
         crop,
         onProgress: setBurnProgress,
         captionMotion,
@@ -299,6 +301,7 @@ export function useTranscriptionHandlers({
     captionMotion,
     popIntensity,
     preferences.direction,
+    preferences.exportSettings,
     fontId,
     activeWordColor,
     fontReady,
