@@ -10,6 +10,7 @@ import { TimecodeField } from "./TimecodeField";
 import { TimelineEditToolbar } from "./TimelineEditToolbar";
 import { useTimelineScrubbing } from "../hooks/useTimelineScrubbing";
 import { useTimelineWheelZoom } from "../hooks/useTimelineWheelZoom";
+import { WordFrameRuler } from "./WordFrameRuler";
 
 const MIN_WORD_ZOOM = 80;
 const MAX_WORD_ZOOM = 2560;
@@ -118,8 +119,11 @@ export function WordTimeline({ enabled, segment, words, selection, onSelectionCh
       </Box>
     </>} />
     <Snackbar open={!!error} onClose={() => setError(null)}><Alert severity="warning" onClose={() => setError(null)}>{error}</Alert></Snackbar>
-    <Box ref={container} data-testid="word-track" {...scrubbing} title="Ctrl + גלגלת לזום פנימה והחוצה" aria-label="ציר פנימי — מילים במקטע הנבחר" sx={{ direction: "ltr", "& *": { direction: "ltr !important" }, minWidth: 0 }}>
-      <Timeline ref={timeline} editorData={rows} effects={effects} scale={1} scaleWidth={zoom} minScaleCount={Math.max(2, Math.ceil(duration) + 1)}
+    <Box ref={container} data-testid="word-track" {...scrubbing} title="Ctrl + גלגלת לזום פנימה והחוצה" aria-label="ציר פנימי — מילים במקטע הנבחר" sx={{ direction: "ltr", "& *": { direction: "ltr !important" }, minWidth: 0,
+      '& .timeline-editor-time-unit': { height: '0 !important', borderRight: 0 },
+      '& .timeline-editor-time-unit-scale': { transform: 'translateY(-100%)', top: 0, right: 0, color: '#dce3ec' },
+    }}>
+      <Timeline ref={timeline} editorData={rows} effects={effects} scale={1} scaleWidth={zoom} scaleSplitCount={1} minScaleCount={Math.max(2, Math.ceil(duration) + 1)}
         gridSnap={false} dragLine disableDrag={disabled}
         onCursorDrag={seek} onCursorDragEnd={seek} onClickTimeArea={seek}
         onChange={nextRows => {
@@ -139,7 +143,7 @@ export function WordTimeline({ enabled, segment, words, selection, onSelectionCh
           if (next === words) return false;
           update(next);
         }}
-        getScaleRender={value => <span>{formatTimecode(segment.start + value, fps)}</span>}
+        getScaleRender={value => value > 0 && <Box sx={{ width: zoom }}><WordFrameRuler start={segment.start + value - 1} end={Math.min(segment.end, segment.start + value)} fps={fps} pixelsPerSecond={zoom} /></Box>}
         getActionRender={action => <Box className="word-timeline-action" data-testid="word-clip" role="button" tabIndex={0}
           aria-label={`עריכת מילה: ${words[Number(action.id)]?.word}`} aria-pressed={selection.includes(Number(action.id))}
           title={`${words[Number(action.id)]?.word} · ${formatTimecode(segment.start + action.start, fps)} – ${formatTimecode(segment.start + action.end, fps)}`}
