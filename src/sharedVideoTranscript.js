@@ -1,4 +1,5 @@
 import { alignSequence, synchronizeWords } from './wordAlignment.js';
+import { overwriteCaptionRange } from './timelineEditing.js';
 
 const copy = value => structuredClone(value);
 const equalTime = (a, b) => Math.abs(a - b) < 1e-6;
@@ -96,11 +97,13 @@ export function editVideoTranscript(revisions, activeId, nextRevision, { layoutO
     if (id === activeId) continue;
     const owners = new Map(target.words.map(w => [w.sourceId, w.segmentId]));
     const touched = new Set();
+    const growing = new Set();
     const words = target.words.flatMap(word => {
       if (removed.has(word.sourceId)) { touched.add(word.segmentId); return []; }
       const change = changed.get(word.sourceId);
       if (!change) return [word];
       touched.add(word.segmentId);
+      if (added.length && timingChanged.has(word.sourceId)) growing.add(word.segmentId);
       return [{ ...word, word: change.word, sourceStart: change.sourceStart, sourceEnd: change.sourceEnd }];
     });
     let segments = copy(target.segments);
@@ -121,6 +124,7 @@ export function editVideoTranscript(revisions, activeId, nextRevision, { layoutO
         segments.push(segment); owner = segment.id;
       }
       touched.add(owner); owners.set(word.sourceId, owner);
+      growing.add(owner);
       const { style: _localStyle, ...sharedWord } = word;
       words.push({ ...sharedWord, segmentId: owner });
     }
@@ -130,7 +134,14 @@ export function editVideoTranscript(revisions, activeId, nextRevision, { layoutO
         (order.get(a.sourceId) ?? Infinity) - (order.get(b.sourceId) ?? Infinity) || a.sourceStart - b.sourceStart);
       return { ...segment, text: textForWords(segment, target.words.filter(w => w.segmentId === segment.id), own) };
     });
-    after[id] = project({ segments, words });
+    // Insertions must retain their allocated time in every version. Extend
+    // only affected captions, trimming their neighbours as in the active view.
+    const extensions = segments.filter(segment => growing.has(segment.id)).map(segment => ({
+      ...segment, end: Math.max(segment.end, ...words.filter(w => w.segmentId === segment.id).map(w => w.sourceEnd)),
+    })).sort((a, b) => b.start - a.start);
+    for (const extension of extensions) segments = overwriteCaptionRange(extension, segments);
+    const kept = new Set(segments.map(segment => segment.id));
+    after[id] = project({ segments, words: words.filter(word => kept.has(word.segmentId)) });
   }
   return after;
 }

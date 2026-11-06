@@ -3,6 +3,7 @@ export type Segment = {
   start: number;
   end: number;
   text: string;
+  wordTimingMode?: 'automatic' | 'manual';
   style?: import('../captionOverrides.js').CaptionOverrides;
 };
 

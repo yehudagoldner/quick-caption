@@ -9,7 +9,7 @@ import type { Segment, Word } from "../types";
 import { useEditorPreferences } from "../contexts/EditorPreferences";
 import { formatTimecode, snapToFrame } from "../utils/timecode";
 import { overwriteCaptionRange, validateCaptionRange, wordsForSegment, timelineZoomForWindow, timelineScrollForTime } from "../../timelineEditing.js";
-import { synchronizeWords } from "../../wordAlignment.js";
+import { editCaptionText } from "../../captionTextEditing.js";
 import { WordTimeline } from "./WordTimeline";
 import { CaptionSelectionToolbar } from "./CaptionSelectionToolbar";
 import { moveCaptionSelection } from "../../captionSelection.js";
@@ -166,8 +166,10 @@ export function SubtitleTimeline({ activeWordEnabled, segments, words = [], disa
   };
   const changeText = (text: string) => {
     if (!draft || locked) return;
-    const segment = { ...draft.segment, text };
-    setDraft({ segment, words: synchronizeWords([segment], draft.words) });
+    try {
+      setDraft(editCaptionText(draft.segment, draft.words, text, fps, total));
+      setError(null);
+    } catch (error) { setError((error as Error).message); }
   };
   const openExpandedEditor = (id: Segment["id"]) => {
     if (locked) return;
@@ -206,7 +208,7 @@ export function SubtitleTimeline({ activeWordEnabled, segments, words = [], disa
       });
       return;
     }
-    await saveSegmentRef.current({ ...item.segment, start: source.start, end: source.end }, item.words);
+    await saveSegmentRef.current(item.segment, item.words);
     setDrafts(previous => {
       const current = previous[String(item.segment.id)];
       if (!current || draftSignature(current) !== stamp) return previous;
@@ -481,7 +483,8 @@ export function SubtitleTimeline({ activeWordEnabled, segments, words = [], disa
           </>}
           toolbarPrimary={null}
           toolbarClose={<Tooltip title="סגור עורך"><span><IconButton size="small" aria-label="סגור עורך" onClick={() => onSegmentSelect(null)} disabled={saving}><CloseRounded /></IconButton></span></Tooltip>}
-          onWordsChange={nextWords => setDraft({ segment: { ...draft.segment, text: nextWords.map(w => w.word).join(" ") }, words: nextWords })} />
+          onWordsChange={nextWords => setDraft({ segment: { ...draft.segment, text: nextWords.map(w => w.word).join(" "),
+            ...(draft.segment.wordTimingMode === 'automatic' ? { wordTimingMode: 'manual' as const } : {}) }, words: nextWords })} />
     </Box>}
     </Box>
     <Dialog open={expanded} onClose={() => { if (!locked) setExpandedSegmentId(null); }} fullWidth maxWidth="sm" aria-labelledby="caption-text-dialog-title">
