@@ -105,7 +105,8 @@ test('group alignment preserves relative word positions and offers no self-align
 
 test('desktop word styles save, multi-select, undo/redo, reload, burn and reset', async ({ page }) => {
   const state = await setup(page); await choose(page);
-  await panel(page).getByRole('button', { name: 'צבע המילים: #ff3b30', exact: true }).click();
+  await panel(page).getByRole('button', { name: 'צבע המילים', exact: true }).click();
+  await page.getByRole('button', { name: 'צבע המילים: #ff3b30', exact: true }).click();
   await expect.poll(() => state.words()[0]?.style?.fontColor).toBe('#ff3b30');
   await expect(word(page, 0)).toHaveCSS('color', 'rgb(255, 59, 48)');
   await expect(word(page, 1)).toHaveCSS('color', 'rgb(255, 255, 255)');
@@ -127,14 +128,16 @@ test('desktop word styles save, multi-select, undo/redo, reload, burn and reset'
   await page.getByRole('menuitem', { name: 'הורד סרטון עם כתוביות', exact: true }).click(); await download;
   expect(state.burns[0]).toContain('"fontScale":1.5');
   await page.getByRole('button', { name: 'אולי אחר כך', exact: true }).click();
-  await choose(page); await panel(page).getByRole('button', { name: 'איפוס לעיצוב הכתובית' }).click();
+  await choose(page); await panel(page).getByRole('button', { name: 'אפשרויות נוספות' }).click();
+  await page.getByRole('menuitem', { name: 'איפוס לעיצוב הכתובית', exact: true }).click();
   await expect.poll(() => state.words()[0].style).toBeUndefined();
   expect(state.words()[1].style?.bold).toBe(true);
 });
 
 test('failed word save rolls back and can retry', async ({ page }) => {
   const state = await setup(page); await choose(page); state.fail(true);
-  await panel(page).getByRole('button', { name: 'צבע המילים: #ff3b30', exact: true }).click();
+  await panel(page).getByRole('button', { name: 'צבע המילים', exact: true }).click();
+  await page.getByRole('button', { name: 'צבע המילים: #ff3b30', exact: true }).click();
   await expect(panel(page).getByRole('alert')).toBeVisible();
   await expect(word(page, 0)).toHaveCSS('color', 'rgb(255, 255, 255)');
   state.fail(false); await panel(page).getByRole('button', { name: 'נסו שוב' }).click();
@@ -144,7 +147,8 @@ test('failed word save rolls back and can retry', async ({ page }) => {
 test('word styling stays in one version after shared text correction and reload', async ({ page }) => {
   await setup(page, 1440, true); await page.getByRole('button', { name: 'כן, צור גרסאות', exact: true }).click();
   await page.getByRole('tab', { name: /9:16/ }).click(); await choose(page);
-  await panel(page).getByRole('button', { name: 'צבע המילים: #ff3b30', exact: true }).click();
+  await panel(page).getByRole('button', { name: 'צבע המילים', exact: true }).click();
+  await page.getByRole('button', { name: 'צבע המילים: #ff3b30', exact: true }).click();
   await expect(word(page, 0)).toHaveCSS('color', 'rgb(255, 59, 48)');
   await page.getByRole('tab', { name: /מקור/ }).click(); await expect(word(page, 0)).toHaveCSS('color', 'rgb(255, 255, 255)');
   const text = page.getByRole('textbox', { name: 'טקסט הכתובית', exact: true }).first();
@@ -160,14 +164,19 @@ test('word appearance controls are desktop only and keyboard accessible', async 
   await word(page, 1).focus(); await page.keyboard.press('Control+Enter');
   await expect(word(page, 0)).toHaveAttribute('aria-pressed', 'true'); await expect(word(page, 1)).toHaveAttribute('aria-pressed', 'true');
   const bounds = (await panel(page).boundingBox())!;
-  expect(bounds.x).toBeGreaterThanOrEqual(0); expect(bounds.x + bounds.width).toBeLessThanOrEqual(900);
+  const stage = (await page.getByTestId('media-stage').boundingBox())!;
+  expect(bounds.height).toBeLessThanOrEqual(40); expect(bounds.width).toBeLessThanOrEqual(210);
+  expect(bounds.y - stage.y).toBeCloseTo(6, 0);
+  expect(bounds.x).toBeGreaterThanOrEqual(stage.x); expect(bounds.x + bounds.width).toBeLessThanOrEqual(stage.x + stage.width);
+  await page.screenshot({ path: 'tmp/review/compact-word-toolbar.png' });
   await page.setViewportSize({ width: 800, height: 1000 }); await expect(panel(page)).toHaveCount(0);
   await expect(page.locator('[data-word-editable]')).toHaveCount(0);
 });
 
 test('selected word drags independently, saves, undoes, reloads and resets position only', async ({ page }) => {
   const state = await setup(page); await choose(page);
-  await panel(page).getByRole('button', { name: 'צבע המילים: #ff3b30', exact: true }).click();
+  await panel(page).getByRole('button', { name: 'צבע המילים', exact: true }).click();
+  await page.getByRole('button', { name: 'צבע המילים: #ff3b30', exact: true }).click();
   await expect.poll(() => state.words()[0]?.style?.fontColor).toBe('#ff3b30');
   const before = (await word(page, 0).boundingBox())!, neighbor = (await word(page, 1).boundingBox())!;
   const x = before.x + before.width / 2, y = before.y + before.height / 2;
@@ -184,7 +193,8 @@ test('selected word drags independently, saves, undoes, reloads and resets posit
   await expect.poll(() => state.words()[0]?.style).toEqual(position);
   await page.reload(); await expect.poll(async () => (await word(page, 0).boundingBox())!.y).toBeCloseTo(after.y, 0);
   await choose(page); await page.screenshot({ path: 'test-results/word-drag-desktop.png' });
-  await panel(page).getByRole('button', { name: 'איפוס מיקום', exact: true }).click();
+  await panel(page).getByRole('button', { name: 'אפשרויות נוספות' }).click();
+  await page.getByRole('menuitem', { name: 'איפוס מיקום', exact: true }).click();
   await expect.poll(() => state.words()[0]?.style).toEqual({ fontColor: '#ff3b30' });
 });
 
@@ -199,12 +209,16 @@ test('cropped rotated caption supports word dragging, rollback and version isola
   const before = (await word(page, 0).boundingBox())!, neighbor = (await word(page, 1).boundingBox())!;
   await page.mouse.move(before.x + before.width / 2, before.y + before.height / 2); await page.mouse.down();
   await page.mouse.move(before.x + before.width / 2 - 15, before.y + before.height / 2 - 25, { steps: 6 }); await page.mouse.up();
-  await expect(panel(page).getByRole('button', { name: 'איפוס מיקום', exact: true })).toBeEnabled();
+  await panel(page).getByRole('button', { name: 'אפשרויות נוספות' }).click();
+  await expect(page.getByRole('menuitem', { name: 'איפוס מיקום', exact: true })).toBeEnabled();
+  await page.keyboard.press('Escape');
   const after = (await word(page, 0).boundingBox())!;
   expect(after.x - before.x).toBeCloseTo(-15, 0); expect(after.y - before.y).toBeCloseTo(-25, 0);
   expect((await word(page, 1).boundingBox())!.x).toBeCloseTo(neighbor.x, 1);
   await page.getByRole('tab', { name: /מקור/ }).click(); await choose(page);
-  await expect(panel(page).getByRole('button', { name: 'איפוס מיקום', exact: true })).toBeDisabled();
+  await panel(page).getByRole('button', { name: 'אפשרויות נוספות' }).click();
+  await expect(page.getByRole('menuitem', { name: 'איפוס מיקום', exact: true })).toBeDisabled();
+  await page.keyboard.press('Escape');
   state.fail(true);
   const original = (await word(page, 0).boundingBox())!;
   const originalNeighbor = (await word(page, 1).boundingBox())!;

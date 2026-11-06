@@ -251,8 +251,6 @@ export function VideoPlayer({ compact, size, fill, hideMeta, mediaUrl, activeSeg
     height: fill ? "100%" : undefined,
     ...(fill ? { containerType: "size" } : {}),
   }}>
-    {wordEditor && appearanceSelected && activeCaption?.id != null && selectedCaptionWords.length > 0 && <WordAppearanceToolbar
-      key={`${wordEditor.versionId}:${activeCaption.id}:${selectedWords.join(',')}`} segmentId={activeCaption.id} words={selectedCaptionWords} close={() => setSelectedWords([])} />}
     {failedMove && <Alert severity="error" sx={{ position: 'absolute', bottom: 40, zIndex: 6 }} action={<Button disabled={wordEditor?.disabled} onClick={() => void moveWord(failedMove.indexes, failedMove.delta)}>נסו שוב</Button>}>הזזת המילה לא נשמרה. אפשר לנסות שוב.</Alert>}
     {audioOnly && !hideMeta && <Typography variant="subtitle2">אודיו בלבד — תצוגה מקדימה של הכתוביות</Typography>}
     {error && <Alert severity="error" sx={fill ? { position: "absolute", zIndex: 2, mx: 1 } : undefined}>לא ניתן לנגן את המדיה. בדקו שהקובץ זמין ובפורמט שנתמך בדפדפן.</Alert>}
@@ -261,6 +259,8 @@ export function VideoPlayer({ compact, size, fill, hideMeta, mediaUrl, activeSeg
       cursor: appearanceSelected ? transformMode === 'move' ? 'grabbing' : 'move' : undefined,
       ...stageSize,
       aspectRatio: audioOnly || fill ? undefined : `${frame.width} / ${frame.height}`, minHeight: audioOnly && !fill ? 180 : undefined }}>
+      {wordEditor && appearanceSelected && activeCaption?.id != null && selectedCaptionWords.length > 0 && <WordAppearanceToolbar
+        key={`${wordEditor.versionId}:${activeCaption.id}:${selectedWords.join(',')}`} segmentId={activeCaption.id} words={selectedCaptionWords} close={() => setSelectedWords([])} />}
       {mediaUrl ? <>
         {canvas && <AudiogramBackdrop settings={canvas.settings} imageUrl={canvas.imageUrl} currentTime={currentTime} />}
         <Box component="video" ref={videoRef} controls={!appearance?.segment && !canvas && !crop} controlsList="nofullscreen" playsInline preload="metadata" src={mediaUrl}
