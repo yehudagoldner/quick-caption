@@ -44,8 +44,12 @@ export function VideoVersionsBar({ eligible, enabled, dismissed, activeId, crop,
       <Box id={panelId} hidden={!expanded}>
       <Stack direction="row" alignItems="center" sx={{ minHeight: 34, gap: .25, '& .MuiIconButton-root': { width: 28, height: 28 }, '& .MuiIconButton-root .MuiSvgIcon-root': { fontSize: 17 } }}>
         <Tabs value={activeId} onChange={(_, id) => void perform(() => select(id))} variant="scrollable" scrollButtons="auto" aria-label="גרסאות הסרטון"
-          sx={{ minWidth: 0, minHeight: 32, '& .MuiTab-root': { minWidth: 44, minHeight: 32, p: .75, fontSize: 12, textTransform: 'none' }, '& .MuiTabs-indicator': { height: 2 } }}>
-          {VIDEO_FORMATS.map(format => <Tab key={format.id} value={format.id} title={format.platforms} disabled={disabled || progress !== null} label={format.label} />)}
+          sx={{ minWidth: 0, minHeight: 34, '& .MuiTab-root': { minWidth: 44, minHeight: 34, px: 1, py: .5, fontSize: 12, textTransform: 'none' }, '& .MuiTabs-indicator': { height: 2 } }}>
+          {VIDEO_FORMATS.map(format => <Tab key={format.id} value={format.id} title={format.platforms} disabled={disabled || progress !== null}
+            label={<Box component="span" sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0 }}>
+              <Box component="span" sx={{ fontSize: 12, lineHeight: '14px' }}>{format.label}</Box>
+              <Box component="span" dir="ltr" sx={{ fontSize: 10, lineHeight: '12px', fontWeight: 400, color: 'text.secondary', whiteSpace: 'nowrap' }}>{format.platforms}</Box>
+            </Box>} />)}
         </Tabs>
         <VideoVersionShare key={activeId} activeId={activeId} disabled={disabled || !shareAllowed || progress !== null} onBurnVideo={onBurnVideo} />
         {crop && <Tooltip title="גררו את המסגרת לבחירת האזור שיישאר. התאמה אוטומטית עוקבת אחר הפנים הבולטות בתמונה.">
