@@ -239,7 +239,10 @@ export function SubtitleTimeline({ activeWordEnabled, segments, words = [], disa
     try {
       // Word deletion keeps the caption and its boundaries, even when all words
       // are removed. Explicit empty drafts also participate in save retries.
-      const next = { segment: { ...draft.segment, text: remainingWords.map(word => word.word).join(" ") }, words: remainingWords, allowEmpty: !remainingWords.length };
+      const text = remainingWords.map(word => word.word).join(" ");
+      const next = { ...(draft.segment.wordTimingMode === 'automatic'
+        ? editCaptionText(draft.segment, remainingWords, text, fps, total)
+        : { segment: { ...draft.segment, text }, words: remainingWords }), allowEmpty: !remainingWords.length };
       setDraft(next);
       await commitDraft(next);
       setWordSelection({ segmentId: draft.segment.id, indexes: [] });
@@ -483,8 +486,12 @@ export function SubtitleTimeline({ activeWordEnabled, segments, words = [], disa
           </>}
           toolbarPrimary={null}
           toolbarClose={<Tooltip title="סגור עורך"><span><IconButton size="small" aria-label="סגור עורך" onClick={() => onSegmentSelect(null)} disabled={saving}><CloseRounded /></IconButton></span></Tooltip>}
-          onWordsChange={nextWords => setDraft({ segment: { ...draft.segment, text: nextWords.map(w => w.word).join(" "),
-            ...(draft.segment.wordTimingMode === 'automatic' ? { wordTimingMode: 'manual' as const } : {}) }, words: nextWords })} />
+          onWordsChange={nextWords => {
+            const timingChanged = nextWords.length === draft.words.length && nextWords.some((word, i) =>
+              Math.abs(word.start - draft.words[i].start) > 1e-6 || Math.abs(word.end - draft.words[i].end) > 1e-6);
+            setDraft({ segment: { ...draft.segment, text: nextWords.map(w => w.word).join(" "),
+              ...(draft.segment.wordTimingMode === 'automatic' && timingChanged ? { wordTimingMode: 'manual' as const } : {}) }, words: nextWords });
+          }} />
     </Box>}
     </Box>
     <Dialog open={expanded} onClose={() => { if (!locked) setExpandedSegmentId(null); }} fullWidth maxWidth="sm" aria-labelledby="caption-text-dialog-title">

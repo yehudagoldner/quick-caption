@@ -1,5 +1,5 @@
 import { alignSequence, subtitleTokens, synchronizeWords } from './wordAlignment.js';
-import { overwriteCaptionRange, retimeCaptionChanges, wordsForSegment } from './timelineEditing.js';
+import { overwriteCaptionRange, wordsForSegment } from './timelineEditing.js';
 
 export const MIN_ADDED_WORD_FRAMES = 4;
 
@@ -49,9 +49,34 @@ export function applyCaptionTextEdit(segments, words, edited, editedWords) {
   const original = previous ? segments : [...segments, edited];
   const nextSegments = overwriteCaptionRange(edited, original).sort((a, b) => a.start - b.start);
   const owned = new Set(previous ? wordsForSegment(words, previous) : []);
-  // Filter by original object ownership before retiming, since retiming clones
-  // words and fully covered neighbours can remove entries from the array.
+  // Filter by original ownership before clipping clones or removes words.
   const otherWords = words.filter(word => !owned.has(word));
-  const retimed = retimeCaptionChanges(segments, nextSegments, otherWords, true);
-  return { segments: nextSegments, words: synchronizeWords(nextSegments, [...retimed, ...editedWords]) };
+  const clipped = clipCaptionRanges(segments.filter(s => String(s.id) !== String(edited.id)),
+    nextSegments.filter(s => String(s.id) !== String(edited.id)), otherWords);
+  const resultSegments = nextSegments.map(s => String(s.id) === String(edited.id) ? s : clipped.segments.find(item => String(item.id) === String(s.id)));
+  return { segments: resultSegments, words: synchronizeWords(resultSegments, [...clipped.words, ...editedWords]) };
+}
+
+// Cutting a caption only clips words at its edges. Words wholly covered by
+// the cut disappear with their text; surviving words retain their timestamps.
+export function clipCaptionRanges(originalSegments, nextSegments, words) {
+  const resultWords = [];
+  const segments = nextSegments.map(segment => {
+    const original = originalSegments.find(s => String(s.id) === String(segment.id)) ?? segment;
+    const own = wordsForSegment(words, original);
+    if (original.start === segment.start && original.end === segment.end) {
+      resultWords.push(...own); return segment;
+    }
+    const removed = new Set();
+    own.forEach((word, i) => {
+      const start = Math.max(segment.start, word.start), end = Math.min(segment.end, word.end);
+      if (end <= start) { removed.add(i); return; }
+      resultWords.push({ ...word, start, end });
+    });
+    if (!removed.size) return segment;
+    let index = 0;
+    const text = segment.text.replace(/\S+\s*/gu, token => removed.has(index++) ? '' : token).trim();
+    return { ...segment, text };
+  });
+  return { segments, words: resultWords };
 }

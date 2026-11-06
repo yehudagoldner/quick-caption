@@ -77,6 +77,7 @@ test('extending trims the next caption, keeps its words owned, and undo restores
   assert.deepEqual(next.words.filter(w => w.segmentId === 1).map(w => w.word), ['שלום', 'עולם', 'נוסף']);
   assert.deepEqual(next.words.filter(w => w.segmentId === 2).map(w => w.word), ['הכתובית', 'הבאה']);
   for (const w of next.words.filter(w => w.segmentId === 2)) assert.ok(w.start >= 2.16 && w.end <= 3);
+  assert.deepEqual(next.words.filter(w => w.segmentId === 2).map(w => [w.start, w.end]), [[2.16, 2.5], [2.5, 3]]);
   const history = new EditHistory(); history.push(initial, next);
   assert.deepEqual(history.undo(next), initial); assert.deepEqual(history.redo(initial), next);
 });
@@ -113,5 +114,28 @@ test('extended text and trimmed neighbours remain synchronized across video vers
     close(inserted.end - inserted.start, 4 / 25);
     close(revision.segments[0].end, 2.16);
     close(revision.segments[1].start, 2.16);
+    assert.deepEqual(revision.words.filter(w => w.segmentId === 2).map(w => [w.start, w.end]), [[2.16, 2.5], [2.5, 3]]);
+  }
+});
+
+test('trimming past entire words removes only covered text and preserves surviving timing and style across versions', () => {
+  const neighbour = { id: 2, start: 2, end: 3, text: 'מוקדם חוצה\nנשאר' };
+  const neighbourWords = [
+    { word: 'מוקדם', start: 2, end: 2.1, segmentId: 2 },
+    { word: 'חוצה', start: 2.1, end: 2.5, segmentId: 2 },
+    { word: 'נשאר', start: 2.5, end: 3, segmentId: 2, style: { fontColor: '#00ff00' } },
+  ];
+  const initial = { segments: [cue, neighbour], words: [...words, ...neighbourWords] };
+  const before = linkVideoRevisions({ original: initial, vertical: structuredClone(initial) });
+  const edited = editCaptionText(cue, before.original.words, 'שלום עולם נוסף', 25);
+  const next = applyCaptionTextEdit(before.original.segments, before.original.words, edited.segment, edited.words);
+  const after = editVideoTranscript(before, 'original', next);
+  for (const revision of Object.values(after)) {
+    assert.equal(revision.segments[1].text, 'חוצה\nנשאר');
+    const surviving = revision.words.filter(w => w.segmentId === 2);
+    assert.deepEqual(surviving.map(w => [w.word, w.start, w.end]), [['חוצה', 2.16, 2.5], ['נשאר', 2.5, 3]]);
+    assert.deepEqual(surviving[1].style, neighbourWords[2].style);
+    assert.equal(surviving[1].sourceId, before.original.words.at(-1).sourceId);
+    assert.deepEqual(synchronizeWords(revision.segments, JSON.parse(JSON.stringify(revision.words))), revision.words);
   }
 });

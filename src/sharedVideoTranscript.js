@@ -1,5 +1,6 @@
 import { alignSequence, synchronizeWords } from './wordAlignment.js';
 import { overwriteCaptionRange } from './timelineEditing.js';
+import { clipCaptionRanges } from './captionTextEditing.js';
 
 const copy = value => structuredClone(value);
 const equalTime = (a, b) => Math.abs(a - b) < 1e-6;
@@ -18,12 +19,15 @@ function align(words, source) {
   return [...source.slice(0, left), ...alignSequence(middle.map(w => w.word), old), ...source.slice(source.length - right)];
 }
 
-function identify(revision, source = []) {
+function identify(revision, source = [], preserveCaptionOwnership = false) {
   const words = synchronizeWords(revision.segments, revision.words);
   const byId = new Map(source.map(w => [w.sourceId, w]));
   const aligned = align(words, source), used = new Set();
   return { segments: copy(revision.segments), words: words.map((word, i) => {
-    const anchor = byId.get(word.sourceId) ?? aligned[i];
+    let anchor = byId.get(word.sourceId) ?? aligned[i];
+    // In an edit, an inserted word must not inherit a covered neighbour's ID.
+    // Alignment across captions is still allowed when linking video layouts.
+    if (preserveCaptionOwnership && !word.sourceId && anchor && String(anchor.segmentId) !== String(word.segmentId)) anchor = undefined;
     const id = word.sourceId ?? anchor?.sourceId ?? newId();
     const sourceId = used.has(id) ? newId() : id; used.add(sourceId);
     return { ...word, sourceId, sourceStart: word.sourceStart ?? anchor?.sourceStart ?? word.start,
@@ -58,7 +62,7 @@ function textForWords(segment, before, after) {
 export function editVideoTranscript(revisions, activeId, nextRevision, { layoutOnly = false } = {}) {
   const before = linkVideoRevisions(revisions), previous = before[activeId];
   if (!previous) throw new Error('גרסת הסרטון אינה זמינה.');
-  const next = identify(nextRevision, previous.words);
+  const next = identify(nextRevision, previous.words, true);
   const oldById = new Map(previous.words.map(w => [w.sourceId, w]));
   next.words = next.words.map(w => {
     const old = oldById.get(w.sourceId);
@@ -136,12 +140,14 @@ export function editVideoTranscript(revisions, activeId, nextRevision, { layoutO
     });
     // Insertions must retain their allocated time in every version. Extend
     // only affected captions, trimming their neighbours as in the active view.
+    const beforeExtension = segments;
     const extensions = segments.filter(segment => growing.has(segment.id)).map(segment => ({
       ...segment, end: Math.max(segment.end, ...words.filter(w => w.segmentId === segment.id).map(w => w.sourceEnd)),
     })).sort((a, b) => b.start - a.start);
     for (const extension of extensions) segments = overwriteCaptionRange(extension, segments);
-    const kept = new Set(segments.map(segment => segment.id));
-    after[id] = project({ segments, words: words.filter(word => kept.has(word.segmentId)) });
+    const clipped = clipCaptionRanges(beforeExtension, segments,
+      words.map(word => ({ ...word, start: word.sourceStart, end: word.sourceEnd })));
+    after[id] = { segments: clipped.segments, words: synchronizeWords(clipped.segments, clipped.words) };
   }
   return after;
 }

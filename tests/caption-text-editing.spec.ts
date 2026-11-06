@@ -48,6 +48,10 @@ for (const mobile of [false, true]) test(`existing caption keeps timing, adds fo
   expect(saved.segments[0].end).toBeCloseTo(2.32);
   expect(saved.segments[1].start).toBeCloseTo(2.32);
   expect(saved.segments[1].end).toBe(4);
+  const followingWords = saved.words.filter(word => word.segmentId === 2);
+  expect(followingWords[0].start).toBeCloseTo(2.32);
+  expect(followingWords[0].end).toBe(3);
+  expect([followingWords[1].start, followingWords[1].end]).toEqual([3, 4]);
   if (mobile) await page.getByRole('button', { name: 'סיום', exact: true }).click();
   await page.getByRole('button', { name: 'ביטול פעולה', exact: true }).click();
   await expect.poll(() => state.segments()[0].text).toBe('שלום עולם');
