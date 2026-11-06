@@ -1,4 +1,4 @@
-import { Alert, Box, Button, Chip, Dialog, DialogContent, DialogTitle, Divider, IconButton, Stack, Typography } from '@mui/material';
+import { Alert, Box, Button, Chip, CircularProgress, Dialog, DialogContent, DialogTitle, Divider, IconButton, Stack, Tooltip, Typography } from '@mui/material';
 import { CheckCircleRounded, CloseRounded, DownloadRounded, ShareRounded } from '@mui/icons-material';
 import { VIDEO_FORMATS } from '../../videoVersions.js';
 import { useVideoSharing } from '../hooks/useVideoSharing';
@@ -25,9 +25,11 @@ export function VideoVersionShare({ activeId, disabled, onBurnVideo }: {
   const platforms = destinations[activeId] ?? [];
   const ready = sharing.readyToShare;
   return <>
-    <Button size="small" startIcon={<ShareRounded />} disabled={disabled || sharing.sharing} onClick={() => void sharing.shareVideo()}>
-      {sharing.sharing ? 'מכין לשיתוף…' : 'שיתוף הגרסה'}
-    </Button>
+    <Tooltip title={sharing.sharing ? 'מכין לשיתוף…' : 'שיתוף הגרסה'}><span>
+      <IconButton size="small" color="primary" aria-label={sharing.sharing ? 'מכין לשיתוף…' : 'שיתוף הגרסה'} disabled={disabled || sharing.sharing} onClick={() => void sharing.shareVideo()}>
+        {sharing.sharing ? <CircularProgress size={14} /> : <ShareRounded fontSize="small" />}
+      </IconButton>
+    </span></Tooltip>
     {sharing.shareError && !ready && <Alert severity="error" onClose={sharing.closeShare}>{sharing.shareError}</Alert>}
     <Dialog open={Boolean(ready)} onClose={sharing.sharing ? undefined : sharing.closeShare} fullWidth maxWidth="md" dir="rtl"
       aria-labelledby="version-share-title" slotProps={{ paper: { sx: { borderRadius: '20px', maxWidth: 760, textAlign: 'right' } } }}>

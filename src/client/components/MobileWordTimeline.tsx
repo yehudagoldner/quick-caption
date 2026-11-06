@@ -6,7 +6,7 @@ import { placeMobileWord } from "../../timelineEditing.js";
 import { formatTimecode } from "../utils/timecode";
 import { useActiveWord } from "../hooks/useActiveWord";
 import { CompactTimelineZoom } from "./CompactTimelineZoom";
-import { WordFrameRuler } from "./WordFrameRuler";
+import { WordTimeRuler } from "./WordTimeRuler";
 
 type DragMode = "move" | "start" | "end";
 export function MobileWordTimeline({ segment, words, fps, currentTime, activeWordEnabled, disabled, saving,
@@ -106,14 +106,14 @@ export function MobileWordTimeline({ segment, words, fps, currentTime, activeWor
     </Stack>
     <Typography variant="caption" color="text.secondary">גררו מילה או את קצותיה, ללא חפיפה למילים אחרות. החליקו על הסרגל לגלילה.</Typography>
     <Box ref={scroller} data-testid="mobile-word-scroll" aria-label="מילים במקטע" dir="ltr" onScroll={event => setScrollLeft(event.currentTarget.scrollLeft)} sx={{ overflowX: "auto", overflowY: "hidden", border: 1, borderColor: "divider", borderRadius: 2, bgcolor: "#f3f6fa", touchAction: "pan-x", overscrollBehaviorX: "contain" }}>
-      <Box data-testid="mobile-word-track" sx={{ position: "relative", height: 124, width: trackWidth + 24, userSelect: "none" }} onClick={event => {
+      <Box data-testid="mobile-word-track" sx={{ position: "relative", height: 112, width: trackWidth + 24, userSelect: "none" }} onClick={event => {
         if ((event.target as HTMLElement).closest("[data-word-control]")) return;
         onInteract();
         const x = event.clientX - event.currentTarget.getBoundingClientRect().left - 12;
         onSeek(Math.min(segment.end, Math.max(segment.start, segment.start + x / pps)));
       }}>
         <Box sx={{ position: 'absolute', left: 12, top: 0, color: 'text.secondary' }}>
-          <WordFrameRuler start={segment.start} end={segment.end} fps={fps} pixelsPerSecond={pps}
+          <WordTimeRuler start={segment.start} end={segment.end} pixelsPerSecond={pps}
             visibleStart={segment.start + Math.max(0, scrollLeft - 130) / pps} visibleEnd={segment.start + (scrollLeft + width + 130) / pps} />
         </Box>
         <Box sx={{ position: "absolute", right: 12, top: 0, bottom: 0, borderLeft: "2px solid #90a4ae", pointerEvents: "none" }} />
@@ -127,7 +127,7 @@ export function MobileWordTimeline({ segment, words, fps, currentTime, activeWor
               onPointerDown={event => begin(event, index, "move")} {...pointerProps}
               onClick={() => { if (suppressClick.current) { suppressClick.current = false; return; } seek(index); }}
               onKeyDown={event => { if (event.key === "ArrowLeft" || event.key === "ArrowRight") { event.preventDefault(); setSelected(index); const next = placeMobileWord(words, index, segment, (event.key === "ArrowRight" ? 1 : -1) / fps, "move", fps); if (!disabled && next !== words) { onInteract(); onChange(next); } } }}
-              sx={{ position: "absolute", top: 38, left, width: Math.max(2, right - left), minWidth: 0, height: 44, px: .5, overflow: "hidden", whiteSpace: "nowrap", touchAction: disabled ? "pan-x" : "none", borderRadius: 1,
+              sx={{ position: "absolute", top: 26, left, width: Math.max(2, right - left), minWidth: 0, height: 44, px: .5, overflow: "hidden", whiteSpace: "nowrap", touchAction: disabled ? "pan-x" : "none", borderRadius: 1,
                 bgcolor: active ? "primary.main" : "#9b5700", color: "#fff", outline: focused ? "2px solid #1976d2" : "none", outlineOffset: 2, "&:hover": { bgcolor: active ? "primary.dark" : "#7a4500" } }}>
               <Box component="span" dir="auto" sx={{ overflow: "hidden", textOverflow: "ellipsis" }}>{word.word}</Box>
             </Button>
@@ -135,7 +135,7 @@ export function MobileWordTimeline({ segment, words, fps, currentTime, activeWor
               aria-label={edge === "start" ? "תחילת המילה" : "סיום המילה"} aria-valuemin={segment.start} aria-valuemax={segment.end} aria-valuenow={word[edge]} aria-valuetext={formatTimecode(word[edge], fps)}
               onPointerDown={event => begin(event, index, edge)} {...pointerProps}
               onKeyDown={event => { if (event.key === "ArrowLeft" || event.key === "ArrowRight") { event.preventDefault(); nudge((event.key === "ArrowRight" ? 1 : -1) / fps, edge); } }}
-              sx={{ position: "absolute", left: (edge === "start" ? left : right) - 12, top: 82, width: 24, height: 40, touchAction: "none", display: "flex", justifyContent: "center", alignItems: "center", color: "primary.main", cursor: "ew-resize" }}>
+              sx={{ position: "absolute", left: (edge === "start" ? left : right) - 12, top: 70, width: 24, height: 40, touchAction: "none", display: "flex", justifyContent: "center", alignItems: "center", color: "primary.main", cursor: "ew-resize" }}>
               <Box sx={{ width: 8, height: 24, borderRadius: 99, bgcolor: disabled ? "action.disabled" : "primary.main" }} />
             </Box>)}
           </Box>;
