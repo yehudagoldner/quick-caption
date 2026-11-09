@@ -13,6 +13,7 @@ import { useTimelineWheelZoom } from "../hooks/useTimelineWheelZoom";
 import { WordTimeRuler } from "./WordTimeRuler";
 
 const MIN_WORD_ZOOM = 80;
+const DEFAULT_WORD_ZOOM = 160;
 const MAX_WORD_ZOOM = 2560;
 
 // Drafts belong to the parent so switching captions never discards work.
@@ -27,7 +28,7 @@ export function WordTimeline({ enabled, segment, words, selection, onSelectionCh
 }) {
   const { preferences } = useEditorPreferences();
   const fps = preferences.fps;
-  const [zoom, setZoom] = useState(160);
+  const [zoom, setZoom] = useState(DEFAULT_WORD_ZOOM);
   const selectionAnchor = useRef<number | null>(null);
   const root = useRef<HTMLDivElement | null>(null);
   const deleting = useRef(false);
@@ -36,6 +37,10 @@ export function WordTimeline({ enabled, segment, words, selection, onSelectionCh
   const [validStart, setValidStart] = useState(true), [validEnd, setValidEnd] = useState(true);
   const timeline = useRef<TimelineState | null>(null);
   const container = useRef<HTMLDivElement | null>(null);
+  useLayoutEffect(() => {
+    setZoom(DEFAULT_WORD_ZOOM);
+    timeline.current?.setScrollLeft(0);
+  }, [segment.id]);
   const duration = segment.end - segment.start;
   const wordStructure = words.map(word => word.word).join("\u0000");
   useEffect(() => { setSelection([]); selectionAnchor.current = null; setEditing(null); setError(null); }, [segment.id, enabled, wordStructure]);
