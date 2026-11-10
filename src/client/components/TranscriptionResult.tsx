@@ -80,8 +80,10 @@ export function TranscriptionResult({
   const replacementFlight = useRef(false);
   const [replacement, setReplacement] = useState<{ videoId: number; originalUrl: string | null; url: string } | null>(null);
   const mediaUrl = replacement?.videoId === videoId && replacement?.originalUrl === originalMediaUrl ? replacement.url : originalMediaUrl;
-  const preview = useVideoPreview(videoId, mediaUrl);
   const qualityResume = useRef<{ time: number; playing: boolean } | null>(null);
+  const preview = useVideoPreview(videoId, mediaUrl, () => {
+    if (videoPlayer) qualityResume.current = { time: videoPlayer.currentTime, playing: !videoPlayer.paused };
+  });
   const [changingPreview, setChangingPreview] = useState(false);
   const isEditable = canEdit && !replacingVideo && !changingPreview;
   useUploadProtection(replacingVideo);
@@ -449,7 +451,9 @@ export function TranscriptionResult({
     if (!qualityResume.current || !videoPlayer) return;
     const restore = () => {
       const resume = qualityResume.current;
-      if (!resume || videoPlayer.readyState < 2) return;
+      // A src update can briefly retain the old resource's readyState. Wait for
+      // the new resource before seeking, otherwise its load resets the playhead.
+      if (!resume || videoPlayer.readyState < 2 || videoPlayer.currentSrc !== videoPlayer.src) return;
       qualityResume.current = null;
       handleTimelineTimeChange(resume.time);
       setChangingPreview(false);

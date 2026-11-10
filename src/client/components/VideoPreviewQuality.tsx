@@ -13,7 +13,7 @@ export function VideoPreviewQuality({ status, quality, qualities, disabled, erro
       </TextField>
       <Typography variant="caption" color="text.secondary">איכות הניגון בעורך בלבד. הייצוא משתמש בקובץ המקור ובהגדרות הייצוא שבחרתם.</Typography>
     </> : <Alert severity={error ? 'warning' : 'info'} action={status !== 'loading' && <Button disabled={disabled} onClick={onRetry}>נסה שוב</Button>}>
-      {error || (status === 'pending' ? 'גרסת העריכה עדיין בהכנה. ננסה שוב אוטומטית בעוד כמה שניות.' : status === 'unavailable' ? 'גרסת העריכה הקלה עדיין אינה זמינה.' : 'טוען את התצוגה המקדימה...')}
+      {error || (status === 'pending' ? 'גרסת העריכה עדיין בהכנה. בינתיים אפשר לנגן את קובץ המקור.' : status === 'unavailable' ? 'גרסת העריכה הקלה עדיין אינה זמינה. בינתיים אפשר לנגן את קובץ המקור.' : 'מכינים את התצוגה המקדימה. בינתיים אפשר לנגן את קובץ המקור.')}
     </Alert>}
     {['pending', 'unavailable', 'error'].includes(status) && <Button disabled={disabled} onClick={onSource} sx={{ alignSelf: 'flex-start' }}>ניגון קובץ המקור (טעינה כבדה)</Button>}
   </Stack>;

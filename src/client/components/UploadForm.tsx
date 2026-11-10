@@ -134,7 +134,7 @@ export function UploadForm({
       </Box>}
 
       {fileError && <Alert severity="error">{fileError}</Alert>}
-      {file && !isSubmitting && <Box sx={{ display: "grid", gridTemplateColumns: { xs: "minmax(0, 1fr)", sm: "minmax(0, 1fr) minmax(0, 1.2fr)" }, alignItems: "center", gap: 1.5 }}>
+      {file && <Box sx={{ display: "grid", gridTemplateColumns: { xs: "minmax(0, 1fr)", sm: isSubmitting ? "minmax(0, 1fr)" : "minmax(0, 1fr) minmax(0, 1.2fr)" }, alignItems: "center", gap: 1.5 }}>
       {previewUrl && <Stack spacing={0.25} alignItems="center" sx={{ minWidth: 0 }}>
         <Box component={file?.type.startsWith("audio/") || /\.(wav|flac|mp3|m4a|aac|ogg|opus)$/i.test(file?.name || "") ? "audio" : "video"}
           controls controlsList="nofullscreen" playsInline src={previewUrl} preload="metadata" onError={() => setFileError("הדפדפן לא מצליח לנגן את הקובץ. אפשר לנסות לתמלל אותו או לבחור פורמט אחר.")}
@@ -148,7 +148,7 @@ export function UploadForm({
           }} sx={{ width: "100%", objectFit: "contain", maxHeight: { xs: "clamp(96px, calc(80dvh - 348px), 280px)", sm: "clamp(100px, calc(100dvh - 300px), 260px)" }, borderRadius: 2, bgcolor: "grey.900" }} />
         <Typography variant="caption" sx={{ fontSize: "0.75rem", "@media (max-height: 650px)": { display: "none" } }}>{mediaInfo}</Typography>
       </Stack>}
-      <InitialTranscriptionSettings {...settings} maxCharactersPerSubtitle={maxCharactersPerSubtitle} onMaxCharactersChange={onMaxCharactersChange} />
+      {!isSubmitting && <InitialTranscriptionSettings {...settings} maxCharactersPerSubtitle={maxCharactersPerSubtitle} onMaxCharactersChange={onMaxCharactersChange} />}
       </Box>}
       {!isSubmitting && <Typography variant="caption" color="text.secondary" textAlign="center" sx={{ fontSize: "0.6875rem", lineHeight: 1.4 }}>עד 500MB לקובץ. סרטונים והכתוביות שלהם נמחקים לאחר 30 יום ללא פתיחה או עריכה.</Typography>}
       {!file && !isSubmitting && <Typography variant="body2" color="text.secondary" textAlign="center" sx={{ display: { xs: "none", sm: "block" } }}>
