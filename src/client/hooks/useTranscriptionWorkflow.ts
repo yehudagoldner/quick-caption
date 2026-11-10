@@ -170,7 +170,7 @@ export function useTranscriptionWorkflow(): TranscriptionWorkflow {
   }, []);
 
   const mediaPreviewUrl = useMediaPreview(file);
-  const effectiveMediaUrl = loadedMediaUrl || mediaPreviewUrl;
+  const effectiveMediaUrl = (file && mediaPreviewUrl) || loadedMediaUrl;
   const { downloadUrl, downloadName } = useSubtitleDownload(response, file);
 
   const handleMaxCharactersChange = useCallback((value: number) => {
@@ -668,6 +668,7 @@ export function useTranscriptionWorkflow(): TranscriptionWorkflow {
 
   const handleLoadVideo = useCallback(
     (data: { videoId: number; segments: Segment[]; words?: Word[]; format: string; filename: string; mediaUrl?: string | null }) => {
+      setFile(null);
       setVideoId(data.videoId);
       setFormat(data.format);
       setLoadedMediaUrl(data.mediaUrl || null);

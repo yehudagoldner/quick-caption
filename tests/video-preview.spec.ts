@@ -4,20 +4,22 @@ import type { Segment } from '../src/client/types';
 import { readFileSync } from 'node:fs';
 const landscapeVideo = Buffer.from(readFileSync('tests/fixtures/landscape-video.base64', 'utf8'), 'base64');
 
-async function setup(page: Page, initialMode = 'rendition', landscape = false) {
+async function setup(page: Page, initialMode = 'rendition', landscape = false, infoGate = Promise.resolve()) {
   await page.setViewportSize({ width: 1440, height: 1000 }); await prepareApp(page);
   let mode = initialMode, originalReads = 0, infoRequests = 0;
   let saved: Segment[] = structuredClone(segments);
   const burns: string[] = [], mediaRequests: string[] = [];
-  await page.route('**/api/videos/42/preview', route => {
+  await page.route('**/api/videos/42/preview', async route => {
     infoRequests++;
+    await infoGate;
+    if (mode === 'error') return route.fulfill({ status: 503, json: { error: 'טעינת התצוגה המקדימה נכשלה.' } });
     return route.fulfill({ json: { mode, qualities: mode === 'rendition' ? ['720p', '1080p'] : [], defaultQuality: mode === 'rendition' ? '720p' : null,
       sourceDimensions: landscape ? { width: 1920, height: 1080 } : { width: 1080, height: 1920 }, mediaToken: 'preview-token' } });
   });
   await page.route('**/api/videos/load?**', route => route.fulfill({ json: { video: { id: 42, subtitle_json: saved, words_json: [], stored_path: 'bunny-fixture', format: '.srt' }, mediaToken: 'original-token' } }));
   await page.route('**/api/videos/42/media?**', route => {
     const quality = new URL(route.request().url()).searchParams.get('preview'); mediaRequests.push(quality || 'original');
-    if (!quality) { originalReads++; return route.fulfill({ status: 409, json: { error: 'The heavy original must not be requested' } }); }
+    if (!quality) originalReads++;
     const range = route.request().headers().range?.match(/bytes=(\d+)-(\d*)/);
     const media = landscape ? landscapeVideo : portraitVideo;
     const start = range ? Number(range[1]) : 0, end = range?.[2] ? Math.min(Number(range[2]), media.length - 1) : media.length - 1;
@@ -61,7 +63,7 @@ test('720p default, 1080p selection retains playhead, caption edits and history;
   expect(state.burns).toHaveLength(1); expect(state.burns[0]).toMatch(/name="videoId"\r\n\r\n42/);
   expect(state.burns[0]).toMatch(/name="videoWidth"\r\n\r\n1080/); expect(state.burns[0]).toMatch(/name="videoHeight"\r\n\r\n1920/);
   expect(state.burns[0]).not.toContain('name="preview"');
-  expect(state.originalReads()).toBe(0);
+  expect(state.mediaRequests).toContain('1080p');
   await page.reload(); await page.getByRole('button', { name: 'איכות וידאו', exact: true }).click(); await expect(quality).toContainText('720p'); expect(state.saved()).toEqual(before);
 });
 
@@ -73,7 +75,7 @@ test('changing quality while playing resumes at the same position', async ({ pag
   await page.getByRole('combobox', { name: 'איכות תצוגה מקדימה' }).click(); await page.getByRole('option', { name: /1080p/ }).click();
   await expect.poll(() => page.locator('video').evaluate((v: HTMLVideoElement) => v.paused)).toBe(false);
   const position = await page.locator('video').evaluate((v: HTMLVideoElement) => v.currentTime);
-  expect(position).toBeGreaterThanOrEqual(1); expect(position).toBeLessThan(2); expect(state.originalReads()).toBe(0);
+  expect(position).toBeGreaterThanOrEqual(1); expect(position).toBeLessThan(2); expect(state.mediaRequests).toContain('1080p');
 });
 
 test('cropped versions export with source-sized geometry while editing the lightweight preview', async ({ page }) => {
@@ -85,18 +87,37 @@ test('cropped versions export with source-sized geometry while editing the light
   await page.getByRole('menuitem', { name: 'הורד סרטון עם כתוביות', exact: true }).click(); await download;
   expect(state.burns[0]).toContain('"format":"vertical"');
   expect(state.burns[0]).toMatch(/name="videoWidth"\r\n\r\n606/); expect(state.burns[0]).toMatch(/name="videoHeight"\r\n\r\n1080/);
-  expect(state.originalReads()).toBe(0);
+  expect(state.mediaRequests).toContain('720p');
 });
 
-test('pending previews do not start downloading the source, and retry loads the ready rendition', async ({ page }) => {
+test('pending previews play the source, and retry loads the ready rendition without resetting playback', async ({ page }) => {
   const state = await setup(page, 'pending');
   await page.getByRole('button', { name: 'איכות וידאו', exact: true }).click();
   await expect(page.getByText('גרסת העריכה עדיין בהכנה.', { exact: false }).first()).toBeVisible();
-  await expect(page.locator('video')).toHaveCount(0); expect(state.originalReads()).toBe(0);
+  await expect(page.locator('video')).toHaveAttribute('src', /original-token/);
+  await expect.poll(() => page.locator('video').evaluate((v: HTMLVideoElement) => v.readyState)).toBeGreaterThan(1);
+  await page.locator('video').evaluate(async (v: HTMLVideoElement) => { v.muted = true; v.playbackRate = .1; v.currentTime = 1; await v.play(); });
+  expect(state.originalReads()).toBeGreaterThan(0);
   state.mode('rendition'); await page.getByRole('button', { name: 'נסה שוב', exact: true }).click();
   await expect(page.locator('video')).toHaveAttribute('src', /preview=720p/); expect(state.infoRequests()).toBeGreaterThan(1);
-  expect(state.originalReads()).toBe(0);
+  await expect.poll(() => page.locator('video').evaluate((v: HTMLVideoElement) => v.paused)).toBe(false);
+  const time = await page.locator('video').evaluate((v: HTMLVideoElement) => v.currentTime);
+  expect(time).toBeGreaterThanOrEqual(1); expect(time).toBeLessThan(2);
 });
+
+for (const mode of ['loading', 'unavailable', 'error']) {
+  test(`${mode} preview information never blocks source playback`, async ({ page }) => {
+    let release!: () => void;
+    const gate = mode === 'loading' ? new Promise<void>(resolve => { release = resolve; }) : Promise.resolve();
+    try {
+      await setup(page, mode === 'loading' ? 'pending' : mode, false, gate);
+      await expect(page.locator('video')).toHaveAttribute('src', /original-token/);
+      await expect.poll(() => page.locator('video').evaluate((v: HTMLVideoElement) => v.readyState)).toBeGreaterThan(1);
+      await page.locator('video').evaluate(async (v: HTMLVideoElement) => { v.muted = true; await v.play(); });
+      await expect.poll(() => page.locator('video').evaluate((v: HTMLVideoElement) => v.currentTime)).toBeGreaterThan(0);
+    } finally { release?.(); }
+  });
+}
 
 test('mobile settings can increase preview quality without changing the source', async ({ page }) => {
   const state = await setup(page);
@@ -108,7 +129,7 @@ test('mobile settings can increase preview quality without changing the source',
   const quality = page.getByRole('dialog', { name: 'איכות וידאו', exact: true }).getByRole('combobox', { name: 'איכות תצוגה מקדימה' });
   await expect(quality).toContainText('720p'); await quality.click(); await page.getByRole('option', { name: /1080p/ }).click();
   await expect(page.locator('video')).toHaveAttribute('src', /preview=1080p/); await expect(quality).toBeEnabled();
-  expect(state.originalReads()).toBe(0);
+  expect(state.mediaRequests).toContain('1080p');
 });
 
 test('an oversized waveform response is cancelled instead of competing with playback', async ({ page }) => {
@@ -125,5 +146,5 @@ test('an oversized waveform response is cancelled instead of competing with play
   const state = await setup(page);
   await expect.poll(() => page.evaluate(() => (window as any).__waveformCancelled)).toBeGreaterThan(0);
   await expect.poll(() => page.locator('video').evaluate((v: HTMLVideoElement) => v.readyState)).toBeGreaterThan(1);
-  expect(state.originalReads()).toBe(0);
+  expect(state.mediaRequests).toContain('720p');
 });
