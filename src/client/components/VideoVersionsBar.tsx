@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState } from 'react';
-import { Alert, Box, Button, Dialog, DialogActions, DialogContent, DialogTitle, FormControlLabel, IconButton, LinearProgress, Stack, Switch, Tab, Tabs, Typography } from '@mui/material';
-import { CloseRounded } from '@mui/icons-material';
+import { Alert, Box, Button, Dialog, DialogActions, DialogContent, DialogTitle, FormControlLabel, IconButton, LinearProgress, Stack, Switch, Tab, Tabs, Tooltip, Typography } from '@mui/material';
+import { CloseRounded, InfoOutlined } from '@mui/icons-material';
 import { VIDEO_FORMATS, type VideoCrop } from '../../videoVersions.js';
 import { autoReframe } from '../utils/autoReframe';
 import { VideoVersionShare } from './VideoVersionShare';
@@ -39,19 +39,27 @@ export function VideoVersionsBar({ eligible, enabled, dismissed, activeId, crop,
       <DialogActions disableSpacing sx={{ gap: 1 }}><Button onClick={() => void perform(dismiss)}>המשך עם המקור</Button><Button variant="contained" disabled={disabled} onClick={() => void perform(create)}>כן, צור גרסאות</Button></DialogActions>
     </Dialog>
     {eligible && !enabled && dismissed && <Button size="small" disabled={disabled} onClick={() => void perform(create)}>יצירת גרסאות לרשתות</Button>}
-    {enabled && <Box sx={{ border: expanded ? '1px solid' : 0, borderColor: 'divider', borderRadius: 2, px: expanded ? 1 : 0 }}>
+    {enabled && <Box data-testid="video-versions-bar" sx={{ width: 'fit-content', maxWidth: '100%', border: expanded ? '1px solid' : 0, borderColor: 'divider', borderRadius: 1.5, px: expanded ? .5 : 0, alignSelf: 'flex-start' }}>
       {!expanded && <Button size="small" aria-expanded={false} aria-controls={panelId} onClick={() => setExpanded(true)}>הצג גרסאות סרטון</Button>}
       <Box id={panelId} hidden={!expanded}>
-      <Stack direction="row" alignItems="center" sx={{ flexWrap: 'wrap' }}>
-        <Tabs value={activeId} onChange={(_, id) => void perform(() => select(id))} variant="scrollable" scrollButtons="auto" aria-label="גרסאות הסרטון" sx={{ flex: 1, minWidth: 0 }}>
-          {VIDEO_FORMATS.map(format => <Tab key={format.id} value={format.id} disabled={disabled || progress !== null} label={<Box><Typography variant="body2">{format.label}</Typography><Typography variant="caption">{format.platforms}</Typography></Box>} />)}
+      <Stack direction="row" alignItems="center" sx={{ minHeight: 34, gap: .25, '& .MuiIconButton-root': { width: 28, height: 28 }, '& .MuiIconButton-root .MuiSvgIcon-root': { fontSize: 17 } }}>
+        <Tabs value={activeId} onChange={(_, id) => void perform(() => select(id))} variant="scrollable" scrollButtons="auto" aria-label="גרסאות הסרטון"
+          sx={{ minWidth: 0, minHeight: 34, '& .MuiTab-root': { minWidth: 44, minHeight: 34, px: 1, py: .5, fontSize: 12, textTransform: 'none' }, '& .MuiTabs-indicator': { height: 2 } }}>
+          {VIDEO_FORMATS.map(format => <Tab key={format.id} value={format.id} title={format.platforms} disabled={disabled || progress !== null}
+            label={<Box component="span" sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0 }}>
+              <Box component="span" sx={{ fontSize: 12, lineHeight: '14px' }}>{format.label}</Box>
+              <Box component="span" dir="ltr" sx={{ fontSize: 10, lineHeight: '12px', fontWeight: 400, color: 'text.secondary', whiteSpace: 'nowrap' }}>{format.platforms}</Box>
+            </Box>} />)}
         </Tabs>
         <VideoVersionShare key={activeId} activeId={activeId} disabled={disabled || !shareAllowed || progress !== null} onBurnVideo={onBurnVideo} />
-        {crop && <FormControlLabel sx={{ mx: 1 }} control={<Switch size="small" checked={Boolean(crop.points?.length) || progress !== null} disabled={disabled || progress !== null} onChange={(_, checked) => void automatic(checked)} />} label="התאמה אוטומטית" />}
+        {crop && <Tooltip title="גררו את המסגרת לבחירת האזור שיישאר. התאמה אוטומטית עוקבת אחר הפנים הבולטות בתמונה.">
+          <FormControlLabel sx={{ mx: .25, flexShrink: 0, '& .MuiTypography-root': { fontSize: 11 } }} control={<Switch size="small" checked={Boolean(crop.points?.length) || progress !== null} disabled={disabled || progress !== null} onChange={(_, checked) => void automatic(checked)} />} label="התאמה אוטומטית" />
+        </Tooltip>}
+        <Tooltip title="תיקוני מילים ותזמון מילים מתעדכנים בכל הגרסאות. החלוקה והעיצוב נפרדים לכל גרסה.">
+          <IconButton size="small" aria-label="מידע על הגרסאות" sx={{ color: 'text.secondary' }}><InfoOutlined /></IconButton>
+        </Tooltip>
         <IconButton size="small" aria-label="סגור גרסאות סרטון" title="סגור גרסאות סרטון" aria-expanded={true} aria-controls={panelId} onClick={() => setExpanded(false)}><CloseRounded fontSize="small" /></IconButton>
       </Stack>
-      <Typography variant="caption" color="text.secondary" display="block" dir="rtl" sx={{ textAlign: 'right' }}>תיקוני מילים ותזמון מילים מתעדכנים בכל הגרסאות. החלוקה והעיצוב נפרדים לכל גרסה.</Typography>
-      {crop && <Typography variant="caption" color="text.secondary">גררו את המסגרת לבחירת האזור שיישאר. התאמה אוטומטית עוקבת אחר הפנים הבולטות בתמונה.</Typography>}
       </Box>
       {progress !== null && <Stack spacing={.5}><LinearProgress variant="determinate" value={progress} /><Stack direction="row" justifyContent="space-between"><Typography variant="caption" role="status">מתאים את המסגרת… {progress}%</Typography><Button size="small" onClick={() => job.current?.abort()}>ביטול</Button></Stack></Stack>}
     </Box>}

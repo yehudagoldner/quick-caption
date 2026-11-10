@@ -6,6 +6,7 @@ import { placeMobileWord } from "../../timelineEditing.js";
 import { formatTimecode } from "../utils/timecode";
 import { useActiveWord } from "../hooks/useActiveWord";
 import { CompactTimelineZoom } from "./CompactTimelineZoom";
+import { WordTimeRuler } from "./WordTimeRuler";
 
 type DragMode = "move" | "start" | "end";
 export function MobileWordTimeline({ segment, words, fps, currentTime, activeWordEnabled, disabled, saving,
@@ -17,6 +18,7 @@ export function MobileWordTimeline({ segment, words, fps, currentTime, activeWor
 }) {
   const scroller = useRef<HTMLDivElement | null>(null);
   const [width, setWidth] = useState(0);
+  const [scrollLeft, setScrollLeft] = useState(0);
   const [zoom, setZoom] = useState(1);
   const zoomAnchor = useRef<{ seconds: number; x: number } | null>(null);
   const [selected, setSelected] = useState(0);
@@ -89,8 +91,6 @@ export function MobileWordTimeline({ segment, words, fps, currentTime, activeWor
     const next = placeMobileWord(words, selected, segment, delta, mode, fps);
     if (next !== words) onChange(next);
   };
-  const step = [.1, .25, .5, 1, 2, 5, 10].find(value => value * pps >= 80) ?? 10;
-  const ticks = Array.from({ length: Math.floor(duration / step) + 1 }, (_, index) => index * step);
   const pointerProps = { onPointerMove: move, onPointerUp: end, onPointerCancel: end, onLostPointerCapture: end };
 
   return <Stack data-testid="mobile-word-timeline" spacing={0.5} sx={{ minWidth: 0, flexShrink: 0 }}>
@@ -105,16 +105,17 @@ export function MobileWordTimeline({ segment, words, fps, currentTime, activeWor
       </Box>
     </Stack>
     <Typography variant="caption" color="text.secondary">גררו מילה או את קצותיה, ללא חפיפה למילים אחרות. החליקו על הסרגל לגלילה.</Typography>
-    <Box ref={scroller} data-testid="mobile-word-scroll" aria-label="מילים במקטע" dir="ltr" sx={{ overflowX: "auto", overflowY: "hidden", border: 1, borderColor: "divider", borderRadius: 2, bgcolor: "#f3f6fa", touchAction: "pan-x", overscrollBehaviorX: "contain" }}>
+    <Box ref={scroller} data-testid="mobile-word-scroll" aria-label="מילים במקטע" dir="ltr" onScroll={event => setScrollLeft(event.currentTarget.scrollLeft)} sx={{ overflowX: "auto", overflowY: "hidden", border: 1, borderColor: "divider", borderRadius: 2, bgcolor: "#f3f6fa", touchAction: "pan-x", overscrollBehaviorX: "contain" }}>
       <Box data-testid="mobile-word-track" sx={{ position: "relative", height: 112, width: trackWidth + 24, userSelect: "none" }} onClick={event => {
         if ((event.target as HTMLElement).closest("[data-word-control]")) return;
         onInteract();
         const x = event.clientX - event.currentTarget.getBoundingClientRect().left - 12;
         onSeek(Math.min(segment.end, Math.max(segment.start, segment.start + x / pps)));
       }}>
-        {ticks.map(tick => <Box key={tick} sx={{ position: "absolute", left: 12 + tick * pps, top: 0, bottom: 0, borderLeft: "1px solid #dce3ec", pointerEvents: "none" }}>
-          <Typography dir="ltr" sx={{ fontSize: 10, color: "text.secondary", fontVariantNumeric: "tabular-nums", pl: .5 }}>{formatTimecode(segment.start + tick, fps)}</Typography>
-        </Box>)}
+        <Box sx={{ position: 'absolute', left: 12, top: 0, color: 'text.secondary' }}>
+          <WordTimeRuler start={segment.start} end={segment.end} pixelsPerSecond={pps}
+            visibleStart={segment.start + Math.max(0, scrollLeft - 130) / pps} visibleEnd={segment.start + (scrollLeft + width + 130) / pps} />
+        </Box>
         <Box sx={{ position: "absolute", right: 12, top: 0, bottom: 0, borderLeft: "2px solid #90a4ae", pointerEvents: "none" }} />
         {view.map((word, index) => {
           const left = 12 + (word.start - segment.start) * pps;

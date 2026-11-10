@@ -61,6 +61,10 @@ test('both split actions stay inside the editor at desktop widths with the sideb
     for (const format of ['מקור', '9:16']) {
       await select(page, format); await selectAtOne(page);
       const track = await page.getByTestId('timeline-tracks').boundingBox();
+      const bar = (await page.getByTestId('video-versions-bar').boundingBox())!;
+      expect(bar.height).toBeLessThanOrEqual(38);
+      expect(bar.width).toBeLessThanOrEqual(680);
+      expect(bar.x + bar.width).toBeLessThanOrEqual(width);
       for (const name of ['פיצול כתובית בנקודת הקו', 'פיצול בכל הגרסאות']) {
         const button = page.getByRole('button', { name, exact: true });
         await expect(button).toBeEnabled();

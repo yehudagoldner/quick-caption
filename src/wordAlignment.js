@@ -3,7 +3,7 @@
 export const subtitleTokens = text => String(text ?? "").trim().split(/\s+/u).filter(Boolean);
 const normalize = text => text.normalize("NFKD").replace(/[\p{M}\p{P}\p{Cf}]/gu, "").toLocaleLowerCase();
 
-export function alignSequence(tokens, source) {
+export function alignSequence(tokens, source, { splitWords = true } = {}) {
   const n = source.length, m = tokens.length;
   if (!n) return Array(m).fill(null);
   // Avoid quadratic allocations for malformed/unusually large imported cues.
@@ -42,9 +42,15 @@ export function alignSequence(tokens, source) {
       i -= 2; j--;
     } else if (op === 5) {
       const { start, end } = source[i - 1];
-      const middle = start + (end - start) * b[j - 2].length / (b[j - 2].length + b[j - 1].length);
-      aligned[j - 2] = { ...source[i - 1], start, end: middle, timingSource: "estimated" };
-      aligned[j - 1] = { start: middle, end, timingSource: "estimated" };
+      if (splitWords) {
+        const middle = start + (end - start) * b[j - 2].length / (b[j - 2].length + b[j - 1].length);
+        aligned[j - 2] = { ...source[i - 1], start, end: middle, timingSource: "estimated" };
+        aligned[j - 1] = { start: middle, end, timingSource: "estimated" };
+      } else {
+        // Manual text edits preserve the timed word; its new neighbour needs
+        // a separate interval allocated by the editor's insertion policy.
+        aligned[j - 2] = { ...source[i - 1], timingSource: "aligned" };
+      }
       i--; j -= 2;
     } else throw new Error("Invalid word alignment state");
   }

@@ -53,6 +53,7 @@ import {
 } from "@mui/icons-material";
 import type { Segment, Word } from "../types";
 import { wordsForSegment } from "../../timelineEditing.js";
+import { automaticCaptionEnd } from '../../captionTextEditing.js';
 import { canMergeCaptions, canSplitCaptionAtTime, type CaptionBatchAction } from "../../captionBatchEditing.js";
 import { AUTO_CAPTION_FONT_SIZE, CAPTION_FONT_SIZES, type CaptionFontSizeSetting } from "../../captionStyle.js";
 import type { CaptionMotion, PopIntensity } from "../../captionMotion.js";
@@ -220,6 +221,13 @@ export function MobileCaptionEditor({
   const [newText, setNewText] = useState("");
   const [newStart, setNewStart] = useState(0);
   const [newEnd, setNewEnd] = useState(0);
+  const [addError, setAddError] = useState<string | null>(null);
+  const [adding, setAdding] = useState(false);
+  useEffect(() => {
+    if (addOpen && newEnd > newStart) {
+      setNewEnd(automaticCaptionEnd({ id: 'new', start: newStart, end: newEnd, text: newText }, newText, preferences.fps));
+    }
+  }, [addOpen, newText, newStart, newEnd, preferences.fps]);
   const [timingWordsId, setTimingWordsId] = useState<Segment["id"] | null>(null);
   const [checkedIds, setCheckedIds] = useState<Segment["id"][]>([]);
   const [batchBusy, setBatchBusy] = useState(false);
@@ -824,18 +832,24 @@ export function MobileCaptionEditor({
         <DialogActions><Button onClick={() => setSettingsOpen(false)}>סגור</Button></DialogActions>
       </Dialog>
 
-      <Dialog open={addOpen} onClose={() => setAddOpen(false)} fullWidth>
+      <Dialog open={addOpen} onClose={() => { if (!adding) setAddOpen(false); }} fullWidth>
         <DialogTitle>הוסף כתובית חדשה</DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ pt: 1 }}>
-            <TextField label="טקסט הכתובית" multiline rows={3} value={newText} onChange={event => setNewText(event.target.value)} fullWidth autoFocus />
+            <TextField label="טקסט הכתובית" multiline rows={3} value={newText} onChange={event => { setNewText(event.target.value); setAddError(null); }} fullWidth autoFocus disabled={adding} />
             <TextField label="זמן התחלה (שניות)" type="number" value={newStart} onChange={event => setNewStart(Number(event.target.value))} inputProps={{ min: 0, step: 0.1 }} />
             <TextField label="זמן סיום (שניות)" type="number" value={newEnd} onChange={event => setNewEnd(Number(event.target.value))} inputProps={{ min: 0, step: 0.1 }} />
           </Stack>
+          {addError && <Alert severity="error" sx={{ mt: 1 }}>{addError}</Alert>}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setAddOpen(false)}>ביטול</Button>
-          <Button variant="contained" disabled={!newText.trim() || newEnd <= newStart} onClick={() => { onAddSubtitle(newText.trim(), newStart, newEnd); setAddOpen(false); }}>הוסף</Button>
+          <Button disabled={adding} onClick={() => { setAddOpen(false); setAddError(null); }}>ביטול</Button>
+          <Button variant="contained" disabled={adding || !newText.trim() || newEnd <= newStart} onClick={async () => {
+            setAdding(true); setAddError(null);
+            try { await onAddSubtitle(newText.trim(), newStart, newEnd); setAddOpen(false); }
+            catch (error) { setAddError((error as Error).message || 'הוספת הכתובית נכשלה. נסו שוב.'); }
+            finally { setAdding(false); }
+          }}>הוסף</Button>
         </DialogActions>
       </Dialog>
 

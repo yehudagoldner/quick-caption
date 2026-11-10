@@ -26,6 +26,12 @@ export function wordDragDelta(dx, dy, fontSize, rotation = 0) {
     y: (-dx * Math.sin(angle) + dy * Math.cos(angle)) / fontSize };
 }
 
+// Geometry is measured in caption-local pixels; offsets remain in font em.
+export function snapWordBottom(delta, movingBottom, targetBottom, fontSize, tolerance = 6) {
+  const snapped = Math.abs(movingBottom + delta.y * fontSize - targetBottom) <= tolerance;
+  return { delta: snapped ? { ...delta, y: (targetBottom - movingBottom) / fontSize } : delta, snapped };
+}
+
 export function styleCaptionWords(words, segmentId, indexes, patch) {
   const selected = new Set(indexes);
   return words.map(word => {

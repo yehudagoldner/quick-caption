@@ -97,14 +97,19 @@ function CaptionPreview({ activeSegmentText, activeSegmentId, words, currentTime
       style={{ color: active ? activeWordColor : own.fontColor ?? 'inherit', fontSize: own.fontScale ? `${own.fontScale * 100}%` : undefined,
         fontWeight: own.bold ? 900 : undefined,
         position: 'relative', left: `${(own.offsetX ?? 0) / (own.fontScale ?? 1)}em`, top: `${(own.offsetY ?? 0) / (own.fontScale ?? 1)}em`,
-        ...(selectWord ? { cursor: chosen ? drag.live ? 'grabbing' : 'grab' : 'pointer', zIndex: chosen ? 2 : undefined, outline: chosen ? '2px solid #38bdf8' : undefined, outlineOffset: 2, borderRadius: 2 } : {}),
+        // Keep editable words above the frame handles even after deselection,
+        // including words moved outside the caption's original layout box.
+        ...(selectWord ? { cursor: chosen ? drag.live ? 'grabbing' : 'grab' : 'pointer', zIndex: chosen ? 3 : 2, outline: chosen ? '2px solid #38bdf8' : undefined, outlineOffset: 2, borderRadius: 2 } : {}),
         ...(pop ? { backgroundColor: 'var(--caption-background, transparent)', boxShadow: '0 0 0 .06em var(--caption-background, transparent)', display: 'inline-block', whiteSpace: 'nowrap', transformOrigin: '50% 100%', transform: `scale(${wordPopScale(popWord!, currentTime, popIntensity)})` } : {}) }}>
       {pop ? escapeAssText(text) : text}
     </span>;
   };
-  return <Box data-testid="subtitle-overlay" data-segment-id={activeSegmentId} sx={{ display: 'inline-block', ...(captionMotion !== 'pop' ? { bgcolor: 'var(--caption-background, transparent)', boxShadow: '0 0 0 .06em var(--caption-background, transparent)' } : {}) }}>
+  return <Box data-testid="subtitle-overlay" data-segment-id={activeSegmentId} sx={{ position: 'relative', display: 'inline-block', ...(captionMotion !== 'pop' ? { bgcolor: 'var(--caption-background, transparent)', boxShadow: '0 0 0 .06em var(--caption-background, transparent)' } : {}) }}>
     {captionMotion === 'pop' && popWord ? renderWord(popWord.word, popWord.wordIndex!, true)
       : captionParts.map((part, index) => part.wordIndex === undefined ? <Fragment key={`space-${index}`}>{part.text}</Fragment> : renderWord(part.text, part.wordIndex))}
+    {drag.live?.guide && <Box aria-hidden data-testid="word-alignment-guide" data-snapped={drag.live.guide.snapped}
+      sx={{ position: 'absolute', left: drag.live.guide.left, top: drag.live.guide.top, width: drag.live.guide.width,
+        borderTop: '1px dashed #f472b6', opacity: drag.live.guide.snapped ? 1 : .55, pointerEvents: 'none', zIndex: 4 }} />}
   </Box>;
 }
 
@@ -246,8 +251,6 @@ export function VideoPlayer({ compact, size, fill, hideMeta, mediaUrl, activeSeg
     height: fill ? "100%" : undefined,
     ...(fill ? { containerType: "size" } : {}),
   }}>
-    {wordEditor && appearanceSelected && activeCaption?.id != null && selectedCaptionWords.length > 0 && <WordAppearanceToolbar
-      key={`${wordEditor.versionId}:${activeCaption.id}:${selectedWords.join(',')}`} segmentId={activeCaption.id} words={selectedCaptionWords} close={() => setSelectedWords([])} />}
     {failedMove && <Alert severity="error" sx={{ position: 'absolute', bottom: 40, zIndex: 6 }} action={<Button disabled={wordEditor?.disabled} onClick={() => void moveWord(failedMove.indexes, failedMove.delta)}>נסו שוב</Button>}>הזזת המילה לא נשמרה. אפשר לנסות שוב.</Alert>}
     {audioOnly && !hideMeta && <Typography variant="subtitle2">אודיו בלבד — תצוגה מקדימה של הכתוביות</Typography>}
     {error && <Alert severity="error" sx={fill ? { position: "absolute", zIndex: 2, mx: 1 } : undefined}>לא ניתן לנגן את המדיה. בדקו שהקובץ זמין ובפורמט שנתמך בדפדפן.</Alert>}
@@ -256,6 +259,8 @@ export function VideoPlayer({ compact, size, fill, hideMeta, mediaUrl, activeSeg
       cursor: appearanceSelected ? transformMode === 'move' ? 'grabbing' : 'move' : undefined,
       ...stageSize,
       aspectRatio: audioOnly || fill ? undefined : `${frame.width} / ${frame.height}`, minHeight: audioOnly && !fill ? 180 : undefined }}>
+      {wordEditor && appearanceSelected && activeCaption?.id != null && selectedCaptionWords.length > 0 && <WordAppearanceToolbar
+        key={`${wordEditor.versionId}:${activeCaption.id}:${selectedWords.join(',')}`} segmentId={activeCaption.id} words={selectedCaptionWords} close={() => setSelectedWords([])} />}
       {mediaUrl ? <>
         {canvas && <AudiogramBackdrop settings={canvas.settings} imageUrl={canvas.imageUrl} currentTime={currentTime} />}
         <Box component="video" ref={videoRef} controls={!appearance?.segment && !canvas && !crop} controlsList="nofullscreen" playsInline preload="metadata" src={mediaUrl}

@@ -5,7 +5,7 @@ import type { Segment, Word } from "../types";
 import { MobileWordTimeline } from "./MobileWordTimeline";
 import { formatTimecode } from "../utils/timecode";
 import { useVideoPlayer } from "./VideoPlayer";
-import { synchronizeWords } from '../../wordAlignment.js';
+import { editCaptionText } from '../../captionTextEditing.js';
 import { useEditorPreferences } from '../contexts/EditorPreferences';
 
 export function MobileCaptionEditDialog({ segment, words, fps, currentTime, activeWordEnabled, disabled,
@@ -99,11 +99,16 @@ export function MobileCaptionEditDialog({ segment, words, fps, currentTime, acti
   const save = async (): Promise<boolean> => {
     if (inFlight.current) return inFlight.current;
     const nextText = textRef.current.trim();
-    if (!nextText) { setError('הכתובית ריקה. הקלידו טקסט או בטלו את השינוי.'); return false; }
     if (nextText === savedText.current.trim() && !draftRef.current) return true;
     if (disabled) return false;
-    const nextSegment = { ...segment, text: nextText };
-    const nextWords = synchronizeWords([nextSegment], draftRef.current ?? words);
+    let nextSegment = segment;
+    let nextWords = draftRef.current ?? words;
+    if (nextText !== savedText.current.trim()) {
+      try {
+        const next = editCaptionText(segment, nextWords, nextText, fps, player?.duration || Infinity);
+        nextSegment = next.segment; nextWords = next.words;
+      } catch (error) { setError((error as Error).message); return false; }
+    }
     setSaving(true);
     setError(null);
     const request = (async () => {
@@ -127,7 +132,7 @@ export function MobileCaptionEditDialog({ segment, words, fps, currentTime, acti
     return () => register.current(null);
   }, []);
   useEffect(() => {
-    if (!dirtyText || !text.trim() || error || saving) return;
+    if (!dirtyText || error || saving) return;
     const timer = window.setTimeout(() => { void flushRef.current(); }, 1000);
     return () => window.clearTimeout(timer);
   }, [text, dirtyText, error, saving]);

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { sanitizeWordOverrides, styleCaptionWords, moveCaptionWords, wordDragDelta } from '../src/wordOverrides.js';
+import { sanitizeWordOverrides, styleCaptionWords, moveCaptionWords, wordDragDelta, snapWordBottom } from '../src/wordOverrides.js';
 import { synchronizeWords } from '../src/wordAlignment.js';
 import { linkVideoRevisions, editVideoTranscript } from '../src/sharedVideoTranscript.js';
 import { editCaptionBatch } from '../src/captionBatchEditing.js';
@@ -9,6 +9,21 @@ import { renderStyledCaptionsAss } from '../src/styledCaptions.js';
 const segments = [{ id: 1, start: 0, end: 4, text: 'שלום שלום עולם' }];
 const revision = () => ({ segments, words: synchronizeWords(segments) });
 const style = { fontColor: '#ff0000', fontScale: 1.5, bold: true };
+
+test('bottom alignment snaps within six preview pixels at different font sizes and releases beyond them', () => {
+  for (const size of [12, 40, 100]) {
+    const delta = { x: 2, y: 44 / size };
+    assert.deepEqual(snapWordBottom(delta, 20, 60, size), { delta: { x: 2, y: 40 / size }, snapped: true });
+    const outside = { x: 2, y: 47 / size };
+    assert.deepEqual(snapWordBottom(outside, 20, 60, size), { delta: outside, snapped: false });
+    assert.equal(delta.y, 44 / size);
+  }
+  const rotated = wordDragDelta(-42, 10, 20, 90);
+  const snap = snapWordBottom(rotated, 20, 60, 20);
+  assert.equal(snap.snapped, true);
+  assert.equal(snap.delta.y, 2);
+  assert.ok(Math.abs(snap.delta.x - .5) < 1e-9);
+});
 
 test('word movement accounts for rotation, preserves group offsets and rejects unsafe coordinates', () => {
   assert.deepEqual(sanitizeWordOverrides({ offsetX: Infinity, offsetY: '12' }), {});

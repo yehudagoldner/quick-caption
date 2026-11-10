@@ -4,6 +4,8 @@ import type { Segment, Word } from "../types";
 import { segmentsToSrt, cleanSegmentText, fixSegmentOverlaps } from "../utils/transcriptionUtils";
 import { reflowSubtitleCharacters } from "../../subtitleSegmentation.js";
 import { synchronizeWords } from "../../wordAlignment.js";
+import { applyCaptionTextEdit, editCaptionText } from "../../captionTextEditing.js";
+import { useEditorPreferences } from '../contexts/EditorPreferences';
 import { editCaptionBatch, type CaptionBatchAction } from "../../captionBatchEditing.js";
 import { useProjectCaptionStyle } from "./useProjectCaptionStyle";
 import { EditHistory, snapshot, validateCaptionRange, wordsForSegment } from "../../timelineEditing.js";
@@ -35,6 +37,7 @@ export function useTranscriptionState({
   videoId,
   onSaveSegments,
 }: UseTranscriptionStateProps) {
+  const { preferences } = useEditorPreferences();
   const projectKey = videoId ?? mediaUrl;
   const versions = useVideoVersions(videoId, mediaUrl);
   const versionsRef = useRef(versions); versionsRef.current = versions;
@@ -271,40 +274,43 @@ export function useTranscriptionState({
   const handleUndo = () => versionsRef.current.enabled ? restoreVersionHistory('undo') : restoreHistory('undo');
   const handleRedo = () => versionsRef.current.enabled ? restoreVersionHistory('redo') : restoreHistory('redo');
   const handleSaveSegment = async (segment: Segment, words: Word[]) => {
-    const error = validateCaptionRange(segment, editableSegments, videoDuration ?? Infinity);
-    if (error) throw new Error(error);
     const previous = editableSegments.find(s => s.id === segment.id);
     if (!previous) throw new Error("המקטע אינו זמין עוד.");
-    const owned = new Set(wordsForSegment(editableWords, previous));
-    await persistSegments(editableSegments.map(s => s.id === segment.id ? segment : s),
-      [...editableWords.filter(w => !owned.has(w)), ...words], { throwOnError: true, quiet: true });
+    const error = validateCaptionRange(segment, editableSegments, videoDuration ?? Infinity, { allowOverlap: segment.end > previous.end });
+    if (error) throw new Error(error);
+    const previousWords = wordsForSegment(editableWords, previous);
+    if (segment.wordTimingMode === 'automatic' && segment.text === previous.text
+      && words.some((word, i) => word.start !== previousWords[i]?.start || word.end !== previousWords[i]?.end)) {
+      segment = { ...segment, wordTimingMode: 'manual' };
+    }
+    const next = applyCaptionTextEdit(editableSegments, editableWords, segment, words);
+    await persistSegments(next.segments, next.words, { throwOnError: true, quiet: true });
   };
 
   const handleSegmentTextChange = useCallback(
     (segmentId: Segment["id"], value: string) => {
-      ownsRevision.current = true;
-      setEditableSegments((prev) =>
-        prev.map((segment) => (segment.id === segmentId ? { ...segment, text: value } : segment)),
-      );
+      const segment = editableSegments.find(segment => segment.id === segmentId);
+      if (!segment) return;
+      try {
+        const edited = editCaptionText(segment, editableWords, value, preferences.fps, videoDuration ?? Infinity);
+        const next = applyCaptionTextEdit(editableSegments, editableWords, edited.segment, edited.words);
+        ownsRevision.current = true;
+        setEditableSegments(next.segments); setEditableWords(next.words);
+        setSaveError(null);
+      } catch (error) { setSaveState('error'); setSaveError((error as Error).message); }
     },
-    [],
+    [editableSegments, editableWords, preferences.fps, videoDuration],
   );
 
   const handleSegmentTextChangeAndSave = useCallback(
     async (segmentId: Segment["id"], value: string) => {
-      console.log('🔄 handleSegmentTextChangeAndSave called:', {
-        segmentId,
-        oldText: editableSegments.find(s => s.id === segmentId)?.text,
-        newText: value
-      });
-      const newSegments = editableSegments.map((segment) =>
-        segment.id === segmentId ? { ...segment, text: value } : segment,
-      );
-      console.log('🔄 handleSegmentTextChangeAndSave - calling persistSegments with updated segments');
-      await persistSegments(newSegments);
-      console.log('🔄 handleSegmentTextChangeAndSave - persistSegments complete');
+      const segment = editableSegments.find(segment => segment.id === segmentId);
+      if (!segment) return;
+      const edited = editCaptionText(segment, editableWords, value, preferences.fps, videoDuration ?? Infinity);
+      const next = applyCaptionTextEdit(editableSegments, editableWords, edited.segment, edited.words);
+      await persistSegments(next.segments, next.words);
     },
-    [editableSegments, persistSegments],
+    [editableSegments, editableWords, persistSegments, preferences.fps, videoDuration],
   );
 
   const handleSegmentBlur = async (segmentId: Segment["id"]) => {
@@ -315,7 +321,7 @@ export function useTranscriptionState({
     const original = (versionsRef.current.activeId === 'original' ? responseSegments : versionsRef.current.revisions[versionsRef.current.activeId]?.segments ?? []).find((segment) => segment.id === segmentId);
     const updated = editableSegments.find((segment) => segment.id === segmentId);
 
-    if (!original || !updated || original.text === updated.text) {
+    if (!original || !updated || JSON.stringify(original) === JSON.stringify(updated)) {
       return;
     }
 
@@ -329,16 +335,17 @@ export function useTranscriptionState({
         start: startTime,
         end: endTime,
         text,
+        wordTimingMode: 'automatic',
       };
 
-      const error = validateCaptionRange(newSegment, editableSegments, videoDuration ?? Infinity);
+      const edited = editCaptionText(newSegment, [], text, preferences.fps, videoDuration ?? Infinity);
+      const error = validateCaptionRange(edited.segment, editableSegments, videoDuration ?? Infinity, { allowOverlap: true });
       if (error) throw new Error(error);
-      const newSegments = [...editableSegments, newSegment].sort((a, b) => a.start - b.start);
-      setEditableSegments(newSegments);
+      const next = applyCaptionTextEdit(editableSegments, editableWords, edited.segment, edited.words);
+      await persistSegments(next.segments, next.words, { throwOnError: true });
       setSelectedSegmentId(newSegment.id);
-      await persistSegments(newSegments, undefined, { throwOnError: true });
     },
-    [editableSegments, persistSegments, videoDuration],
+    [editableSegments, editableWords, persistSegments, preferences.fps, videoDuration],
   );
 
   const handleToggleActiveWord = () => setActiveWordEnabled(!activeWordEnabled);
