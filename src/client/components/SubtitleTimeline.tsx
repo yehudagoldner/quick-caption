@@ -65,6 +65,7 @@ export function SubtitleTimeline({ activeWordEnabled, segments, words = [], disa
   const localFocus = useRef<Segment["id"] | null | undefined>(undefined);
   const [movePreview, setMovePreview] = useState<Segment[] | null>(null);
   const dragging = useRef<{ x: number; scroll: number; ids: Segment["id"][]; source: Segment[]; next: Segment[]; moved: boolean } | null>(null);
+  const resizeGesture = useRef<{ id: string; edge: 'start' | 'end' } | null>(null);
   const suppressClick = useRef(false);
   const timeline = useRef<TimelineState | null>(null);
   const container = useRef<HTMLDivElement | null>(null);
@@ -84,10 +85,10 @@ export function SubtitleTimeline({ activeWordEnabled, segments, words = [], disa
     if (expandedSegmentId !== null && expandedSegmentId !== selectedSegmentId) setExpandedSegmentId(null);
   }, [selectedSegmentId, expandedSegmentId]);
   const locked = disabled || busy || saving;
-  useEffect(() => { setSelection([]); setDrafts({}); setExpandedSegmentId(null); }, [version?.activeId]);
+  useEffect(() => { setSelection([]); setDrafts({}); setExpandedSegmentId(null); resizeGesture.current = null; }, [version?.activeId]);
   const dirty = Object.keys(drafts).length > 0;
   const groupLocked = !!locked || dirty || movePreview !== null;
-  useEffect(() => { setSelection([]); selectionAnchor.current = null; setMovePreview(null); dragging.current = null; }, [mediaUrl]);
+  useEffect(() => { setSelection([]); selectionAnchor.current = null; setMovePreview(null); dragging.current = null; resizeGesture.current = null; }, [mediaUrl]);
   useEffect(() => {
     if (selectedSegmentId === localFocus.current) { localFocus.current = undefined; return; }
     setSelection(selectedSegmentId == null ? [] : [selectedSegmentId]);
@@ -378,14 +379,19 @@ export function SubtitleTimeline({ activeWordEnabled, segments, words = [], disa
         getScaleRender={value => <span title="גררו ימינה ושמאלה להזזת ציר הזמן · לחיצה למעבר לזמן · Ctrl + גלגלת לזום">{formatTimecode(value, fps)}</span>}
         onCursorDrag={seek} onCursorDragEnd={seek} onClickTimeArea={seek}
         onScroll={p => { scrollLeft.current = p.scrollLeft; setWaveformScroll(p.scrollLeft); }}
+        onActionResizeStart={({ action, dir }) => { resizeGesture.current = { id: action.id, edge: dir === 'left' ? 'start' : 'end' }; }}
+        onActionResizeEnd={() => { resizeGesture.current = null; }}
         onChange={nextRows => {
+          // Whole-caption moves use our pointer handlers. The library calls
+          // onChange before onActionResizeEnd, while the dragged edge is known.
+          const resize = resizeGesture.current;
+          if (!resize) return false;
           let next = nextRows[0].actions.map(action => {
             const original = segments.find(s => String(s.id) === action.id)!;
-            // Do not quantize untouched boundaries or words.
-            if (action.start === original.start && action.end === original.end) return original;
-            const moving = Math.abs(action.end - action.start - (original.end - original.start)) < .000001;
-            const start = action.start === original.start ? original.start : snapToFrame(action.start, fps);
-            return { ...original, start, end: moving ? start + original.end - original.start : action.end === original.end ? original.end : Math.min(total, snapToFrame(action.end, fps)) };
+            if (action.id !== resize.id || Math.abs(action[resize.edge] - original[resize.edge]) < .000001) return original;
+            // Pixel-to-time conversion can perturb even the stationary edge.
+            // Preserve that exact source timestamp; snap only the dragged edge.
+            return { ...original, [resize.edge]: Math.max(0, Math.min(total, snapToFrame(action[resize.edge], fps))) };
           });
           try {
             const edits = next.filter(item => {
@@ -393,11 +399,9 @@ export function SubtitleTimeline({ activeWordEnabled, segments, words = [], disa
               return original.start !== item.start || original.end !== item.end;
             });
             for (const item of edits) {
-              const original = segments.find(s => s.id === item.id)!;
-              const resizing = original.start === item.start || original.end === item.end;
-              const problem = validateCaptionRange(item, next, total, { allowOverlap: resizing });
+              const problem = validateCaptionRange(item, next, total, { allowOverlap: true });
               if (problem) throw new Error(problem);
-              if (resizing) next = overwriteCaptionRange(item, next);
+              next = overwriteCaptionRange(item, next);
             }
             for (const item of next) {
               const problem = validateCaptionRange(item, next, total);
